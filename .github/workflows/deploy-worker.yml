@@ -1,0 +1,30 @@
+name: Deploy and Verify Cloudflare Scanner
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'cloudflare/**'
+      - '.github/workflows/deploy-worker.yml'
+permissions:
+  contents: read
+concurrency:
+  group: cloudflare-production-scanner
+  cancel-in-progress: false
+jobs:
+  deploy-and-verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Test market-data parsing and scan accounting
+        run: node --test cloudflare/worker.test.mjs
+      - name: Deploy without changing bindings and verify actual cron runs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node cloudflare/deploy-worker.mjs

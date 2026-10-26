@@ -1,0 +1,90 @@
+// Run only in trusted GitHub Actions on main. Never print credentials or raw API responses.
+import fs from 'node:fs/promises';
+import assert from 'node:assert/strict';
+
+const WORKER='sol-bot-2026', RELEASE='kraken-ohlc-v1', CRON='*/5 * * * *';
+const SYMBOLS=['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'];
+const account=(process.env.CLOUDFLARE_ACCOUNT_ID||'').trim();
+const token=(process.env.CLOUDFLARE_API_TOKEN||'').trim();
+const summary=[];
+function report(message){console.log(message);summary.push(message);}
+async function api(path,options={}){
+ const headers={Authorization:'Bearer '+token,...options.headers};
+ if(typeof options.body==='string')headers['Content-Type']='application/json';
+ let response;try{response=await fetch('https://api.cloudflare.com/client/v4/accounts/'+account+'/workers/scripts/'+WORKER+path,{...options,headers,signal:AbortSignal.timeout(30000)});}catch{throw Error('Cloudflare API network failure');}
+ let data;try{data=await response.json();}catch{throw Error('Cloudflare returned a non-JSON response (HTTP '+response.status+')');}
+ if(!response.ok||!data.success)throw Error('Cloudflare HTTP '+response.status+'; error codes: '+(data.errors||[]).map(e=>e.code).join(',')+'; check token permissions and account ID');
+ return data.result;
+}
+function bindingShape(settings){return (settings.bindings||[]).map(b=>({name:b.name,type:b.type,...(b.type==='kv_namespace'?{namespace_id:b.namespace_id}:{})})).sort((a,b)=>a.name.localeCompare(b.name));}
+function scheduleList(value){return Array.isArray(value)?value:(value?.schedules||[]);}
+async function main(){
+ if(!token)throw Error('Missing GitHub repository secret CLOUDFLARE_API_TOKEN');
+ if(!/^[a-f0-9]{32}$/i.test(account))throw Error('Missing or invalid GitHub repository secret CLOUDFLARE_ACCOUNT_ID (expected 32 hex characters)');
+ const before=await api('/settings');
+ const shape=bindingShape(before), names=new Set(shape.map(b=>b.name));
+ for(const name of ['TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','SIGNAL_STATE'])if(!names.has(name))throw Error('Worker is missing required binding '+name+'; no deployment performed');
+ if(!shape.some(b=>b.name==='SIGNAL_STATE'&&b.type==='kv_namespace'))throw Error('SIGNAL_STATE must be a KV binding; no deployment performed');
+ report('Cloudflare authentication OK; existing Telegram bindings and SIGNAL_STATE KV found.');
+ const schedules=scheduleList(await api('/schedules'));
+ // Keep all remote binding types without reading or exporting secret values.
+ const metadata={main_module:'worker.js',keep_bindings:[...new Set(shape.map(b=>b.type))],compatibility_date:before.compatibility_date||'2026-10-01',keep_assets:true};
+ for(const field of ['compatibility_flags','limits','logpush','observability','tail_consumers','placement'])if(before[field]!=null)metadata[field]=before[field];
+ const code=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
+ const form=new FormData();form.append('metadata',new Blob([JSON.stringify(metadata)],{type:'application/json'}),'metadata.json');form.append('worker.js',new Blob([code],{type:'application/javascript+module'}),'worker.js');
+ const deployed=await api('',{method:'PUT',body:form});
+ report('Worker deployed; version '+(deployed.deployment_id||deployed.id||'accepted')+'.');
+ const after=await api('/settings');
+ assert.deepEqual(bindingShape(after),shape,'Remote binding names, types or KV association changed');
+ report('All existing bindings preserved. No secret values were printed.');
+ if(!schedules.some(s=>s.cron===CRON)){
+  await api('/schedules',{method:'PUT',body:JSON.stringify([...schedules.map(s=>({cron:s.cron})),{cron:CRON}])});
+  report('Added five-minute cron while preserving existing schedules; propagation can take up to 15 minutes.');
+ }
+ const actual=scheduleList(await api('/schedules'));
+ assert.ok(actual.some(s=>s.cron===CRON),'Five-minute cron not configured');
+ report('Confirmed cron '+CRON+'. Existing GitHub scan workflows are untouched.');
+ const tail=await api('/tails',{method:'POST',body:JSON.stringify({filters:[]})});
+ let ws;
+ try{
+  const deadline=Date.now()+16*60*1000, verified=new Map();
+  await new Promise((resolve,reject)=>{
+   let settled=false;
+   const timer=setTimeout(()=>finish(Error('Timed out: two consecutive successful scheduled scans were not verified; GitHub scans remain enabled')),deadline-Date.now());
+   function finish(error){if(settled)return;settled=true;clearTimeout(timer);error?reject(error):resolve();}
+   // Tail URL is an ephemeral credential: keep it out of logs and artifacts.
+   ws=new WebSocket(tail.url,'trace-v1');
+   ws.addEventListener('open',()=>{ws.send(JSON.stringify({debug:false}));report('Listening for actual Cloudflare cron executions (not manual tests).');});
+   ws.addEventListener('error',()=>finish(Error('Cloudflare live-log connection failed; deployment not verified')));
+   ws.addEventListener('close',()=>{if(!settled)finish(Error('Cloudflare live-log connection closed before verification'));});
+   ws.addEventListener('message',async message=>{
+    try{
+     const raw=typeof message.data==='string'?message.data:await message.data.text();
+     const trace=JSON.parse(raw);
+     if(trace.scriptName!==WORKER||trace.event?.cron!==CRON)return;
+     for(const log of trace.logs||[]){for(const item of log.message||[]){
+      let row;try{row=typeof item==='string'?JSON.parse(item):item;}catch{continue;}
+      if(row?.event!=='scan_complete'||row.release!==RELEASE)continue;
+      const seen=new Set((row.results||[]).map(r=>r.symbol));
+      const valid=trace.outcome==='ok'&&!(trace.exceptions||[]).length&&row.ok===true&&row.source==='kraken'&&row.cron===CRON&&SYMBOLS.every(s=>seen.has(s))&&seen.size===4&&row.results.every(r=>Number.isFinite(r.closedAgeMinutes)&&r.closedAgeMinutes>=0&&r.closedAgeMinutes<=7);
+      const time=Number(row.scheduledTime);
+      if(!Number.isFinite(time)||time<deadline-16*60*1000-60000)continue;
+      report('Scheduled '+new Date(time).toISOString()+': '+(valid?'PASS (SOL, BTC, ETH, XRP; fresh Kraken candles)':'FAIL (scan errors or incomplete markets)'));
+      if(!valid){verified.clear();continue;}
+      const prior=verified.get(time-300000);
+      verified.set(time,row);
+      if(prior&&row.results.every(r=>Date.parse(r.candle)-Date.parse(prior.results.find(p=>p.symbol===r.symbol).candle)===300000)){
+       report('VERIFIED: two consecutive automatic scans exactly five minutes apart; all four markets advanced to the next closed candle.');finish();
+      }
+     }}
+    }catch{finish(Error('Could not validate a Cloudflare scheduled log message'));}
+   });
+  });
+ }finally{
+  ws?.close();
+  try{await api('/tails/'+encodeURIComponent(tail.id),{method:'DELETE'});}catch{report('Temporary tail session cleanup failed; it will expire automatically.');}
+ }
+}
+try{await main();}catch(error){report('FAILED: '+error.message);process.exitCode=1;}finally{
+ if(process.env.GITHUB_STEP_SUMMARY)await fs.appendFile(process.env.GITHUB_STEP_SUMMARY,'## Cloudflare scanner deployment\n\n'+summary.map(x=>'- '+x).join('\n')+'\n');
+}
