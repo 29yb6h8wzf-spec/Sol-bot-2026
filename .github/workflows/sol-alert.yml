@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   run-bot:
@@ -32,6 +33,7 @@ jobs:
       - name: Run Telegram test
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.send_test && matrix.symbol == 'SOLUSDT' }}
         env:
+          GH_TOKEN: ${{ github.token }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           SYMBOL: ${{ matrix.symbol }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -39,6 +41,7 @@ jobs:
       - name: Scan SOLUSDT
         if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.send_test) }}
         env:
+          GH_TOKEN: ${{ github.token }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           SYMBOL: ${{ matrix.symbol }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
