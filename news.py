@@ -79,10 +79,12 @@ def main():
     try:
         items = articles(symbol)
     except Exception as exc:
-        print('News provider unavailable; not sending unverified news:',exc)
+        print('News provider unavailable:',exc)
+        telegram(f'📰 {symbol} — עדכון חדשות\n⚠️ מקור החדשות לא זמין כרגע. לא ניתן לאמת כותרות חדשות.\nאין איתות מסחר.')
         return
     if not items:
-        print('No news found for',symbol)
+        print('No relevant news found for',symbol)
+        telegram(f'📰 {symbol} — עדכון חדשות\nלא נמצאו כותרות רלוונטיות ב-24 השעות האחרונות שעברו את סינון המטבע.\nאין איתות מסחר.')
         return
     stamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
     lines = [f'📰 {symbol} — חדשות ב-24 שעות האחרונות',f'זמן: {stamp}']
