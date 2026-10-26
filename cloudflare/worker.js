@@ -109,131 +109,7 @@ export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
  const levels=found.map(s=>{
   const risk=Math.abs(s.entry-s.stop);
   const target=s.entry+(s.direction==='LONG'?2:-2)*risk;
-  return '🔔 '+s.strategy+' '+s.direction+' | כניסה: 
-  const matched=found.filter(s=>s.strategy===key);
-  return (matched.length?'✅ ':'▫️ ')+label+': '+(matched.length?'עבר ('+matched.map(s=>s.direction==='LONG'?'לונג':'שורט').join(', ')+')':'לא עבר');
- });
- return ['📊 '+symbol+' | '+(found.length?'נמצאו איתותים':'⏸ אין איתות'),
-  '🕒 '+time(now)+' | נר '+time(last.time)+'–'+time(last.time+PERIOD)+' (ישראל)',
-  '',
-  'מחיר סגירה: $'+last.close.toFixed(5),
-  'מגמת 4 שעות: '+trend,
-  'נפח: '+(Number.isFinite(volume)?Math.round(volume*100)+'% מהממוצע':'לא זמין'),
-  'RSI: '+rsi(five.map(b=>b.close)).toFixed(1)+' | ADX: '+adx(four).toFixed(1),
-  '',
-  'בדיקות כניסה — כולל סינון סטופ:',
-  ...lines,
-  ...(levels.length?['','📍 רמות כניסה, סטופ וטייק פרופיט (תיאורטיות):',...levels]:[]),
-  '',
-  found.length?'🔔 איתותים חדשים נשלחים בהודעה נפרדת.':'אין כניסה שעברה את תנאי הסורק.',
-  'ℹ️ דוח תנאים בלבד | Kraken Spot (USDT)',
-  '',formatNewsContext(news,symbol)
- ].join('\n');
-}
-async function send(env,msg){let r=await fetch('https://api.telegram.org/bot'+env.TELEGRAM_BOT_TOKEN+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:env.TELEGRAM_CHAT_ID,text:msg,disable_web_page_preview:true}),signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('Telegram HTTP '+r.status);let j=await r.json();if(!j.ok)throw Error('Telegram API rejected message');}
-async function scan(symbol,env,news){let [five,four]=await Promise.all([candles(symbol,'5m',120),candles(symbol,'4h',100)]),last=five.at(-1),age=(Date.now()-(last.time+PERIOD))/60000;console.log(JSON.stringify({event:'scan',symbol,candle:new Date(last.time).toISOString(),closedAgeMinutes:+age.toFixed(2)}));if(age<0||age>7){console.warn('Skipping stale candle',symbol,age);return;}
-let checks=[],found=setups(five,four,checks);console.log(JSON.stringify({event:'candidates',symbol,count:found.length,strategies:found.map(s=>s.strategy)}));for(let s of found){let key='signal:'+symbol+':'+s.candle+':'+s.strategy+':'+s.direction;if(await env.SIGNAL_STATE.get(key)){console.log('Duplicate skipped',key);continue;}
-let risk=Math.abs(s.entry-s.stop),target=s.entry+(s.direction==='LONG'?2:-2)*risk;
-let msg='🔔 '+symbol+' '+s.direction+' | '+s.strategy+'\nדירוג תנאים: '+s.score+'/100 (לא הסתברות הצלחה)\nנר: '+new Date(s.candle).toISOString()+'\nכניסה תיאורטית: $'+s.entry.toFixed(5)+'\nסטופ: $'+s.stop.toFixed(5)+' ('+s.stopPct.toFixed(2)+'%)\nיעד 2R: $'+target.toFixed(5)+'\n'+s.reason+'\n⚠️ מחקר בלבד. אין ביצוע מסחר אוטומטי.';
-await send(env,msg+'\nמקור נתונים: Kraken Spot (USDT)\n\n'+formatNewsContext(news,symbol,2));await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});console.log('Alert sent',key);}
-const statusKey='status:'+symbol+':'+last.time;
-let statusDelivery='already_sent';
-if(!await env.SIGNAL_STATE.get(statusKey)){
- const status=formatScanStatus(symbol,five,four,found,Date.now(),news);
- await send(env,status);
- await env.SIGNAL_STATE.put(statusKey,'sent',{expirationTtl:86400});
- statusDelivery='sent';
- console.log(JSON.stringify({event:'status_sent',symbol,candle:new Date(last.time).toISOString(),release:RELEASE}));
-}
-await notifyFreshNews(symbol,env,news);
-return {symbol,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length};}
-export default {
- async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}ctx.waitUntil((async()=>{const news=await loadNews(env);const results=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message:error instanceof Error?error.message:'Scan failed'}));}}console.log(JSON.stringify({event:'scan_complete',release:RELEASE,source:'kraken',cron:event.cron,scheduledTime:event.scheduledTime,ok:results.length===SYMBOLS.length,results}));if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
- async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
-};
-+s.entry.toFixed(5)+' | 🛑 SL: 
-  const matched=found.filter(s=>s.strategy===key);
-  return (matched.length?'✅ ':'▫️ ')+label+': '+(matched.length?'עבר ('+matched.map(s=>s.direction==='LONG'?'לונג':'שורט').join(', ')+')':'לא עבר');
- });
- return ['📊 '+symbol+' | '+(found.length?'נמצאו איתותים':'⏸ אין איתות'),
-  '🕒 '+time(now)+' | נר '+time(last.time)+'–'+time(last.time+PERIOD)+' (ישראל)',
-  '',
-  'מחיר סגירה: $'+last.close.toFixed(5),
-  'מגמת 4 שעות: '+trend,
-  'נפח: '+(Number.isFinite(volume)?Math.round(volume*100)+'% מהממוצע':'לא זמין'),
-  'RSI: '+rsi(five.map(b=>b.close)).toFixed(1)+' | ADX: '+adx(four).toFixed(1),
-  '',
-  'בדיקות כניסה — כולל סינון סטופ:',
-  ...lines,
-  '',
-  found.length?'🔔 איתותים חדשים נשלחים בהודעה נפרדת.':'אין כניסה שעברה את תנאי הסורק.',
-  'ℹ️ דוח תנאים בלבד | Kraken Spot (USDT)',
-  '',formatNewsContext(news,symbol)
- ].join('\n');
-}
-async function send(env,msg){let r=await fetch('https://api.telegram.org/bot'+env.TELEGRAM_BOT_TOKEN+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:env.TELEGRAM_CHAT_ID,text:msg,disable_web_page_preview:true}),signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('Telegram HTTP '+r.status);let j=await r.json();if(!j.ok)throw Error('Telegram API rejected message');}
-async function scan(symbol,env,news){let [five,four]=await Promise.all([candles(symbol,'5m',120),candles(symbol,'4h',100)]),last=five.at(-1),age=(Date.now()-(last.time+PERIOD))/60000;console.log(JSON.stringify({event:'scan',symbol,candle:new Date(last.time).toISOString(),closedAgeMinutes:+age.toFixed(2)}));if(age<0||age>7){console.warn('Skipping stale candle',symbol,age);return;}
-let checks=[],found=setups(five,four,checks);console.log(JSON.stringify({event:'candidates',symbol,count:found.length,strategies:found.map(s=>s.strategy)}));for(let s of found){let key='signal:'+symbol+':'+s.candle+':'+s.strategy+':'+s.direction;if(await env.SIGNAL_STATE.get(key)){console.log('Duplicate skipped',key);continue;}
-let risk=Math.abs(s.entry-s.stop),target=s.entry+(s.direction==='LONG'?2:-2)*risk;
-let msg='🔔 '+symbol+' '+s.direction+' | '+s.strategy+'\nדירוג תנאים: '+s.score+'/100 (לא הסתברות הצלחה)\nנר: '+new Date(s.candle).toISOString()+'\nכניסה תיאורטית: $'+s.entry.toFixed(5)+'\nסטופ: $'+s.stop.toFixed(5)+' ('+s.stopPct.toFixed(2)+'%)\nיעד 2R: $'+target.toFixed(5)+'\n'+s.reason+'\n⚠️ מחקר בלבד. אין ביצוע מסחר אוטומטי.';
-await send(env,msg+'\nמקור נתונים: Kraken Spot (USDT)\n\n'+formatNewsContext(news,symbol,2));await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});console.log('Alert sent',key);}
-const statusKey='status:'+symbol+':'+last.time;
-let statusDelivery='already_sent';
-if(!await env.SIGNAL_STATE.get(statusKey)){
- const status=formatScanStatus(symbol,five,four,found,Date.now(),news);
- await send(env,status);
- await env.SIGNAL_STATE.put(statusKey,'sent',{expirationTtl:86400});
- statusDelivery='sent';
- console.log(JSON.stringify({event:'status_sent',symbol,candle:new Date(last.time).toISOString(),release:RELEASE}));
-}
-await notifyFreshNews(symbol,env,news);
-return {symbol,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length};}
-export default {
- async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}ctx.waitUntil((async()=>{const news=await loadNews(env);const results=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message:error instanceof Error?error.message:'Scan failed'}));}}console.log(JSON.stringify({event:'scan_complete',release:RELEASE,source:'kraken',cron:event.cron,scheduledTime:event.scheduledTime,ok:results.length===SYMBOLS.length,results}));if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
- async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
-};
-+s.stop.toFixed(5)+' | 🎯 TP (2R): 
-  const matched=found.filter(s=>s.strategy===key);
-  return (matched.length?'✅ ':'▫️ ')+label+': '+(matched.length?'עבר ('+matched.map(s=>s.direction==='LONG'?'לונג':'שורט').join(', ')+')':'לא עבר');
- });
- return ['📊 '+symbol+' | '+(found.length?'נמצאו איתותים':'⏸ אין איתות'),
-  '🕒 '+time(now)+' | נר '+time(last.time)+'–'+time(last.time+PERIOD)+' (ישראל)',
-  '',
-  'מחיר סגירה: $'+last.close.toFixed(5),
-  'מגמת 4 שעות: '+trend,
-  'נפח: '+(Number.isFinite(volume)?Math.round(volume*100)+'% מהממוצע':'לא זמין'),
-  'RSI: '+rsi(five.map(b=>b.close)).toFixed(1)+' | ADX: '+adx(four).toFixed(1),
-  '',
-  'בדיקות כניסה — כולל סינון סטופ:',
-  ...lines,
-  '',
-  found.length?'🔔 איתותים חדשים נשלחים בהודעה נפרדת.':'אין כניסה שעברה את תנאי הסורק.',
-  'ℹ️ דוח תנאים בלבד | Kraken Spot (USDT)',
-  '',formatNewsContext(news,symbol)
- ].join('\n');
-}
-async function send(env,msg){let r=await fetch('https://api.telegram.org/bot'+env.TELEGRAM_BOT_TOKEN+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:env.TELEGRAM_CHAT_ID,text:msg,disable_web_page_preview:true}),signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('Telegram HTTP '+r.status);let j=await r.json();if(!j.ok)throw Error('Telegram API rejected message');}
-async function scan(symbol,env,news){let [five,four]=await Promise.all([candles(symbol,'5m',120),candles(symbol,'4h',100)]),last=five.at(-1),age=(Date.now()-(last.time+PERIOD))/60000;console.log(JSON.stringify({event:'scan',symbol,candle:new Date(last.time).toISOString(),closedAgeMinutes:+age.toFixed(2)}));if(age<0||age>7){console.warn('Skipping stale candle',symbol,age);return;}
-let checks=[],found=setups(five,four,checks);console.log(JSON.stringify({event:'candidates',symbol,count:found.length,strategies:found.map(s=>s.strategy)}));for(let s of found){let key='signal:'+symbol+':'+s.candle+':'+s.strategy+':'+s.direction;if(await env.SIGNAL_STATE.get(key)){console.log('Duplicate skipped',key);continue;}
-let risk=Math.abs(s.entry-s.stop),target=s.entry+(s.direction==='LONG'?2:-2)*risk;
-let msg='🔔 '+symbol+' '+s.direction+' | '+s.strategy+'\nדירוג תנאים: '+s.score+'/100 (לא הסתברות הצלחה)\nנר: '+new Date(s.candle).toISOString()+'\nכניסה תיאורטית: $'+s.entry.toFixed(5)+'\nסטופ: $'+s.stop.toFixed(5)+' ('+s.stopPct.toFixed(2)+'%)\nיעד 2R: $'+target.toFixed(5)+'\n'+s.reason+'\n⚠️ מחקר בלבד. אין ביצוע מסחר אוטומטי.';
-await send(env,msg+'\nמקור נתונים: Kraken Spot (USDT)\n\n'+formatNewsContext(news,symbol,2));await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});console.log('Alert sent',key);}
-const statusKey='status:'+symbol+':'+last.time;
-let statusDelivery='already_sent';
-if(!await env.SIGNAL_STATE.get(statusKey)){
- const status=formatScanStatus(symbol,five,four,found,Date.now(),news);
- await send(env,status);
- await env.SIGNAL_STATE.put(statusKey,'sent',{expirationTtl:86400});
- statusDelivery='sent';
- console.log(JSON.stringify({event:'status_sent',symbol,candle:new Date(last.time).toISOString(),release:RELEASE}));
-}
-await notifyFreshNews(symbol,env,news);
-return {symbol,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length};}
-export default {
- async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}ctx.waitUntil((async()=>{const news=await loadNews(env);const results=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message:error instanceof Error?error.message:'Scan failed'}));}}console.log(JSON.stringify({event:'scan_complete',release:RELEASE,source:'kraken',cron:event.cron,scheduledTime:event.scheduledTime,ok:results.length===SYMBOLS.length,results}));if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
- async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
-};
-+target.toFixed(5);
+  return '🔔 '+s.strategy+' '+s.direction+' | כניסה: $'+s.entry.toFixed(5)+' | 🛑 SL: $'+s.stop.toFixed(5)+' | 🎯 TP (2R): $'+target.toFixed(5);
  });
  const lines=strategies.map(([key,label])=>{
   const matched=found.filter(s=>s.strategy===key);
@@ -249,6 +125,7 @@ export default {
   '',
   'בדיקות כניסה — כולל סינון סטופ:',
   ...lines,
+  ...(levels.length?['','📍 רמות כניסה, סטופ וטייק פרופיט (תיאורטיות):',...levels]:[]),
   '',
   found.length?'🔔 איתותים חדשים נשלחים בהודעה נפרדת.':'אין כניסה שעברה את תנאי הסורק.',
   'ℹ️ דוח תנאים בלבד | Kraken Spot (USDT)',
