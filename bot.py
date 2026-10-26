@@ -128,7 +128,10 @@ def main():
         print('Daily status message sent')
         return
     if '--diagnostic' in sys.argv:
-        evaluate_signals()
+        try:
+            evaluate_signals()
+        except Exception as exc:
+            print('Paper evaluation failed; continuing diagnostics:', exc)
     four = fetch('4h', 100)
     five = fetch('5m', 50)
     trend20 = ema([x['close'] for x in four], 20)
@@ -198,7 +201,10 @@ def main():
     notional = min(80, 1 / (stop_pct / 100))
     planned_loss = notional * stop_pct / 100
     candle_time = datetime.fromtimestamp(last['time'] / 1000, tz=timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
-    track_signal(candle_time, direction, entry, stop, target, score)
+    try:
+        track_signal(candle_time, direction, entry, stop, target, score)
+    except Exception as exc:
+        print('Tracking failed; continuing with Telegram alert:', exc)
     telegram(f'🔔 {SYMBOL} {direction} — מועמד לבדיקה, לא הוראת מסחר\n'
              f'דירוג תנאים: {score}/100 (לא הסתברות הצלחה)\n'
              f'נר 5 דקות: {candle_time}\n'
