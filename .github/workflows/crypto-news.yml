@@ -1,0 +1,29 @@
+name: Crypto News Digest
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 12 * * *'
+permissions:
+  contents: read
+jobs:
+  news:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        symbol: [BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Fetch news and notify Telegram
+        env:
+          SYMBOL: ${{ matrix.symbol }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CRYPTOPANIC_API_KEY: ${{ secrets.CRYPTOPANIC_API_KEY }}
+          CRYPTOPANIC_PLAN: developer
+        run: python news.py
