@@ -106,6 +106,11 @@ export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
  const clock=new Intl.DateTimeFormat('he-IL',{timeZone:'Asia/Jerusalem',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
  const time=value=>clock.format(new Date(value));
  const strategies=[['BREAKOUT','פריצת מחיר'],['EMA_ADX','EMA + ADX'],['RSI_BOLL','RSI + רצועות'],['MACD_VOLUME','MACD + נפח']];
+ const levels=found.map(s=>{
+  const risk=Math.abs(s.entry-s.stop);
+  const target=s.entry+(s.direction==='LONG'?2:-2)*risk;
+  return '🔔 '+s.strategy+' '+s.direction+' | כניסה: $'+s.entry.toFixed(5)+' | 🛑 SL: $'+s.stop.toFixed(5)+' | 🎯 TP (2R): $'+target.toFixed(5);
+ });
  const lines=strategies.map(([key,label])=>{
   const matched=found.filter(s=>s.strategy===key);
   return (matched.length?'✅ ':'▫️ ')+label+': '+(matched.length?'עבר ('+matched.map(s=>s.direction==='LONG'?'לונג':'שורט').join(', ')+')':'לא עבר');
@@ -120,6 +125,7 @@ export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
   '',
   'בדיקות כניסה — כולל סינון סטופ:',
   ...lines,
+  ...(levels.length?['','📍 רמות כניסה, סטופ וטייק פרופיט (תיאורטיות):',...levels]:[]),
   '',
   found.length?'🔔 איתותים חדשים נשלחים בהודעה נפרדת.':'אין כניסה שעברה את תנאי הסורק.',
   'ℹ️ דוח תנאים בלבד | Kraken Spot (USDT)',
