@@ -60,8 +60,8 @@ def main():
     avg_vol = sum(x['volume'] for x in prev) / len(prev)
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     age_min = (now_ms - last['time']) / 60000
-    if not 5 <= age_min <= 12:
-        print('Last closed candle too old/new; no alert')
+    if not 5 <= age_min <= 12 and '--diagnostic' not in sys.argv:
+        print(f'No signal: candle age {age_min:.1f} minutes (expected 5-12)')
         return
     direction = None
     if trend20 > trend50 and last['close'] > high and last['volume'] >= avg_vol * 1.5:
@@ -71,10 +71,42 @@ def main():
         direction = 'SHORT'
         stop = high
     else:
-        print('No setup')
+        direction = None
+    long_break = last['close'] > high
+    short_break = last['close'] < low
+    volume_ratio = last['volume'] / avg_vol if avg_vol else 0
+    reasons = []
+    if direction is None:
+        if trend20 > trend50:
+            reasons.append('מגמת 4 שעות: עולה')
+            if not long_break: reasons.append('אין פריצה מעל שיא 12 הנרות')
+        elif trend20 < trend50:
+            reasons.append('מגמת 4 שעות: יורדת')
+            if not short_break: reasons.append('אין שבירה מתחת לשפל 12 הנרות')
+        else:
+            reasons.append('ממוצעי EMA שווים')
+        if volume_ratio < 1.5: reasons.append(f'נפח נמוך: פי {volume_ratio:.2f} (נדרש 1.5)')
+    if direction is None and '--diagnostic' not in sys.argv:
+        print('No setup: ' + '; '.join(reasons))
         return
     entry = last['close']
-    stop_pct = abs(entry - stop) / entry * 100
+    stop_pct = abs(entry - stop) / entry * 100 if direction else None
+    if '--diagnostic' in sys.argv:
+        if direction is not None and not 0.25 <= stop_pct <= 1.5:
+            reasons.append(f'מרחק סטופ {stop_pct:.2f}% מחוץ לטווח 0.25%-1.5%')
+        elif direction is not None:
+            reasons.append('התנאים מתקיימים בנר הנבדק (לא אות כניסה בזמן אמת)')
+        timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+        telegram('📊 SOLUSDT — אבחון שעתי\n'
+                 f'זמן: {timestamp}\n'
+                 f'מחיר נר סגור: ${entry:.3f}\n'
+                 f'גיל הנר: {age_min:.1f} דקות\n'
+                 f'EMA20/50 (4h): {trend20:.3f}/{trend50:.3f}\n'
+                 f'נפח ביחס לממוצע: פי {volume_ratio:.2f}\n'
+                 + 'סיבות/מצב: ' + ('; '.join(reasons) if reasons else 'לא זוהתה סיבה') +
+                 '\nℹ️ צילום מצב נוכחי בלבד, לא סיכום כל הסריקות ולא איתות מסחר.')
+        print('Diagnostic sent: ' + '; '.join(reasons))
+        return
     if not 0.25 <= stop_pct <= 1.5:
         print(f'Stop distance {stop_pct:.2f}% outside filter')
         return
