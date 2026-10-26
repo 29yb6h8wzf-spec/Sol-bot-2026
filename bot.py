@@ -100,8 +100,8 @@ def evaluate_signals():
             if outcome:
                 github_api('PATCH', f"/issues/{issue['number']}",
                            {'state': 'closed', 'state_reason': 'completed',
-                            'body': issue.get('body', '') + '\\n\\nPaper outcome: ' + outcome +
-                            '\\nConservative stop-first if both touched within one candle. No fees or slippage included.'})
+                            'body': issue.get('body', '') + '\n\nPaper outcome: ' + outcome +
+                            '\nConservative stop-first if both touched within one candle. No fees or slippage included.'})
                 print(f"Paper result {SYMBOL}: {outcome}")
         except (ValueError, KeyError, TypeError) as exc:
             print('Could not evaluate issue:', exc)
@@ -126,6 +126,51 @@ def main():
                  '✅ Binance נגיש והבוט מצליח לשלוח לטלגרם.\n'
                  'ℹ️ זו בדיקת תקינות נקודתית, לא אישור שכל הסריקות במהלך היום הצליחו. אין כאן איתות מסחר.')
         print('Daily status message sent')
+        return
+    if '--multi' in sys.argv:
+        from strategies import candidates
+        four = fetch('4h', 100)
+        five = fetch('5m', 120)
+        last = five[-1]
+        age = (datetime.now(timezone.utc).timestamp() * 1000 - last['time']) / 60000
+        if not 5 <= age <= 12:
+            print(f'Skipping stale 5m candle: age {age:.1f}')
+            return
+        setups, metrics = candidates(five, four)
+        candle_time = datetime.fromtimestamp(last['time']/1000, tz=timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+        print(f'{SYMBOL}: {len(setups)} candidates; ADX={metrics["adx"]:.1f}, RSI={metrics["rsi"]:.1f}')
+        for s in setups[:2]:
+            entry = last['close']
+            distance = 1.5 * s['atr']
+            stop = entry - distance if s['direction'] == 'LONG' else entry + distance
+            stop_pct = 100 * distance / entry
+            if not 0.25 <= stop_pct <= 1.5:
+                print(f'Skipped {s["strategy"]}: stop {stop_pct:.2f}% outside risk filter')
+                continue
+            target = entry + 2*distance if s['direction'] == 'LONG' else entry - 2*distance
+            unique_title = f'[SIGNAL] {SYMBOL} {s["direction"]} {candle_time} {s["strategy"]}'
+            try:
+                existing = github_api('GET', '/issues?state=all&per_page=100') or []
+                if any(i.get('title') == unique_title for i in existing):
+                    print('Duplicate signal skipped:', unique_title)
+                    continue
+                github_api('POST', '/issues', {'title':unique_title,
+                    'body':json.dumps({'symbol':SYMBOL,'direction':s['direction'],'entry':entry,
+                        'stop':stop,'target':target,'score':s['score'],'strategy':s['strategy'],
+                        'candle_time':candle_time})})
+            except Exception as exc:
+                print('Could not persist signal; skipping to avoid duplicates:', exc)
+                continue
+            notional = min(80, 1/(stop_pct/100))
+            telegram(f'🔔 {SYMBOL} {s["direction"]} | {s["strategy"]}\n'
+                     f'דירוג תנאים: {s["score"]}/100 (לא הסתברות הצלחה)\n'
+                     f'נר: {candle_time}\n'
+                     f'כניסה תיאורטית: ${entry:.5f}\n'
+                     f'סטופ ATR: ${stop:.5f} ({stop_pct:.2f}%)\n'
+                     f'יעד 2R: ${target:.5f}\n'
+                     f'חשיפה לדוגמה: ${notional:.2f}, סיכון לפני עמלות עד $1\n'
+                     f'{s["reason"]}\n'
+                     '⚠️ איתות מחקר בלבד; אין ביצוע אוטומטי או הבטחת רווח.')
         return
     if '--diagnostic' in sys.argv:
         try:
