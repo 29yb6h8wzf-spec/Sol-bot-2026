@@ -133,7 +133,23 @@ let checks=[],found=setups(five,four,checks);console.log(JSON.stringify({event:'
 let risk=Math.abs(s.entry-s.stop),target=s.entry+(s.direction==='LONG'?2:-2)*risk;
 const research=evaluateSetup({direction:s.direction,entry:s.entry,stop:s.stop,target,riskBudget:1.5,minProfit:5,leverage:3,feeRate:0.0005,slippageRate:0.0005});
 console.log(JSON.stringify({event:'signal_risk_assessment',symbol,strategy:s.strategy,eligible:research.eligible,reason:research.reason,estimatedProfit:research.expectedProfit,estimatedLoss:research.expectedLoss,margin:research.margin}));
-let msg='🔔 '+symbol+' '+s.direction+' | '+s.strategy+'\nדירוג תנאים: '+s.score+'/100 (לא הסתברות הצלחה)\nנר: '+new Date(s.candle).toISOString()+'\nכניסה תיאורטית: $'+s.entry.toFixed(5)+'\nסטופ: $'+s.stop.toFixed(5)+' ('+s.stopPct.toFixed(2)+'%)\nיעד 2R: $'+target.toFixed(5)+'\n'+s.reason+'\n\n💵 תקציב סיכון משוער: $1.50 כולל עלויות משוערות'+'\nשווי פוזיציה תיאורטי: 
+let msg=[
+'🔔 '+symbol+' '+s.direction+' | '+s.strategy,
+'דירוג תנאים: '+s.score+'/100 (לא הסתברות הצלחה)',
+'נר: '+new Date(s.candle).toISOString(),
+'כניסה תיאורטית: $'+s.entry.toFixed(5),
+'סטופ: $'+s.stop.toFixed(5)+' ('+s.stopPct.toFixed(2)+'%)',
+'יעד 2R: $'+target.toFixed(5),
+s.reason,
+'',
+'💵 תקציב סיכון משוער: $1.50 כולל עלויות משוערות',
+'שווי פוזיציה תיאורטי: $'+research.notional.toFixed(2),
+'בטוחה משוערת ב־3x: $'+research.margin.toFixed(2),
+'רווח נטו משוער ביעד: $'+research.expectedProfit.toFixed(2),
+'יחס סיכוי/סיכון לאחר עלויות: '+research.rewardRisk.toFixed(2)+'R',
+'עומד ביעד $5: '+(research.eligible?'כן':'לא'),
+'⚠️ הערכות בלבד; עמלות, החלקה, מימון ותנאי ביצוע בפועל עלולים להגדיל הפסד. אין ביצוע מסחר אוטומטי.'
+].join('\n');
 await send(env,msg+'\nמקור נתונים: Kraken Spot (USDT)\n\n'+formatNewsContext(news,symbol,2));await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});console.log('Alert sent',key);}
 const statusKey='status:'+symbol+':'+last.time;
 let statusDelivery='already_sent';
