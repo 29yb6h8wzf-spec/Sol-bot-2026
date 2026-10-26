@@ -137,3 +137,6 @@ async function main(){
 try{await main();}catch(error){report('FAILED: '+error.message);process.exitCode=1;}finally{
  if(process.env.GITHUB_STEP_SUMMARY)await fs.appendFile(process.env.GITHUB_STEP_SUMMARY,'## Cloudflare scanner deployment\n\n'+summary.map(x=>'- '+x).join('\n')+'\n');
 }
+// The built-in WebSocket can retain a closing handle after the tail was deleted.
+// All deployment, verification, cleanup and summary writes have been awaited above.
+process.exit(process.exitCode || 0);
