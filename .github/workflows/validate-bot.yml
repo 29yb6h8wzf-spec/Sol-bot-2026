@@ -1,0 +1,34 @@
+name: Validate Crypto Bot
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'bot.py'
+      - 'strategies.py'
+      - 'news.py'
+      - '.github/workflows/validate-bot.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Python syntax check
+        run: python -m py_compile bot.py strategies.py news.py
+      - name: Indicator smoke test without live data
+        run: |
+          python - <<'PY'
+          from strategies import candidates
+          bars = [{'time':i*300000,'high':100+i*.02+1,'low':100+i*.02-1,
+                   'close':100+i*.02,'volume':1000} for i in range(120)]
+          four = [{'time':i*14400000,'high':100+i*.03+2,'low':100+i*.03-2,
+                   'close':100+i*.03,'volume':1000} for i in range(100)]
+          signals, stats = candidates(bars,four)
+          assert isinstance(signals,list)
+          assert stats['atr'] > 0
+          print('Indicators OK',stats)
+          PY
