@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 BASE = 'https://data-api.binance.vision/api/v3/klines'
 SYMBOL = os.environ.get('SYMBOL', 'SOLUSDT')
-if SYMBOL not in ('SOLUSDT', 'BTCUSDT', 'ETHUSDT'):
+if SYMBOL not in ('SOLUSDT', 'BTCUSDT', 'ETHUSDT', 'XRPUSDT'):
     raise ValueError('Unsupported trading pair')
 
 def fetch(interval, limit):
