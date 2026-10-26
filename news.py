@@ -1,6 +1,7 @@
 """Daily crypto news digest. Keyword tone is not a trading signal."""
 import json
 import os
+import re
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -11,6 +12,17 @@ QUERIES = {
  'SOLUSDT': '"solana" sourcelang:english',
  'XRPUSDT': '"ripple" sourcelang:english'
 }
+RELEVANCE = {
+ 'BTCUSDT': (r'\\bbitcoin\\b', r'\\bbtc\\b'),
+ 'ETHUSDT': (r'\\bethereum\\b', r'\\beth\\b', r'\\bether\\b'),
+ 'SOLUSDT': (r'\\bsolana\\b', r'\\bsol\\b'),
+ 'XRPUSDT': (r'\\bxrp\\b', r'\\bripple\\b', r'\\brlUSD\\b')
+}
+
+def relevant(symbol, article):
+    title = article.get('title', '')
+    return any(re.search(pattern, title, flags=re.IGNORECASE) for pattern in RELEVANCE[symbol])
+
 POS = ('approval','approved','adoption','inflow','partnership','upgrade','growth','rally','record','launch')
 NEG = ('hack','exploit','lawsuit','ban','outflow','fraud','breach','liquidation','crash','attack')
 
@@ -40,7 +52,7 @@ def articles(symbol):
             print('CryptoPanic optional source unavailable:',exc)
     unique, seen = [], set()
     for x in items:
-        if not x['title'] or not x['url'] or x['url'] in seen:
+        if not x['title'] or not x['url'] or x['url'] in seen or not relevant(symbol, x):
             continue
         seen.add(x['url'])
         unique.append(x)
