@@ -34,6 +34,21 @@ def main():
         telegram('✅ SOL Alert Bot מחובר! הודעת בדיקה בלבד. אין כאן איתות מסחר.')
         print('Test message sent')
         return
+    if '--status' in sys.argv:
+        candles = fetch('5m', 3)
+        last = candles[-1]
+        age_min = (datetime.now(timezone.utc).timestamp() * 1000 - (last['time'] + 300000)) / 60000
+        if age_min > 30 or age_min < -1:
+            raise RuntimeError(f'Binance candle data is stale or inconsistent: {age_min:.1f} minutes')
+        timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+        telegram(f'🟢 SOL Alert Bot — בדיקת תקינות יומית\\n'
+                 f'זמן בדיקה: {timestamp}\\n'
+                 f'SOLUSDT (נר סגור אחרון): ${last["close"]:.3f}\\n'
+                 f'גיל הנתונים: {max(age_min, 0):.1f} דקות\\n'
+                 '✅ Binance נגיש והבוט מצליח לשלוח לטלגרם.\\n'
+                 'ℹ️ זו בדיקת תקינות נקודתית, לא אישור שכל הסריקות במהלך היום הצליחו. אין כאן איתות מסחר.')
+        print('Daily status message sent')
+        return
     four = fetch('4h', 100)
     five = fetch('5m', 50)
     trend20 = ema([x['close'] for x in four], 20)
