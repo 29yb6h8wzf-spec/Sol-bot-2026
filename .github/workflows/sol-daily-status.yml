@@ -11,6 +11,10 @@ permissions:
 jobs:
   daily-status:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        symbol: [SOLUSDT, BTCUSDT, ETHUSDT]
     timeout-minutes: 3
     steps:
       - name: Checkout
@@ -22,5 +26,6 @@ jobs:
       - name: Check Binance and send Telegram status
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          SYMBOL: ${{ matrix.symbol }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python bot.py --status
