@@ -2,7 +2,7 @@
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
 
-const WORKER='sol-bot-2026', RELEASE='kraken-ohlc-v1', CRON='*/5 * * * *';
+const WORKER='sol-bot-2026', RELEASE='kraken-verbose-v2', CRON='*/5 * * * *';
 const SYMBOLS=['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'];
 let account=(process.env.CLOUDFLARE_ACCOUNT_ID||'').trim();
 // Account confirmed by the owner via the production dashboard URL; this is not a credential.
@@ -115,10 +115,10 @@ async function main(){
       let row;try{row=typeof item==='string'?JSON.parse(item):item;}catch{continue;}
       if(row?.event!=='scan_complete'||row.release!==RELEASE)continue;
       const seen=new Set((row.results||[]).map(r=>r.symbol));
-      const valid=trace.outcome==='ok'&&!(trace.exceptions||[]).length&&row.ok===true&&row.source==='kraken'&&row.cron===CRON&&SYMBOLS.every(s=>seen.has(s))&&seen.size===4&&row.results.every(r=>Number.isFinite(r.closedAgeMinutes)&&r.closedAgeMinutes>=0&&r.closedAgeMinutes<=7);
+      const valid=trace.outcome==='ok'&&!(trace.exceptions||[]).length&&row.ok===true&&row.source==='kraken'&&row.cron===CRON&&SYMBOLS.every(s=>seen.has(s))&&seen.size===4&&row.results.every(r=>Number.isFinite(r.closedAgeMinutes)&&r.closedAgeMinutes>=0&&r.closedAgeMinutes<=7&&r.statusDelivery==='sent');
       const time=Number(row.scheduledTime);
       if(!Number.isFinite(time)||time<deadline-16*60*1000-60000)continue;
-      report('Scheduled '+new Date(time).toISOString()+': '+(valid?'PASS (SOL, BTC, ETH, XRP; fresh Kraken candles)':'FAIL (scan errors or incomplete markets)'));
+      report('Scheduled '+new Date(time).toISOString()+': '+(valid?'PASS (SOL, BTC, ETH, XRP; fresh Kraken candles; four status messages accepted by Telegram)':'FAIL (scan errors, incomplete markets or unconfirmed Telegram status delivery)'));
       if(!valid){verified.clear();continue;}
       const prior=verified.get(time-300000);
       verified.set(time,row);
