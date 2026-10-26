@@ -116,7 +116,7 @@ export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
   const matched=found.filter(s=>s.strategy===key);
   return (matched.length?'✅ ':'▫️ ')+label+': '+(matched.length?'עבר ('+matched.map(s=>s.direction==='LONG'?'לונג':'שורט').join(', ')+')':'לא עבר');
  });
- return ['📊 '+symbol+' | נמצאו איתותים,
+ return ['📊 '+symbol+' | נמצאו איתותים',
   '🕒 '+time(now)+' | נר '+time(last.time)+'–'+time(last.time+PERIOD)+' (ישראל)',
   '',
   'מחיר סגירה: $'+last.close.toFixed(5),
