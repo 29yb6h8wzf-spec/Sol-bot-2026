@@ -47,6 +47,32 @@ add('RSI_BOLL','SHORT',strength<25&&cl.at(-2)>bands(cl.slice(0,-1))[1]&&last.clo
 add('MACD_VOLUME','LONG',macd.at(-2)<=sig.at(-2)&&macd.at(-1)>sig.at(-1)&&vr>=1.2&&momentum>50,65+Math.min(20,vr*10),'MACD bullish crossover; volume x'+vr.toFixed(2));
 add('MACD_VOLUME','SHORT',macd.at(-2)>=sig.at(-2)&&macd.at(-1)<sig.at(-1)&&vr>=1.2&&momentum<50,65+Math.min(20,vr*10),'MACD bearish crossover; volume x'+vr.toFixed(2));
 return out.slice(0,3).filter(s=>{let pct=100*Math.abs(last.close-s.stop)/last.close,ok=pct>=0.25&&pct<=1.5;if(!ok)checks.push(s.strategy+' '+s.direction+': נפסל — מרחק סטופ '+pct.toFixed(2)+'% מחוץ לטווח 0.25%–1.50%');return ok;}).map(s=>({...s,entry:last.close,stopPct:100*Math.abs(last.close-s.stop)/last.close,candle:last.time}));}
+export function formatScanStatus(symbol,five,four,found,now=Date.now()){
+ const last=five.at(-1), previous=five.slice(-13,-1), volume=last.volume/avg(previous.map(b=>b.volume));
+ const closes=four.map(b=>b.close), fast=ema(closes,20), slow=ema(closes,50);
+ const trend=fast>slow?'עולה 📈':fast<slow?'יורדת 📉':'ללא כיוון';
+ const clock=new Intl.DateTimeFormat('he-IL',{timeZone:'Asia/Jerusalem',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+ const time=value=>clock.format(new Date(value));
+ const strategies=[['BREAKOUT','פריצת מחיר'],['EMA_ADX','EMA + ADX'],['RSI_BOLL','RSI + רצועות'],['MACD_VOLUME','MACD + נפח']];
+ const lines=strategies.map(([key,label])=>{
+  const matched=found.filter(s=>s.strategy===key);
+  return (matched.length?'✅ ':'▫️ ')+label+': '+(matched.length?'עבר ('+matched.map(s=>s.direction==='LONG'?'לונג':'שורט').join(', ')+')':'לא עבר');
+ });
+ return ['📊 '+symbol+' | '+(found.length?'נמצאו איתותים':'⏸ אין איתות'),
+  '🕒 '+time(now)+' | נר '+time(last.time)+'–'+time(last.time+PERIOD)+' (ישראל)',
+  '',
+  'מחיר סגירה: $'+last.close.toFixed(5),
+  'מגמת 4 שעות: '+trend,
+  'נפח: '+(Number.isFinite(volume)?Math.round(volume*100)+'% מהממוצע':'לא זמין'),
+  'RSI: '+rsi(five.map(b=>b.close)).toFixed(1)+' | ADX: '+adx(four).toFixed(1),
+  '',
+  'בדיקות כניסה — כולל סינון סטופ:',
+  ...lines,
+  '',
+  found.length?'🔔 איתותים חדשים נשלחים בהודעה נפרדת.':'אין כניסה שעברה את תנאי הסורק.',
+  'ℹ️ דוח תנאים בלבד | Kraken Spot (USDT)'
+ ].join('\n');
+}
 async function send(env,msg){let r=await fetch('https://api.telegram.org/bot'+env.TELEGRAM_BOT_TOKEN+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:env.TELEGRAM_CHAT_ID,text:msg}),signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('Telegram HTTP '+r.status);let j=await r.json();if(!j.ok)throw Error('Telegram API rejected message');}
 async function scan(symbol,env){let [five,four]=await Promise.all([candles(symbol,'5m',120),candles(symbol,'4h',100)]),last=five.at(-1),age=(Date.now()-(last.time+PERIOD))/60000;console.log(JSON.stringify({event:'scan',symbol,candle:new Date(last.time).toISOString(),closedAgeMinutes:+age.toFixed(2)}));if(age<0||age>7){console.warn('Skipping stale candle',symbol,age);return;}
 let checks=[],found=setups(five,four,checks);console.log(JSON.stringify({event:'candidates',symbol,count:found.length,strategies:found.map(s=>s.strategy)}));for(let s of found){let key='signal:'+symbol+':'+s.candle+':'+s.strategy+':'+s.direction;if(await env.SIGNAL_STATE.get(key)){console.log('Duplicate skipped',key);continue;}
@@ -56,8 +82,7 @@ await send(env,msg+'\nמקור נתונים: Kraken Spot (USDT)');await env.SIGN
 const statusKey='status:'+symbol+':'+last.time;
 let statusDelivery='already_sent';
 if(!await env.SIGNAL_STATE.get(statusKey)){
- const stamp=new Intl.DateTimeFormat('he-IL',{timeZone:'Asia/Jerusalem',dateStyle:'short',timeStyle:'medium'}).format(new Date());
- const status='📊 '+symbol+' — דוח סריקה כל 5 דקות\n'+(found.length?'נמצאו '+found.length+' מועמדים; איתותים חדשים נשלחים בנפרד.':'⏸ אין איתות שעבר את כל תנאי הסורק.')+'\nזמן: '+stamp+' (ישראל)\nנר סגור: '+new Date(last.time).toISOString()+'\nמחיר סגירה: $'+last.close.toFixed(5)+'\n\n'+checks.join('\n')+'\n\nℹ️ דוח תנאים בלבד, לא הוראת כניסה ולא תוצאה של עסקה.\nמקור: Kraken Spot (USDT)';
+ const status=formatScanStatus(symbol,five,four,found);
  await send(env,status);
  await env.SIGNAL_STATE.put(statusKey,'sent',{expirationTtl:86400});
  statusDelivery='sent';
