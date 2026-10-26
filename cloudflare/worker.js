@@ -99,6 +99,7 @@ add('RSI_BOLL','SHORT',strength<25&&cl.at(-2)>bands(cl.slice(0,-1))[1]&&last.clo
 add('MACD_VOLUME','LONG',macd.at(-2)<=sig.at(-2)&&macd.at(-1)>sig.at(-1)&&vr>=1.2&&momentum>50,65+Math.min(20,vr*10),'MACD bullish crossover; volume x'+vr.toFixed(2));
 add('MACD_VOLUME','SHORT',macd.at(-2)>=sig.at(-2)&&macd.at(-1)<sig.at(-1)&&vr>=1.2&&momentum<50,65+Math.min(20,vr*10),'MACD bearish crossover; volume x'+vr.toFixed(2));
 return out.slice(0,3).filter(s=>{let pct=100*Math.abs(last.close-s.stop)/last.close,ok=pct>=0.25&&pct<=1.5;if(!ok)checks.push(s.strategy+' '+s.direction+': נפסל — מרחק סטופ '+pct.toFixed(2)+'% מחוץ לטווח 0.25%–1.50%');return ok;}).map(s=>({...s,entry:last.close,stopPct:100*Math.abs(last.close-s.stop)/last.close,candle:last.time}));}
+export function shouldSendScanStatus(found){return Array.isArray(found)&&found.length>0;}
 export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
  const last=five.at(-1), previous=five.slice(-13,-1), volume=last.volume/avg(previous.map(b=>b.volume));
  const closes=four.map(b=>b.close), fast=ema(closes,20), slow=ema(closes,50);
@@ -115,7 +116,7 @@ export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
   const matched=found.filter(s=>s.strategy===key);
   return (matched.length?'✅ ':'▫️ ')+label+': '+(matched.length?'עבר ('+matched.map(s=>s.direction==='LONG'?'לונג':'שורט').join(', ')+')':'לא עבר');
  });
- return ['📊 '+symbol+' | '+(found.length?'נמצאו איתותים':'⏸ אין איתות'),
+ return ['📊 '+symbol+' | נמצאו איתותים,
   '🕒 '+time(now)+' | נר '+time(last.time)+'–'+time(last.time+PERIOD)+' (ישראל)',
   '',
   'מחיר סגירה: $'+last.close.toFixed(5),
@@ -139,8 +140,8 @@ let risk=Math.abs(s.entry-s.stop),target=s.entry+(s.direction==='LONG'?2:-2)*ris
 let msg='🔔 '+symbol+' '+s.direction+' | '+s.strategy+'\nדירוג תנאים: '+s.score+'/100 (לא הסתברות הצלחה)\nנר: '+new Date(s.candle).toISOString()+'\nכניסה תיאורטית: $'+s.entry.toFixed(5)+'\nסטופ: $'+s.stop.toFixed(5)+' ('+s.stopPct.toFixed(2)+'%)\nיעד 2R: $'+target.toFixed(5)+'\n'+s.reason+'\n⚠️ מחקר בלבד. אין ביצוע מסחר אוטומטי.';
 await send(env,msg+'\nמקור נתונים: Kraken Spot (USDT)\n\n'+formatNewsContext(news,symbol,2));await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});console.log('Alert sent',key);}
 const statusKey='status:'+symbol+':'+last.time;
-let statusDelivery='already_sent';
-if(!await env.SIGNAL_STATE.get(statusKey)){
+let statusDelivery=shouldSendScanStatus(found)?'already_sent':'suppressed_no_signal';
+if(shouldSendScanStatus(found)&&!await env.SIGNAL_STATE.get(statusKey)){
  const status=formatScanStatus(symbol,five,four,found,Date.now(),news);
  await send(env,status);
  await env.SIGNAL_STATE.put(statusKey,'sent',{expirationTtl:86400});
