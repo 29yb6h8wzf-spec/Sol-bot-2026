@@ -105,6 +105,9 @@ def dispatch(command):
         send('לא זיהיתי את הפעולה. שלח /menu',True)
 
 def main():
+    if os.environ.get('SEND_MENU') == '1':
+        dispatch('menu')
+        print('Menu delivered by manual workflow run')
     number,stored=state()
     offset=int(stored.get('offset',0))
     updates=tg('getUpdates',{'offset':offset,'timeout':0,'limit':30,'allowed_updates':['message','callback_query']})
