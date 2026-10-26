@@ -13,10 +13,10 @@ QUERIES = {
  'XRPUSDT': '"ripple" sourcelang:english'
 }
 RELEVANCE = {
- 'BTCUSDT': (r'\\bbitcoin\\b', r'\\bbtc\\b'),
- 'ETHUSDT': (r'\\bethereum\\b', r'\\beth\\b', r'\\bether\\b'),
- 'SOLUSDT': (r'\\bsolana\\b', r'\\bsol\\b'),
- 'XRPUSDT': (r'\\bxrp\\b', r'\\bripple\\b', r'\\brlUSD\\b')
+ 'BTCUSDT': (r'\bbitcoin\b', r'\bbtc\b'),
+ 'ETHUSDT': (r'\bethereum\b', r'\beth\b', r'\bether\b'),
+ 'SOLUSDT': (r'\bsolana\b', r'\bsol\b'),
+ 'XRPUSDT': (r'\bxrp\b', r'\bripple\b', r'\brlUSD\b')
 }
 
 def relevant(symbol, article):
@@ -96,3 +96,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

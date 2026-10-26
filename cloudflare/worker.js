@@ -3,7 +3,59 @@
 const SYMBOLS = ['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'];
 const API = 'https://api.kraken.com/0/public/OHLC';
 const PAIRS = {SOLUSDT:'SOLUSDT',BTCUSDT:'XBTUSDT',ETHUSDT:'ETHUSDT',XRPUSDT:'XRPUSDT'};
-const RELEASE = 'kraken-verbose-v2';
+const RELEASE = 'kraken-news-v3';
+const NEWS_FEEDS=[{name:'CoinDesk',url:'https://www.coindesk.com/arc/outboundfeeds/rss/',host:'coindesk.com'},{name:'Cointelegraph',url:'https://cointelegraph.com/rss',host:'cointelegraph.com'}];
+const NEWS_TERMS={SOLUSDT:/\b(solana|sol)\b/i,BTCUSDT:/\b(bitcoin|btc)\b/i,ETHUSDT:/\b(ethereum|ether|eth)\b/i,XRPUSDT:/\b(xrp|ripple|rlusd)\b/i};
+function xmlText(value){return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/<[^>]*>/g,'').replace(/&#(x[0-9a-f]+|\d+);/gi,(_,n)=>{const c=n[0].toLowerCase()==='x'?parseInt(n.slice(1),16):Number(n);return c>0&&c<=0x10ffff?String.fromCodePoint(c):'';}).replace(/&(amp|quot|apos|lt|gt);/g,(_,n)=>({amp:'&',quot:'"',apos:"'",lt:'<',gt:'>'}[n])).replace(/[\r\n\t]+/g,' ').trim();}
+export function parseNewsFeed(xml,feed,now=Date.now()){
+ if(!/<rss\b/i.test(xml)||xml.length>1000000)throw Error('Invalid news RSS');
+ const field=(item,tag)=>xmlText(item.match(new RegExp('<'+tag+'(?:\\s[^>]*)?>([\\s\\S]*?)<\\/'+tag+'>','i'))?.[1]||'');
+ const out=[];
+ for(const match of xml.matchAll(/<item(?:\s[^>]*)?>([\s\S]*?)<\/item>/gi)){
+  const item=match[1],title=field(item,'title').slice(0,220),url=field(item,'link'),publishedAt=Date.parse(field(item,'pubDate'));
+  let link;try{link=new URL(url);}catch{continue;}
+  if(link.protocol!=='https:'||!(link.hostname===feed.host||link.hostname.endsWith('.'+feed.host))||link.username||link.password||!title||!Number.isFinite(publishedAt)||publishedAt>now+60000||now-publishedAt>86400000)continue;
+  link.hash='';out.push({title,url:link.href,publishedAt,source:feed.name});
+ }
+ return out;
+}
+export async function loadNews(env,now=Date.now()){
+ let cached;try{const value=await env.SIGNAL_STATE.get('news:cache:v1');cached=typeof value==='string'?JSON.parse(value):value;}catch{}
+ if(cached?.fetchedAt<=now&&now-cached.fetchedAt<240000&&cached.status!=='unavailable')return cached;
+ const results=await Promise.allSettled(NEWS_FEEDS.map(async feed=>{const r=await fetch(feed.url,{signal:AbortSignal.timeout(8000)});if(!r.ok)throw Error('News source HTTP '+r.status);return {source:feed.name,items:parseNewsFeed(await r.text(),feed,now)};}));
+ const good=results.filter(r=>r.status==='fulfilled').map(r=>r.value),seen=new Set();
+ const items=good.flatMap(r=>r.items).sort((a,b)=>b.publishedAt-a.publishedAt).filter(x=>{const k=x.title.toLowerCase().replace(/[^a-z0-9]+/g,'');if(seen.has(x.url)||seen.has(k))return false;seen.add(x.url);seen.add(k);return true;});
+ const snapshot={status:good.length===NEWS_FEEDS.length?'ready':good.length?'partial':'unavailable',fetchedAt:now,sources:good.map(r=>r.source),items};
+ if(!good.length&&cached?.items&&now-cached.fetchedAt<=1800000)return {...cached,status:'stale'};
+ try{await env.SIGNAL_STATE.put('news:cache:v1',JSON.stringify(snapshot),{expirationTtl:1800});}catch{console.warn('News cache write failed');}
+ console.log(JSON.stringify({event:'news_checked',release:RELEASE,status:snapshot.status,sources:snapshot.sources,count:items.length}));
+ return snapshot;
+}
+export function newsForSymbol(news,symbol,now=Date.now()){
+ return (news?.items||[]).filter(x=>NEWS_TERMS[symbol]?.test(x.title)&&x.publishedAt<=now&&now-x.publishedAt<=86400000);
+}
+function israelTime(value){return new Intl.DateTimeFormat('he-IL',{timeZone:'Asia/Jerusalem',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(value));}
+export function formatNewsContext(news,symbol,limit=1){
+ if(!news||news.status==='unavailable')return '📰 חדשות: ⚠️ המקורות לא זמינים; לא נבדק סיכון חדשותי.';
+ const warning=news.status==='stale'?'⚠️ מידע שמור ולא עדכני':news.status==='partial'?'מקור חלקי':'מקורות נבדקו';
+ const items=newsForSymbol(news,symbol).slice(0,limit);
+ const lines=['📰 חדשות | '+warning+' | בדיקה '+israelTime(news.fetchedAt)];
+ if(!items.length)lines.push('לא נמצאו כותרות למטבע ב־24 השעות האחרונות בפידים שנבדקו.');
+ for(const x of items)lines.push('• '+x.title.slice(0,150)+'\n'+x.source+' | פורסם '+new Intl.DateTimeFormat('he-IL',{timeZone:'Asia/Jerusalem',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(x.publishedAt))+'\n'+x.url);
+ lines.push('כותרות מקור, ללא קביעת כיוון מסחר.');
+ return lines.join('\n');
+}
+async function notifyFreshNews(symbol,env,news){
+ if(!['ready','partial'].includes(news?.status))return;
+ const latest=newsForSymbol(news,symbol).filter(x=>Date.now()-x.publishedAt<=3600000).slice(0,1);
+ for(const article of latest){
+  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(article.url)))).map(x=>x.toString(16).padStart(2,'0')).join('');
+  const key='news:sent:'+symbol+':'+hash;if(await env.SIGNAL_STATE.get(key))continue;
+  await send(env,'📰 '+symbol+' | כותרת חדשה מהשעה האחרונה\n\n'+article.title+'\n\nמקור: '+article.source+' | '+israelTime(article.publishedAt)+' (ישראל)\n'+article.url+'\n\nℹ️ חדשות בלבד. הכותרת אינה איתות קנייה או מכירה.');
+  await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:172800});
+  console.log(JSON.stringify({event:'news_sent',symbol,source:article.source,publishedAt:article.publishedAt}));
+ }
+}
 const PERIOD = 300000;
 const avg = a => a.reduce((x,y)=>x+y,0)/a.length;
 function ema(v,n) {let x=v[0], a=2/(n+1);for(const y of v.slice(1))x=a*y+(1-a)*x;return x;}
@@ -47,7 +99,7 @@ add('RSI_BOLL','SHORT',strength<25&&cl.at(-2)>bands(cl.slice(0,-1))[1]&&last.clo
 add('MACD_VOLUME','LONG',macd.at(-2)<=sig.at(-2)&&macd.at(-1)>sig.at(-1)&&vr>=1.2&&momentum>50,65+Math.min(20,vr*10),'MACD bullish crossover; volume x'+vr.toFixed(2));
 add('MACD_VOLUME','SHORT',macd.at(-2)>=sig.at(-2)&&macd.at(-1)<sig.at(-1)&&vr>=1.2&&momentum<50,65+Math.min(20,vr*10),'MACD bearish crossover; volume x'+vr.toFixed(2));
 return out.slice(0,3).filter(s=>{let pct=100*Math.abs(last.close-s.stop)/last.close,ok=pct>=0.25&&pct<=1.5;if(!ok)checks.push(s.strategy+' '+s.direction+': נפסל — מרחק סטופ '+pct.toFixed(2)+'% מחוץ לטווח 0.25%–1.50%');return ok;}).map(s=>({...s,entry:last.close,stopPct:100*Math.abs(last.close-s.stop)/last.close,candle:last.time}));}
-export function formatScanStatus(symbol,five,four,found,now=Date.now()){
+export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
  const last=five.at(-1), previous=five.slice(-13,-1), volume=last.volume/avg(previous.map(b=>b.volume));
  const closes=four.map(b=>b.close), fast=ema(closes,20), slow=ema(closes,50);
  const trend=fast>slow?'עולה 📈':fast<slow?'יורדת 📉':'ללא כיוון';
@@ -70,26 +122,28 @@ export function formatScanStatus(symbol,five,four,found,now=Date.now()){
   ...lines,
   '',
   found.length?'🔔 איתותים חדשים נשלחים בהודעה נפרדת.':'אין כניסה שעברה את תנאי הסורק.',
-  'ℹ️ דוח תנאים בלבד | Kraken Spot (USDT)'
+  'ℹ️ דוח תנאים בלבד | Kraken Spot (USDT)',
+  '',formatNewsContext(news,symbol)
  ].join('\n');
 }
-async function send(env,msg){let r=await fetch('https://api.telegram.org/bot'+env.TELEGRAM_BOT_TOKEN+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:env.TELEGRAM_CHAT_ID,text:msg}),signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('Telegram HTTP '+r.status);let j=await r.json();if(!j.ok)throw Error('Telegram API rejected message');}
-async function scan(symbol,env){let [five,four]=await Promise.all([candles(symbol,'5m',120),candles(symbol,'4h',100)]),last=five.at(-1),age=(Date.now()-(last.time+PERIOD))/60000;console.log(JSON.stringify({event:'scan',symbol,candle:new Date(last.time).toISOString(),closedAgeMinutes:+age.toFixed(2)}));if(age<0||age>7){console.warn('Skipping stale candle',symbol,age);return;}
+async function send(env,msg){let r=await fetch('https://api.telegram.org/bot'+env.TELEGRAM_BOT_TOKEN+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:env.TELEGRAM_CHAT_ID,text:msg,disable_web_page_preview:true}),signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('Telegram HTTP '+r.status);let j=await r.json();if(!j.ok)throw Error('Telegram API rejected message');}
+async function scan(symbol,env,news){let [five,four]=await Promise.all([candles(symbol,'5m',120),candles(symbol,'4h',100)]),last=five.at(-1),age=(Date.now()-(last.time+PERIOD))/60000;console.log(JSON.stringify({event:'scan',symbol,candle:new Date(last.time).toISOString(),closedAgeMinutes:+age.toFixed(2)}));if(age<0||age>7){console.warn('Skipping stale candle',symbol,age);return;}
 let checks=[],found=setups(five,four,checks);console.log(JSON.stringify({event:'candidates',symbol,count:found.length,strategies:found.map(s=>s.strategy)}));for(let s of found){let key='signal:'+symbol+':'+s.candle+':'+s.strategy+':'+s.direction;if(await env.SIGNAL_STATE.get(key)){console.log('Duplicate skipped',key);continue;}
 let risk=Math.abs(s.entry-s.stop),target=s.entry+(s.direction==='LONG'?2:-2)*risk;
 let msg='🔔 '+symbol+' '+s.direction+' | '+s.strategy+'\nדירוג תנאים: '+s.score+'/100 (לא הסתברות הצלחה)\nנר: '+new Date(s.candle).toISOString()+'\nכניסה תיאורטית: $'+s.entry.toFixed(5)+'\nסטופ: $'+s.stop.toFixed(5)+' ('+s.stopPct.toFixed(2)+'%)\nיעד 2R: $'+target.toFixed(5)+'\n'+s.reason+'\n⚠️ מחקר בלבד. אין ביצוע מסחר אוטומטי.';
-await send(env,msg+'\nמקור נתונים: Kraken Spot (USDT)');await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});console.log('Alert sent',key);}
+await send(env,msg+'\nמקור נתונים: Kraken Spot (USDT)\n\n'+formatNewsContext(news,symbol,2));await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});console.log('Alert sent',key);}
 const statusKey='status:'+symbol+':'+last.time;
 let statusDelivery='already_sent';
 if(!await env.SIGNAL_STATE.get(statusKey)){
- const status=formatScanStatus(symbol,five,four,found);
+ const status=formatScanStatus(symbol,five,four,found,Date.now(),news);
  await send(env,status);
  await env.SIGNAL_STATE.put(statusKey,'sent',{expirationTtl:86400});
  statusDelivery='sent';
  console.log(JSON.stringify({event:'status_sent',symbol,candle:new Date(last.time).toISOString(),release:RELEASE}));
 }
-return {symbol,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery};}
+await notifyFreshNews(symbol,env,news);
+return {symbol,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length};}
 export default {
- async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}ctx.waitUntil((async()=>{const results=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message:error instanceof Error?error.message:'Scan failed'}));}}console.log(JSON.stringify({event:'scan_complete',release:RELEASE,source:'kraken',cron:event.cron,scheduledTime:event.scheduledTime,ok:results.length===SYMBOLS.length,results}));if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
+ async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}ctx.waitUntil((async()=>{const news=await loadNews(env);const results=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message:error instanceof Error?error.message:'Scan failed'}));}}console.log(JSON.stringify({event:'scan_complete',release:RELEASE,source:'kraken',cron:event.cron,scheduledTime:event.scheduledTime,ok:results.length===SYMBOLS.length,results}));if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
  async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
 };
