@@ -20,6 +20,17 @@ function bindingShape(settings){return (settings.bindings||[]).map(b=>({name:b.n
 function scheduleList(value){return Array.isArray(value)?value:(value?.schedules||[]);}
 async function main(){
  if(!token)throw Error('Missing GitHub repository secret CLOUDFLARE_API_TOKEN');
+ // Verify credential status without exporting its value or token identifier.
+ for(const [label,path] of [['user','/user/tokens/verify'],['account',account?'/accounts/'+account+'/tokens/verify':null]]){
+  if(!path)continue;
+  try{
+   const response=await fetch('https://api.cloudflare.com/client/v4'+path,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(15000)});
+   const value=await response.json();
+   const state=['active','disabled','expired'].includes(value.result?.status)?value.result.status:'not verified';
+   report('Token validation ('+label+'): HTTP '+response.status+'; status '+state+'.');
+   if(value.success&&state==='active')break;
+  }catch{report('Token validation ('+label+'): unavailable.');}
+ }
  if(!account){
   let response,data;
   try{response=await fetch('https://api.cloudflare.com/client/v4/accounts?per_page=50',{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(30000)});data=await response.json();}catch{throw Error('Account discovery failed; add GitHub secret CLOUDFLARE_ACCOUNT_ID');}
