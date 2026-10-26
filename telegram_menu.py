@@ -59,13 +59,13 @@ def get_market(symbol):
 
 def dispatch(command):
     if command in ('start','menu','help'):
-        send('🤖 תפריט הבוט שלך\\nבחר פעולה בכפתורים למטה.\\nפקודות: /menu /status /scan /news /signals\\n⏱ הבקשות נבדקות בערך כל 5 דקות; אין ביצוע עסקאות.',True)
+        send('🤖 תפריט הבוט שלך\nבחר פעולה בכפתורים למטה.\nפקודות: /menu /status /scan /news /signals\n⏱ הבקשות נבדקות בערך כל 5 דקות; אין ביצוע עסקאות.',True)
     elif command=='status':
         prices=[]
         for symbol in SYMBOLS:
             try: prices.append(f'{symbol}: ${get_market(symbol):,.5f}')
             except Exception: prices.append(symbol+': נתונים לא זמינים')
-        send('🟢 סטטוס מחירים (נר 5 דקות סגור)\\n'+'\\n'.join(prices)+'\\nהסריקות המתוזמנות ממשיכות ב-GitHub.',True)
+        send('🟢 סטטוס מחירים (נר 5 דקות סגור)\n'+'\n'.join(prices)+'\nהסריקות המתוזמנות ממשיכות ב-GitHub.',True)
     elif command=='scan':
         from strategies import candidates
         from bot import fetch
@@ -80,7 +80,7 @@ def dispatch(command):
                 lines.append(f"{symbol}: RSI {stats['rsi']:.0f}, ADX {stats['adx']:.0f} | {top}")
             except Exception as exc:
                 lines.append(symbol+': שגיאת נתונים')
-        send('\\n'.join(lines),True)
+        send('\n'.join(lines),True)
     elif command=='news':
         from news import articles,tone
         lines=['📰 חדשות אחרונות — כותרות בלבד']
@@ -89,18 +89,18 @@ def dispatch(command):
                 items=articles(symbol)
                 if items:
                     x=items[0]
-                    lines.append(f"{symbol}: {x['title'][:100]} ({tone(x['title'])})\\n{x['url']}")
+                    lines.append(f"{symbol}: {x['title'][:100]} ({tone(x['title'])})\n{x['url']}")
                 else: lines.append(symbol+': אין כתבות רלוונטיות')
             except Exception:
                 lines.append(symbol+': מקור חדשות לא זמין')
-        send('\\n\\n'.join(lines)+'\\n⚠️ לא המלצת מסחר.',True)
+        send('\n\n'.join(lines)+'\n⚠️ לא המלצת מסחר.',True)
     elif command=='signals':
         issues=api('GET','/issues?state=all&per_page=100')
         signals=[x for x in issues if x.get('title','').startswith('[SIGNAL]')]
         lines=['📈 איתותים אחרונים (תיאורטיים)']
         for issue in signals[:6]:
             lines.append(('✅ סגור' if issue.get('state')=='closed' else '⏳ במעקב')+' '+issue['title'].replace('[SIGNAL] ',''))
-        send('\\n'.join(lines) if signals else 'עדיין אין איתותים שמורים.',True)
+        send('\n'.join(lines) if signals else 'עדיין אין איתותים שמורים.',True)
     else:
         send('לא זיהיתי את הפעולה. שלח /menu',True)
 
