@@ -41,11 +41,11 @@ def main():
         if age_min > 30 or age_min < -1:
             raise RuntimeError(f'Binance candle data is stale or inconsistent: {age_min:.1f} minutes')
         timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
-        telegram(f'🟢 SOL Alert Bot — בדיקת תקינות יומית\\n'
-                 f'זמן בדיקה: {timestamp}\\n'
-                 f'SOLUSDT (נר סגור אחרון): ${last["close"]:.3f}\\n'
-                 f'גיל הנתונים: {max(age_min, 0):.1f} דקות\\n'
-                 '✅ Binance נגיש והבוט מצליח לשלוח לטלגרם.\\n'
+        telegram(f'🟢 SOL Alert Bot — בדיקת תקינות יומית\n'
+                 f'זמן בדיקה: {timestamp}\n'
+                 f'SOLUSDT (נר סגור אחרון): ${last["close"]:.3f}\n'
+                 f'גיל הנתונים: {max(age_min, 0):.1f} דקות\n'
+                 '✅ Binance נגיש והבוט מצליח לשלוח לטלגרם.\n'
                  'ℹ️ זו בדיקת תקינות נקודתית, לא אישור שכל הסריקות במהלך היום הצליחו. אין כאן איתות מסחר.')
         print('Daily status message sent')
         return
