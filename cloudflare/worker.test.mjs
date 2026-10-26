@@ -11,27 +11,27 @@ async function withData(body,fn,status=200){Date.now=()=>fixed;globalThis.fetch=
 test('Kraken maps seconds and base volume and excludes open candle',async()=>{await withData(payload(),async()=>{const bars=await candles('BTCUSDT','5m',120);assert.equal(bars.length,119);assert.equal(bars.at(-1).time,fixed-300000);assert.equal(bars[0].volume,42);});});
 test('4h freshness uses its own interval rather than the 5m age limit',async()=>{await withData(payload(240),async()=>{Date.now=()=>fixed+90*60000;assert.equal((await candles('SOLUSDT','4h',100)).length,99);});});
 test('rejects API errors, malformed prices, gaps, stale data and HTTP failures',async()=>{await withData({error:['EQuery:Unknown asset pair']},()=>assert.rejects(candles('SOLUSDT','5m',120),/API rejected/));for(const mutate of [b=>b.result.TESTPAIR[100][4]='NaN',b=>b.result.TESTPAIR.splice(90,1),b=>b.result.TESTPAIR.forEach(r=>r[0]-=3600)]){let b=payload();mutate(b);await withData(b,()=>assert.rejects(candles('ETHUSDT','5m',120)));}await withData({},()=>assert.rejects(candles('XRPUSDT','5m',120),/HTTP 403/),403);});
-test('scheduled scans send four no-signal reports and deduplicate repeated candles',async()=>{
- const logs=[],oldLog=console.log, state=new Map();console.log=(...args)=>logs.push(args);telegramMessages=[];
+test('scheduled scans remain silent without setups, but still scan all four markets',async()=>{
+ const logs=[],oldLog=console.log,state=new Map();console.log=(...args)=>logs.push(args);telegramMessages=[];
  const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}};
  try{await withData(u=>payload(Number(u.searchParams.get('interval'))),async()=>{
   async function run(){let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},env,{waitUntil:p=>work=p});await work;}
-  await run();assert.equal(telegramMessages.length,4);
-  for(const symbol of ['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'])assert.ok(telegramMessages.some(m=>m.text.includes(symbol)&&m.text.includes('אין איתות')));
-  assert.ok(telegramMessages.every(m=>m.chat_id==='test'&&m.text.includes('דוח תנאים בלבד')&&m.text.length<4096&&!m.text.startsWith('🔔')));
+  await run();assert.equal(telegramMessages.length,0);
   const result=logs.map(a=>{try{return JSON.parse(a[0]);}catch{return {};}}).find(x=>x.event==='scan_complete');
-  assert.equal(result.ok,true);assert.equal(result.results.length,4);assert.ok(result.results.every(x=>x.statusDelivery==='sent'));
-  await run();assert.equal(telegramMessages.length,4);
+  assert.equal(result.ok,true);assert.equal(result.results.length,4);
+  assert.ok(result.results.every(x=>x.statusDelivery==='suppressed_no_signal'&&x.candidates===0));
+  await run();assert.equal(telegramMessages.length,0);
  });}finally{console.log=oldLog;}
 });
-test('Telegram rejection fails verification and does not mark statuses delivered',async()=>{
+test('Telegram rejection for breaking news does not mark news as delivered',async()=>{
  const state=new Map(),oldLog=console.log,oldError=console.error;console.log=()=>{};console.error=()=>{};telegramStatus=403;
+ newsXML='<rss><channel><item><title>Bitcoin network update</title><link>https://www.coindesk.com/news/bitcoin-update</link><pubDate>'+new Date(fixed-60000).toUTCString()+'</pubDate></item></channel></rss>';
  try{await withData(u=>payload(Number(u.searchParams.get('interval'))),async()=>{
   let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},{TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}},{waitUntil:p=>work=p});
-  await assert.rejects(work,/market scans failed/);assert.equal([...state.keys()].filter(k=>k.startsWith('status:')).length,0);
- });}finally{console.log=oldLog;console.error=oldError;telegramStatus=200;}
+  await assert.rejects(work,/market scans failed/);
+  assert.equal([...state.keys()].filter(k=>k.startsWith('news:sent:')).length,0);
+ });}finally{console.log=oldLog;console.error=oldError;telegramStatus=200;newsXML='<rss><channel></channel></rss>';}
 });
-
 test('news parses safe publisher links and dates, filters each coin, and labels outages',()=>{
  const feed={name:'CoinDesk',host:'coindesk.com'};
  const item=(title,url,date)=>'<item><title><![CDATA['+title+']]></title><link>'+url+'</link><pubDate>'+new Date(date).toUTCString()+'</pubDate></item>';
@@ -53,7 +53,7 @@ test('new headline notifications are coin-specific and deduplicated independentl
  try{await withData(u=>payload(Number(u.searchParams.get('interval'))),async()=>{
   const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}};
   async function run(){let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},env,{waitUntil:p=>work=p});await work;}
-  await run();const alerts=telegramMessages.filter(m=>m.text.startsWith('📰 '));assert.equal(alerts.length,1);assert.ok(alerts[0].text.includes('BTCUSDT'));assert.ok(alerts[0].text.includes('https://www.coindesk.com/news/bitcoin-update'));assert.equal(telegramMessages.length,5);
-  await run();assert.equal(telegramMessages.length,5);
+  await run();const alerts=telegramMessages.filter(m=>m.text.startsWith('📰 '));assert.equal(alerts.length,1);assert.ok(alerts[0].text.includes('BTCUSDT'));assert.ok(alerts[0].text.includes('https://www.coindesk.com/news/bitcoin-update'));assert.equal(telegramMessages.length,1);
+  await run();assert.equal(telegramMessages.length,1);
  });}finally{console.log=oldLog;newsXML='<rss><channel></channel></rss>';}
 });
