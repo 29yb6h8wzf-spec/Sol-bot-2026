@@ -1,0 +1,51 @@
+name: Inspect Scanner Delivery
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/inspect-scanner.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Observe one real scheduled scan safely
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'JS'
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          const root='https://api.cloudflare.com/client/v4/accounts/d0b774cf03b175507aa1584e7e8e0117/workers/scripts/sol-bot-2026';
+          async function api(path,method='GET',body){
+            const r=await fetch(root+path,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(15000)});
+            const j=await r.json();if(!r.ok||!j.success)throw Error('Cloudflare HTTP '+r.status);return j.result;
+          }
+          let ws,tail;
+          try{
+            tail=await api('/tails','POST',{filters:[]});
+            await new Promise((resolve,reject)=>{
+              const timer=setTimeout(()=>reject(Error('No scheduled trace observed')),360000);
+              ws=new WebSocket(tail.url,'trace-v1');
+              ws.addEventListener('open',()=>{ws.send(JSON.stringify({debug:false}));console.log('Waiting for scheduled trace');});
+              ws.addEventListener('error',()=>{clearTimeout(timer);reject(Error('Tail connection failed'));});
+              ws.addEventListener('message',async m=>{
+                const raw=typeof m.data==='string'?m.data:await m.data.text();let trace;try{trace=JSON.parse(raw);}catch{return;}
+                if(!trace.event?.cron)return;
+                console.log('TRACE',JSON.stringify({outcome:trace.outcome,cron:trace.event.cron,exceptionNames:(trace.exceptions||[]).map(e=>e.name)}));
+                for(const l of trace.logs||[])for(const item of l.message||[]){
+                  let x;try{x=typeof item==='string'?JSON.parse(item):item;}catch{continue;}
+                  if(['scan_complete','status_sent','candidates'].includes(x?.event))console.log(JSON.stringify(x));
+                  if(x?.event==='scan_failed')console.log(JSON.stringify({event:x.event,symbol:x.symbol,message:/^(Kraken|Telegram HTTP|Invalid|Insufficient|Stale)/.test(x.message)?x.message.slice(0,150):'Other scan error'}));
+                }
+                clearTimeout(timer);resolve();
+              });
+            });
+          }catch(e){console.log('INSPECT FAILED',e.message);process.exitCode=1;}
+          finally{ws?.close();if(tail)try{await api('/tails/'+tail.id,'DELETE');}catch{}}
+          process.exit(process.exitCode||0);
+          JS
