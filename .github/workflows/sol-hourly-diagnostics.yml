@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   diagnostics:
@@ -23,6 +24,7 @@ jobs:
           python-version: '3.11'
       - name: Diagnose SOL signal conditions and notify Telegram
         env:
+          GH_TOKEN: ${{ github.token }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           SYMBOL: ${{ matrix.symbol }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
