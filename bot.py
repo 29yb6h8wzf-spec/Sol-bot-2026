@@ -31,6 +31,82 @@ def telegram(message):
     with urllib.request.urlopen(request, timeout=15) as r:
         return json.load(r)
 
+def quality_score(trend20, trend50, last, high, low, volume_ratio):
+    bullish = trend20 >= trend50
+    direction = 'LONG' if bullish else 'SHORT'
+    boundary = high if bullish else low
+    breakout = (last['close'] - boundary) / boundary if bullish else (boundary - last['close']) / boundary
+    trend_strength = abs(trend20 - trend50) / max(trend50, 1e-12)
+    trend_points = min(25, 10 + 15 * trend_strength / 0.02)
+    breakout_points = max(0, min(35, 15 + breakout * 10000)) if breakout > 0 else max(0, 15 + breakout * 10000)
+    volume_points = min(30, 30 * volume_ratio / 1.5)
+    score = round(min(100, trend_points + breakout_points + volume_points + 10))
+    return direction, score, breakout > 0
+
+
+def github_api(method, endpoint, payload=None):
+    token = os.environ.get('GH_TOKEN')
+    repo = os.environ.get('GITHUB_REPOSITORY')
+    if not token or not repo:
+        return None
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request('https://api.github.com/repos/' + repo + endpoint,
+        data=data, method=method,
+        headers={'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json',
+                 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'crypto-alert-monitor',
+                 'Content-Type': 'application/json'})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.load(r) if r.status != 204 else {}
+
+
+def track_signal(candle_time, direction, entry, stop, target, score):
+    if not os.environ.get('GH_TOKEN'):
+        print('Tracking disabled: GH_TOKEN unavailable')
+        return
+    title = f'[SIGNAL] {SYMBOL} {direction} {candle_time}'
+    issues = github_api('GET', '/issues?state=all&per_page=100') or []
+    if any(issue.get('title') == title for issue in issues):
+        print('Signal already tracked')
+        return
+    body = json.dumps({'symbol': SYMBOL, 'direction': direction, 'entry': entry,
+                       'stop': stop, 'target': target, 'score': score,
+                       'candle_time': candle_time}, ensure_ascii=False)
+    github_api('POST', '/issues', {'title': title, 'body': body})
+    print('Signal recorded in GitHub Issues')
+
+
+def evaluate_signals():
+    issues = github_api('GET', '/issues?state=open&per_page=100') or []
+    matching = [i for i in issues if i.get('title', '').startswith('[SIGNAL] ' + SYMBOL + ' ')]
+    if not matching:
+        return
+    candles = fetch('5m', 500)
+    for issue in matching:
+        try:
+            signal = json.loads(issue.get('body', ''))
+            opened_ms = int(datetime.strptime(signal['candle_time'], '%Y-%m-%d %H:%M UTC').replace(tzinfo=timezone.utc).timestamp() * 1000)
+            subsequent = [x for x in candles if x['time'] > opened_ms]
+            if not subsequent:
+                continue
+            outcome = None
+            for bar in subsequent:
+                if signal['direction'] == 'LONG':
+                    hit_stop, hit_target = bar['low'] <= signal['stop'], bar['high'] >= signal['target']
+                else:
+                    hit_stop, hit_target = bar['high'] >= signal['stop'], bar['low'] <= signal['target']
+                if hit_stop or hit_target:
+                    outcome = 'STOP (-1R)' if hit_stop else 'TARGET (+2R)'
+                    break
+            if outcome:
+                github_api('PATCH', f"/issues/{issue['number']}",
+                           {'state': 'closed', 'state_reason': 'completed',
+                            'body': issue.get('body', '') + '\\n\\nPaper outcome: ' + outcome +
+                            '\\nConservative stop-first if both touched within one candle. No fees or slippage included.'})
+                print(f"Paper result {SYMBOL}: {outcome}")
+        except (ValueError, KeyError, TypeError) as exc:
+            print('Could not evaluate issue:', exc)
+
+
 def main():
     if '--test' in sys.argv:
         telegram('✅ Crypto Alert Bot מחובר! הודעת בדיקה בלבד. אין כאן איתות מסחר.')
@@ -51,6 +127,8 @@ def main():
                  'ℹ️ זו בדיקת תקינות נקודתית, לא אישור שכל הסריקות במהלך היום הצליחו. אין כאן איתות מסחר.')
         print('Daily status message sent')
         return
+    if '--diagnostic' in sys.argv:
+        evaluate_signals()
     four = fetch('4h', 100)
     five = fetch('5m', 50)
     trend20 = ema([x['close'] for x in four], 20)
@@ -77,6 +155,7 @@ def main():
     long_break = last['close'] > high
     short_break = last['close'] < low
     volume_ratio = last['volume'] / avg_vol if avg_vol else 0
+    candidate_direction, score, breakout_ok = quality_score(trend20, trend50, last, high, low, volume_ratio)
     reasons = []
     if direction is None:
         if trend20 > trend50:
@@ -100,6 +179,8 @@ def main():
             reasons.append('התנאים מתקיימים בנר הנבדק (לא אות כניסה בזמן אמת)')
         timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
         telegram(f'📊 {SYMBOL} — אבחון שעתי\n'
+                 f'דירוג תנאים (לא הסתברות הצלחה): {score}/100 ({candidate_direction})\n'
+                 + ('🟠 התקרבות לתנאים — עדיין לא איתות כניסה.\n' if score >= 65 and direction is None else '') +
                  f'זמן: {timestamp}\n'
                  f'מחיר נר סגור: ${entry:.3f}\n'
                  f'גיל הנר: {age_min:.1f} דקות\n'
@@ -117,7 +198,9 @@ def main():
     notional = min(80, 1 / (stop_pct / 100))
     planned_loss = notional * stop_pct / 100
     candle_time = datetime.fromtimestamp(last['time'] / 1000, tz=timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+    track_signal(candle_time, direction, entry, stop, target, score)
     telegram(f'🔔 {SYMBOL} {direction} — מועמד לבדיקה, לא הוראת מסחר\n'
+             f'דירוג תנאים: {score}/100 (לא הסתברות הצלחה)\n'
              f'נר 5 דקות: {candle_time}\n'
              f'כניסה תיאורטית: ${entry:.3f}\n'
              f'סטופ תיאורטי: ${stop:.3f} ({stop_pct:.2f}%)\n'
