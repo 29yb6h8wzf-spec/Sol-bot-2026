@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 const WORKER='sol-bot-2026', RELEASE='kraken-ohlc-v1', CRON='*/5 * * * *';
 const SYMBOLS=['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'];
-const account=(process.env.CLOUDFLARE_ACCOUNT_ID||'').trim();
+let account=(process.env.CLOUDFLARE_ACCOUNT_ID||'').trim();
 const token=(process.env.CLOUDFLARE_API_TOKEN||'').trim();
 const summary=[];
 function report(message){console.log(message);summary.push(message);}
@@ -20,7 +20,21 @@ function bindingShape(settings){return (settings.bindings||[]).map(b=>({name:b.n
 function scheduleList(value){return Array.isArray(value)?value:(value?.schedules||[]);}
 async function main(){
  if(!token)throw Error('Missing GitHub repository secret CLOUDFLARE_API_TOKEN');
- if(!/^[a-f0-9]{32}$/i.test(account))throw Error('Missing or invalid GitHub repository secret CLOUDFLARE_ACCOUNT_ID (expected 32 hex characters)');
+ if(!account){
+  let response,data;
+  try{response=await fetch('https://api.cloudflare.com/client/v4/accounts?per_page=50',{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(30000)});data=await response.json();}catch{throw Error('Account discovery failed; add GitHub secret CLOUDFLARE_ACCOUNT_ID');}
+  if(!response.ok||!data.success||!Array.isArray(data.result))throw Error('Token cannot discover accounts; add GitHub repository secret CLOUDFLARE_ACCOUNT_ID (32-character Account ID from Cloudflare)');
+  if((data.result_info?.total_pages||1)>1)throw Error('Multiple account pages; add CLOUDFLARE_ACCOUNT_ID to select the correct account');
+  const matches=[];
+  for(const candidate of data.result){
+   if(!/^[a-f0-9]{32}$/i.test(candidate.id))continue;
+   account=candidate.id;
+   try{await api('/settings');matches.push(candidate.id);}catch{/* An account without access to this Worker is not a candidate. */}
+  }
+  if(matches.length!==1)throw Error('Could not uniquely locate sol-bot-2026; add GitHub repository secret CLOUDFLARE_ACCOUNT_ID');
+  account=matches[0];report('Automatically located the single accessible account containing sol-bot-2026.');
+ }
+ if(!/^[a-f0-9]{32}$/i.test(account))throw Error('Invalid GitHub repository secret CLOUDFLARE_ACCOUNT_ID (expected 32 hex characters)');
  const before=await api('/settings');
  const shape=bindingShape(before), names=new Set(shape.map(b=>b.name));
  for(const name of ['TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','SIGNAL_STATE'])if(!names.has(name))throw Error('Worker is missing required binding '+name+'; no deployment performed');
