@@ -1,3 +1,4 @@
+import {evaluateSetup} from './risk-engine.mjs';
 // SignalPilot Cloudflare Worker: scheduled market research, no trade execution.
 // Alerts are disabled until both Telegram secrets and SIGNAL_STATE KV are configured.
 export const SYMBOLS = ['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT','BNBUSDT','DOGEUSDT','ADAUSDT','AVAXUSDT','LINKUSDT','LTCUSDT'];
@@ -130,7 +131,60 @@ async function send(env,msg){let r=await fetch('https://api.telegram.org/bot'+en
 async function scan(symbol,env,news){let [five,four]=await Promise.all([candles(symbol,'5m',120),candles(symbol,'4h',100)]),last=five.at(-1),age=(Date.now()-(last.time+PERIOD))/60000;console.log(JSON.stringify({event:'scan',symbol,candle:new Date(last.time).toISOString(),closedAgeMinutes:+age.toFixed(2)}));if(age<0||age>7){console.warn('Skipping stale candle',symbol,age);return;}
 let checks=[],found=setups(five,four,checks);console.log(JSON.stringify({event:'candidates',symbol,count:found.length,strategies:found.map(s=>s.strategy)}));for(let s of found){let key='signal:'+symbol+':'+s.candle+':'+s.strategy+':'+s.direction;if(await env.SIGNAL_STATE.get(key)){console.log('Duplicate skipped',key);continue;}
 let risk=Math.abs(s.entry-s.stop),target=s.entry+(s.direction==='LONG'?2:-2)*risk;
-let msg='🔔 '+symbol+' '+s.direction+' | '+s.strategy+'\nדירוג תנאים: '+s.score+'/100 (לא הסתברות הצלחה)\nנר: '+new Date(s.candle).toISOString()+'\nכניסה תיאורטית: $'+s.entry.toFixed(5)+'\nסטופ: $'+s.stop.toFixed(5)+' ('+s.stopPct.toFixed(2)+'%)\nיעד 2R: $'+target.toFixed(5)+'\n'+s.reason+'\n⚠️ מחקר בלבד. אין ביצוע מסחר אוטומטי.';
+const research=evaluateSetup({direction:s.direction,entry:s.entry,stop:s.stop,target,riskBudget:1.5,minProfit:5,leverage:3,feeRate:0.0005,slippageRate:0.0005});
+console.log(JSON.stringify({event:'signal_risk_assessment',symbol,strategy:s.strategy,eligible:research.eligible,reason:research.reason,estimatedProfit:research.expectedProfit,estimatedLoss:research.expectedLoss,margin:research.margin}));
+let msg='🔔 '+symbol+' '+s.direction+' | '+s.strategy+'\nדירוג תנאים: '+s.score+'/100 (לא הסתברות הצלחה)\nנר: '+new Date(s.candle).toISOString()+'\nכניסה תיאורטית: $'+s.entry.toFixed(5)+'\nסטופ: $'+s.stop.toFixed(5)+' ('+s.stopPct.toFixed(2)+'%)\nיעד 2R: $'+target.toFixed(5)+'\n'+s.reason+'\n\n💵 תקציב סיכון משוער: $1.50 כולל עלויות משוערות'+'\nשווי פוזיציה תיאורטי: 
+await send(env,msg+'\nמקור נתונים: Kraken Spot (USDT)\n\n'+formatNewsContext(news,symbol,2));await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});console.log('Alert sent',key);}
+const statusKey='status:'+symbol+':'+last.time;
+let statusDelivery='already_sent';
+if(!await env.SIGNAL_STATE.get(statusKey)){
+ const status=formatScanStatus(symbol,five,four,found,Date.now(),news);
+ await send(env,status);
+ await env.SIGNAL_STATE.put(statusKey,'sent',{expirationTtl:86400});
+ statusDelivery='sent';
+ console.log(JSON.stringify({event:'status_sent',symbol,candle:new Date(last.time).toISOString(),release:RELEASE}));
+}
+await notifyFreshNews(symbol,env,news);
+return {symbol,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length};}
+export default {
+ async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}ctx.waitUntil((async()=>{const news=await loadNews(env);const results=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message:error instanceof Error?error.message:'Scan failed'}));}}console.log(JSON.stringify({event:'scan_complete',release:RELEASE,source:'kraken',cron:event.cron,scheduledTime:event.scheduledTime,ok:results.length===SYMBOLS.length,results}));if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
+ async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
+};
++research.notional.toFixed(2)+'\nבטוחה משוערת ב־3x: 
+await send(env,msg+'\nמקור נתונים: Kraken Spot (USDT)\n\n'+formatNewsContext(news,symbol,2));await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});console.log('Alert sent',key);}
+const statusKey='status:'+symbol+':'+last.time;
+let statusDelivery='already_sent';
+if(!await env.SIGNAL_STATE.get(statusKey)){
+ const status=formatScanStatus(symbol,five,four,found,Date.now(),news);
+ await send(env,status);
+ await env.SIGNAL_STATE.put(statusKey,'sent',{expirationTtl:86400});
+ statusDelivery='sent';
+ console.log(JSON.stringify({event:'status_sent',symbol,candle:new Date(last.time).toISOString(),release:RELEASE}));
+}
+await notifyFreshNews(symbol,env,news);
+return {symbol,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length};}
+export default {
+ async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}ctx.waitUntil((async()=>{const news=await loadNews(env);const results=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message:error instanceof Error?error.message:'Scan failed'}));}}console.log(JSON.stringify({event:'scan_complete',release:RELEASE,source:'kraken',cron:event.cron,scheduledTime:event.scheduledTime,ok:results.length===SYMBOLS.length,results}));if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
+ async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
+};
++research.margin.toFixed(2)+'\nרווח נטו משוער ביעד: 
+await send(env,msg+'\nמקור נתונים: Kraken Spot (USDT)\n\n'+formatNewsContext(news,symbol,2));await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});console.log('Alert sent',key);}
+const statusKey='status:'+symbol+':'+last.time;
+let statusDelivery='already_sent';
+if(!await env.SIGNAL_STATE.get(statusKey)){
+ const status=formatScanStatus(symbol,five,four,found,Date.now(),news);
+ await send(env,status);
+ await env.SIGNAL_STATE.put(statusKey,'sent',{expirationTtl:86400});
+ statusDelivery='sent';
+ console.log(JSON.stringify({event:'status_sent',symbol,candle:new Date(last.time).toISOString(),release:RELEASE}));
+}
+await notifyFreshNews(symbol,env,news);
+return {symbol,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length};}
+export default {
+ async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}ctx.waitUntil((async()=>{const news=await loadNews(env);const results=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message:error instanceof Error?error.message:'Scan failed'}));}}console.log(JSON.stringify({event:'scan_complete',release:RELEASE,source:'kraken',cron:event.cron,scheduledTime:event.scheduledTime,ok:results.length===SYMBOLS.length,results}));if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
+ async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
+};
++research.expectedProfit.toFixed(2)+'\nיחס סיכוי/סיכון לאחר עלויות: '+research.rewardRisk.toFixed(2)+'R'+'\nעומד ביעד $5: '+(research.eligible?'כן':'לא')+'\n⚠️ הערכות בלבד; עמלות, החלקה, מימון ותנאי ביצוע בפועל עלולים להגדיל הפסד. אין ביצוע מסחר אוטומטי.';
 await send(env,msg+'\nמקור נתונים: Kraken Spot (USDT)\n\n'+formatNewsContext(news,symbol,2));await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});console.log('Alert sent',key);}
 const statusKey='status:'+symbol+':'+last.time;
 let statusDelivery='already_sent';
