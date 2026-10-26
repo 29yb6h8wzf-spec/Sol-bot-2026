@@ -1,8 +1,8 @@
 // SignalPilot Cloudflare Worker: scheduled market research, no trade execution.
 // Alerts are disabled until both Telegram secrets and SIGNAL_STATE KV are configured.
-const SYMBOLS = ['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'];
+export const SYMBOLS = ['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT','BNBUSDT','DOGEUSDT','ADAUSDT','AVAXUSDT','LINKUSDT','LTCUSDT'];
 const API = 'https://api.kraken.com/0/public/OHLC';
-const PAIRS = {SOLUSDT:'SOLUSDT',BTCUSDT:'XBTUSDT',ETHUSDT:'ETHUSDT',XRPUSDT:'XRPUSDT'};
+export const PAIRS = {SOLUSDT:'SOLUSDT',BTCUSDT:'XBTUSDT',ETHUSDT:'ETHUSDT',XRPUSDT:'XRPUSDT',BNBUSDT:'BNBUSDT',DOGEUSDT:'XDGUSDT',ADAUSDT:'ADAUSDT',AVAXUSDT:'AVAXUSDT',LINKUSDT:'LINKUSDT',LTCUSDT:'LTCUSDT'};
 const RELEASE = 'kraken-news-v3';
 const NEWS_FEEDS=[{name:'CoinDesk',url:'https://www.coindesk.com/arc/outboundfeeds/rss/',host:'coindesk.com'},{name:'Cointelegraph',url:'https://cointelegraph.com/rss',host:'cointelegraph.com'}];
 const NEWS_TERMS={SOLUSDT:/\b(solana|sol)\b/i,BTCUSDT:/\b(bitcoin|btc)\b/i,ETHUSDT:/\b(ethereum|ether|eth)\b/i,XRPUSDT:/\b(xrp|ripple|rlusd)\b/i};
