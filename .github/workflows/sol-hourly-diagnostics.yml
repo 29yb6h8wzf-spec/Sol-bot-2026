@@ -11,6 +11,10 @@ permissions:
 jobs:
   diagnostics:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        symbol: [SOLUSDT, BTCUSDT, ETHUSDT]
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
@@ -20,5 +24,6 @@ jobs:
       - name: Diagnose SOL signal conditions and notify Telegram
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          SYMBOL: ${{ matrix.symbol }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python bot.py --diagnostic
