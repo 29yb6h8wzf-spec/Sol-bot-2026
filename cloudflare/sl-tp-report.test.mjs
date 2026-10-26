@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {formatScanStatus} from './worker.js';
+import {formatScanStatus,shouldSendScanStatus} from './worker.js';
 const now=Date.UTC(2026,9,26,18,10);
 const makeBars=(count,period)=>Array.from({length:count},(_,i)=>({time:now-(count-i)*period,open:100+i*.01,close:100+i*.01,high:100.2+i*.01,low:99.8+i*.01,volume:100}));
 const five=makeBars(120,300000),four=makeBars(100,14400000);
@@ -19,4 +19,9 @@ test('no setup does not show fictional levels',()=>{
  const message=formatScanStatus('SOLUSDT',five,four,[],now);
  assert.doesNotMatch(message,/TP \(2R\):/);
  assert.match(message,/אין כניסה/);
+});
+
+test('no-signal scans do not send Telegram status messages',()=>{
+ assert.equal(shouldSendScanStatus([]),false);
+ assert.equal(shouldSendScanStatus([{strategy:'BREAKOUT',direction:'LONG',entry:100,stop:99.5}]),true);
 });
