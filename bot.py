@@ -6,7 +6,9 @@ import urllib.request
 from datetime import datetime, timezone
 
 BASE = 'https://data-api.binance.vision/api/v3/klines'
-SYMBOL = 'SOLUSDT'
+SYMBOL = os.environ.get('SYMBOL', 'SOLUSDT')
+if SYMBOL not in ('SOLUSDT', 'BTCUSDT', 'ETHUSDT'):
+    raise ValueError('Unsupported trading pair')
 
 def fetch(interval, limit):
     query = urllib.parse.urlencode({'symbol': SYMBOL, 'interval': interval, 'limit': limit})
@@ -31,7 +33,7 @@ def telegram(message):
 
 def main():
     if '--test' in sys.argv:
-        telegram('✅ SOL Alert Bot מחובר! הודעת בדיקה בלבד. אין כאן איתות מסחר.')
+        telegram('✅ Crypto Alert Bot מחובר! הודעת בדיקה בלבד. אין כאן איתות מסחר.')
         print('Test message sent')
         return
     if '--status' in sys.argv:
@@ -41,9 +43,9 @@ def main():
         if age_min > 30 or age_min < -1:
             raise RuntimeError(f'Binance candle data is stale or inconsistent: {age_min:.1f} minutes')
         timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
-        telegram(f'🟢 SOL Alert Bot — בדיקת תקינות יומית\n'
+        telegram(f'🟢 Crypto Alert Bot — בדיקת תקינות יומית\n'
                  f'זמן בדיקה: {timestamp}\n'
-                 f'SOLUSDT (נר סגור אחרון): ${last["close"]:.3f}\n'
+                 f'{SYMBOL} (נר סגור אחרון): ${last["close"]:.3f}\n'
                  f'גיל הנתונים: {max(age_min, 0):.1f} דקות\n'
                  '✅ Binance נגיש והבוט מצליח לשלוח לטלגרם.\n'
                  'ℹ️ זו בדיקת תקינות נקודתית, לא אישור שכל הסריקות במהלך היום הצליחו. אין כאן איתות מסחר.')
@@ -97,7 +99,7 @@ def main():
         elif direction is not None:
             reasons.append('התנאים מתקיימים בנר הנבדק (לא אות כניסה בזמן אמת)')
         timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
-        telegram('📊 SOLUSDT — אבחון שעתי\n'
+        telegram(f'📊 {SYMBOL} — אבחון שעתי\n'
                  f'זמן: {timestamp}\n'
                  f'מחיר נר סגור: ${entry:.3f}\n'
                  f'גיל הנר: {age_min:.1f} דקות\n'
@@ -115,7 +117,7 @@ def main():
     notional = min(80, 1 / (stop_pct / 100))
     planned_loss = notional * stop_pct / 100
     candle_time = datetime.fromtimestamp(last['time'] / 1000, tz=timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
-    telegram(f'🔔 SOLUSDT {direction} — מועמד לבדיקה, לא הוראת מסחר\n'
+    telegram(f'🔔 {SYMBOL} {direction} — מועמד לבדיקה, לא הוראת מסחר\n'
              f'נר 5 דקות: {candle_time}\n'
              f'כניסה תיאורטית: ${entry:.3f}\n'
              f'סטופ תיאורטי: ${stop:.3f} ({stop_pct:.2f}%)\n'
