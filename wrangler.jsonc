@@ -1,0 +1,10 @@
+{
+  "name": "sol-bot-2026",
+  "main": "cloudflare/worker.js",
+  "compatibility_date": "2026-10-01",
+  "triggers": {
+    "crons": [
+      "*/5 * * * *"
+    ]
+  }
+}
