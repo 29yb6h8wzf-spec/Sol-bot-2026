@@ -13,7 +13,10 @@ async function api(path,options={}){
  if(typeof options.body==='string')headers['Content-Type']='application/json';
  let response;try{response=await fetch('https://api.cloudflare.com/client/v4/accounts/'+account+'/workers/scripts/'+WORKER+path,{...options,headers,signal:AbortSignal.timeout(30000)});}catch{throw Error('Cloudflare API network failure');}
  let data;try{data=await response.json();}catch{throw Error('Cloudflare returned a non-JSON response (HTTP '+response.status+')');}
- if(!response.ok||!data.success)throw Error('Cloudflare HTTP '+response.status+'; error codes: '+(data.errors||[]).map(e=>e.code).join(',')+'; check token permissions and account ID');
+ if(!response.ok||!data.success){
+  const details=JSON.stringify({errors:data.errors,error:data.error,message:data.message,messages:data.messages}).replaceAll(token,'[REDACTED]').replaceAll(account,'[ACCOUNT]').slice(0,1200);
+  throw Error('Cloudflare HTTP '+response.status+'; '+details+'; check token permissions and account ID');
+ }
  return data.result;
 }
 function bindingShape(settings){return (settings.bindings||[]).map(b=>({name:b.name,type:b.type,...(b.type==='kv_namespace'?{namespace_id:b.namespace_id}:{})})).sort((a,b)=>a.name.localeCompare(b.name));}
