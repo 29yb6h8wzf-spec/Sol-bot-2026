@@ -17,6 +17,10 @@ permissions:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        symbol: [SOLUSDT, BTCUSDT, ETHUSDT]
     timeout-minutes: 3
     steps:
       - name: Checkout
@@ -26,14 +30,16 @@ jobs:
         with:
           python-version: '3.11'
       - name: Run Telegram test
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.send_test }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.send_test && matrix.symbol == 'SOLUSDT' }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          SYMBOL: ${{ matrix.symbol }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python bot.py --test
       - name: Scan SOLUSDT
         if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.send_test) }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          SYMBOL: ${{ matrix.symbol }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python bot.py
