@@ -114,7 +114,7 @@ async function main(){
  }
  const actual=scheduleList(await api('/schedules'));
  assert.ok(actual.some(s=>s.cron===CRON),'Five-minute cron not configured');
- report('Confirmed cron '+CRON+'. Existing GitHub scan workflows are untouched.');
+ report('Confirmed cron '+CRON+'. WARNING: GitHub scan workflows are also enabled; duplicate signal sources remain.');
  const tail=await api('/tails',{method:'POST',body:JSON.stringify({filters:[]})});
  let ws;
  try{
@@ -137,10 +137,10 @@ async function main(){
       let row;try{row=typeof item==='string'?JSON.parse(item):item;}catch{continue;}
       if(row?.event!=='scan_complete'||row.release!==RELEASE)continue;
       const seen=new Set((row.results||[]).map(r=>r.symbol));
-      const valid=trace.outcome==='ok'&&!(trace.exceptions||[]).length&&row.ok===true&&row.source==='kraken'&&row.cron===CRON&&SYMBOLS.every(s=>seen.has(s))&&seen.size===4&&row.results.every(r=>Number.isFinite(r.closedAgeMinutes)&&r.closedAgeMinutes>=0&&r.closedAgeMinutes<=7&&r.statusDelivery==='sent'&&['ready','partial'].includes(r.newsStatus));
+      const valid=trace.outcome==='ok'&&!(trace.exceptions||[]).length&&row.ok===true&&row.source==='kraken'&&row.cron===CRON&&SYMBOLS.every(s=>seen.has(s))&&seen.size===4&&row.results.every(r=>Number.isFinite(r.closedAgeMinutes)&&r.closedAgeMinutes>=0&&r.closedAgeMinutes<=7&&Number.isInteger(r.candidates)&&r.candidates>=0&&(r.candidates===0?r.statusDelivery==='suppressed_no_signal':['sent','already_sent'].includes(r.statusDelivery))&&['ready','partial'].includes(r.newsStatus));
       const time=Number(row.scheduledTime);
       if(!Number.isFinite(time)||time<deadline-16*60*1000-60000)continue;
-      report('Scheduled '+new Date(time).toISOString()+': '+(valid?'PASS (SOL, BTC, ETH, XRP; fresh Kraken candles; four Telegram statuses accepted; live news checked)':'FAIL (scan errors, incomplete markets or unconfirmed Telegram status delivery)'));
+      report('Scheduled '+new Date(time).toISOString()+': '+(valid?'PASS (SOL, BTC, ETH, XRP; fresh Kraken candles; Telegram delivery checked only when signals exist; silent scans verified; live news checked)':'FAIL (scan errors, incomplete markets or inconsistent signal delivery)'));
       if(!valid){verified.clear();continue;}
       const prior=verified.get(time-300000);
       verified.set(time,row);
