@@ -63,7 +63,7 @@ def main():
     if not 0.25 <= stop_pct <= 1.5:
         print(f'Stop distance {stop_pct:.2f}% outside filter')
         return
-    target = entry + (2 * (entry - stop))
+    target = entry + (2 * abs(entry - stop) * (1 if direction == 'LONG' else -1))
     # $40 capital, max 2x, $1 planned risk, before fees/slippage
     notional = min(80, 1 / (stop_pct / 100))
     planned_loss = notional * stop_pct / 100
