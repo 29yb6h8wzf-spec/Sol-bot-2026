@@ -15,6 +15,10 @@ permissions:
   contents: read
   issues: write
 
+concurrency:
+  group: crypto-scan-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   run-bot:
     runs-on: ubuntu-latest

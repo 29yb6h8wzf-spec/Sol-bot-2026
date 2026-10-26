@@ -127,6 +127,15 @@ def missed_closed_candles(candles, max_age_minutes=60):
             for c in recent[:-1]]
 
 
+def log_candle_coverage(candles):
+    """Expose gaps without issuing stale trading alerts."""
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    recent = [c for c in candles if 0 <= now_ms - (c['time'] + 300000) <= 3600000]
+    scan_log('candle_coverage', closed_candles_last_hour=len(recent),
+             candle_open_times=[datetime.fromtimestamp(c['time']/1000, tz=timezone.utc)
+                                .strftime('%H:%M UTC') for c in recent])
+
+
 def main():
     if '--test' in sys.argv:
         telegram('✅ Crypto Alert Bot מחובר! הודעת בדיקה בלבד. אין כאן איתות מסחר.')
@@ -151,6 +160,7 @@ def main():
         from strategies import candidates
         four = fetch('4h', 100)
         five = fetch('5m', 120)
+        log_candle_coverage(five)
         last = five[-1]
         age = (datetime.now(timezone.utc).timestamp() * 1000 - last['time']) / 60000
         if not 5 <= age <= 12:
@@ -203,6 +213,7 @@ def main():
             print('Paper evaluation failed; continuing diagnostics:', exc)
     four = fetch('4h', 100)
     five = fetch('5m', 50)
+    log_candle_coverage(five)
     trend20 = ema([x['close'] for x in four], 20)
     trend50 = ema([x['close'] for x in four], 50)
     last = five[-1]
