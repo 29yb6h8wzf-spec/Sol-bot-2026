@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {evaluateSetup} from './risk-engine.js';
+import {evaluateSetup} from './risk-engine.mjs';
 test('sizes using loss plus estimated costs',()=>{
  const r=evaluateSetup({direction:'SHORT',entry:1.2948,stop:1.3057,target:1.2759,leverage:4});
  assert.ok(Math.abs(r.expectedLoss-1.5)<1e-8);
