@@ -49,7 +49,24 @@ async function main(){
   account=matches[0];report('Automatically located the single accessible account containing sol-bot-2026.');
  }
  if(!/^[a-f0-9]{32}$/i.test(account))throw Error('Invalid GitHub repository secret CLOUDFLARE_ACCOUNT_ID (expected 32 hex characters)');
- const before=await api('/settings');
+ let before;
+ try{before=await api('/settings');}catch(originalError){
+  const configured=account;
+  let response,data;
+  try{response=await fetch('https://api.cloudflare.com/client/v4/accounts?per_page=50',{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(30000)});data=await response.json();}catch{throw originalError;}
+  if(!response.ok||!data.success||!Array.isArray(data.result))throw originalError;
+  report('Account lookup: '+data.result.length+' accessible account(s); configured ID '+(data.result.some(a=>a.id===configured)?'is present':'is not present')+'.');
+  if((data.result_info?.total_pages||1)>1)throw originalError;
+  const matches=[];
+  for(const candidate of data.result){
+   if(!/^[a-f0-9]{32}$/i.test(candidate.id)||candidate.id===configured)continue;
+   account=candidate.id;
+   try{const settings=await api('/settings');matches.push({id:candidate.id,settings});}catch{/* No access to the named Worker in this account. */}
+  }
+  if(matches.length!==1){account=configured;throw originalError;}
+  account=matches[0].id;before=matches[0].settings;
+  report('Located sol-bot-2026 in a single authorized account; configured account ID was incorrect.');
+ }
  const shape=bindingShape(before), names=new Set(shape.map(b=>b.name));
  for(const name of ['TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','SIGNAL_STATE'])if(!names.has(name))throw Error('Worker is missing required binding '+name+'; no deployment performed');
  if(!shape.some(b=>b.name==='SIGNAL_STATE'&&b.type==='kv_namespace'))throw Error('SIGNAL_STATE must be a KV binding; no deployment performed');
