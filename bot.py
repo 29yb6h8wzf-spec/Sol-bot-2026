@@ -263,17 +263,18 @@ def main():
         elif direction is not None:
             reasons.append('התנאים מתקיימים בנר הנבדק (לא אות כניסה בזמן אמת)')
         timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
-        telegram(f'📊 {SYMBOL} — אבחון שעתי\n'
-                 f'דירוג תנאים (לא הסתברות הצלחה): {score}/100 ({candidate_direction})\n'
-                 + ('🟠 התקרבות לתנאים — עדיין לא איתות כניסה.\n' if score >= 65 and direction is None else '') +
-                 f'זמן: {timestamp}\n'
-                 f'מחיר נר סגור: ${entry:.3f}\n'
-                 f'גיל הנר: {age_min:.1f} דקות\n'
-                 f'EMA20/50 (4h): {trend20:.3f}/{trend50:.3f}\n'
-                 f'נפח ביחס לממוצע: פי {volume_ratio:.2f}\n'
-                 + 'סיבות/מצב: ' + ('; '.join(reasons) if reasons else 'לא זוהתה סיבה') +
-                 '\nℹ️ צילום מצב נוכחי בלבד, לא סיכום כל הסריקות ולא איתות מסחר.')
-        print('Diagnostic sent: ' + '; '.join(reasons))
+        if os.environ.get('SILENT_DIAGNOSTIC') != '1':
+            telegram(f'📊 {SYMBOL} — אבחון שעתי\n'
+                     f'דירוג תנאים (לא הסתברות הצלחה): {score}/100 ({candidate_direction})\n'
+                     + ('🟠 התקרבות לתנאים — עדיין לא איתות כניסה.\n' if score >= 65 and direction is None else '') +
+                     f'זמן: {timestamp}\n'
+                     f'מחיר נר סגור: ${entry:.3f}\n'
+                     f'גיל הנר: {age_min:.1f} דקות\n'
+                     f'EMA20/50 (4h): {trend20:.3f}/{trend50:.3f}\n'
+                     f'נפח ביחס לממוצע: פי {volume_ratio:.2f}\n'
+                     + 'סיבות/מצב: ' + ('; '.join(reasons) if reasons else 'לא זוהתה סיבה') +
+                     '\nℹ️ צילום מצב נוכחי בלבד, לא סיכום כל הסריקות ולא איתות מסחר.')
+        print('Diagnostic '+('logged silently' if os.environ.get('SILENT_DIAGNOSTIC') == '1' else 'sent')+': ' + '; '.join(reasons))
         return
     if not 0.25 <= stop_pct <= 1.5:
         scan_log('skip_breakout_risk', stop_pct=round(stop_pct, 3))
