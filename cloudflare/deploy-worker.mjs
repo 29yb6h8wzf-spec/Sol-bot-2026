@@ -71,6 +71,25 @@ async function main(){
   account=matches[0].id;before=matches[0].settings;
   report('Located sol-bot-2026 in a single authorized account; configured account ID was incorrect.');
  }
+ let restoredKV;
+ if(!(before.bindings||[]).some(b=>b.name==='SIGNAL_STATE')){
+  let prior=(before.bindings||[]).find(b=>b.type==='kv_namespace'&&b.name==='SIGNAL-STATE');
+  if(!prior){
+   const history=await api('/versions');
+   const versions=Array.isArray(history)?history:(history.items||history.versions||[]);
+   for(const version of versions.slice(0,20)){
+    if(!version.id)continue;
+    const detail=await api('/versions/'+encodeURIComponent(version.id));
+    prior=(detail.resources?.bindings||[]).find(b=>b.type==='kv_namespace'&&['SIGNAL_STATE','SIGNAL-STATE'].includes(b.name));
+    if(prior)break;
+   }
+  }
+  if(prior?.namespace_id){
+   restoredKV={type:'kv_namespace',name:'SIGNAL_STATE',namespace_id:prior.namespace_id};
+   before.bindings=[...(before.bindings||[]),restoredKV];
+   report('Recovered existing SIGNAL_STATE namespace association from the Worker configuration history.');
+  }
+ }
  const shape=bindingShape(before), names=new Set(shape.map(b=>b.name));
  for(const name of ['TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','SIGNAL_STATE'])if(!names.has(name))throw Error('Worker is missing required binding '+name+'; no deployment performed');
  if(!shape.some(b=>b.name==='SIGNAL_STATE'&&b.type==='kv_namespace'))throw Error('SIGNAL_STATE must be a KV binding; no deployment performed');
@@ -78,6 +97,7 @@ async function main(){
  const schedules=scheduleList(await api('/schedules'));
  // Keep all remote binding types without reading or exporting secret values.
  const metadata={main_module:'worker.js',keep_bindings:[...new Set(shape.map(b=>b.type))],compatibility_date:before.compatibility_date||'2026-10-01',keep_assets:true};
+ if(restoredKV)metadata.bindings=[restoredKV];
  for(const field of ['compatibility_flags','limits','logpush','observability','tail_consumers','placement'])if(before[field]!=null)metadata[field]=before[field];
  const code=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
  const form=new FormData();form.append('metadata',new Blob([JSON.stringify(metadata)],{type:'application/json'}),'metadata.json');form.append('worker.js',new Blob([code],{type:'application/javascript+module'}),'worker.js');
@@ -86,6 +106,8 @@ async function main(){
  const after=await api('/settings');
  assert.deepEqual(bindingShape(after),shape,'Remote binding names, types or KV association changed');
  report('All existing bindings preserved. No secret values were printed.');
+ const kv=shape.find(b=>b.name==='SIGNAL_STATE'&&b.type==='kv_namespace');
+ report('SIGNAL_STATE namespace ID (non-secret): '+kv.namespace_id);
  if(!schedules.some(s=>s.cron===CRON)){
   await api('/schedules',{method:'PUT',body:JSON.stringify([...schedules.map(s=>({cron:s.cron})),{cron:CRON}])});
   report('Added five-minute cron while preserving existing schedules; propagation can take up to 15 minutes.');
