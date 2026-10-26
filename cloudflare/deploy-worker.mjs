@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 const WORKER='sol-bot-2026', RELEASE='kraken-ohlc-v1', CRON='*/5 * * * *';
 const SYMBOLS=['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'];
 let account=(process.env.CLOUDFLARE_ACCOUNT_ID||'').trim();
+// Account confirmed by the owner via the production dashboard URL; this is not a credential.
+const confirmedAccount='d0b774cf03b175507aa1584e7e8e0117';
 const token=(process.env.CLOUDFLARE_API_TOKEN||'').trim();
 const summary=[];
 function report(message){console.log(message);summary.push(message);}
@@ -23,6 +25,8 @@ function bindingShape(settings){return (settings.bindings||[]).map(b=>({name:b.n
 function scheduleList(value){return Array.isArray(value)?value:(value?.schedules||[]);}
 async function main(){
  if(!token)throw Error('Missing GitHub repository secret CLOUDFLARE_API_TOKEN');
+ report('Configured account ID matches owner-confirmed dashboard: '+(account===confirmedAccount)+'.');
+ account=confirmedAccount;
  // Verify credential status without exporting its value or token identifier.
  for(const [label,path] of [['user','/user/tokens/verify'],['account',account?'/accounts/'+account+'/tokens/verify':null]]){
   if(!path)continue;
