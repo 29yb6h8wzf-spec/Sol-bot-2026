@@ -107,6 +107,26 @@ def evaluate_signals():
             print('Could not evaluate issue:', exc)
 
 
+def scan_log(event, **details):
+    """Structured log for diagnosing silent scans in GitHub Actions."""
+    print('SCAN_EVENT ' + json.dumps({
+        'event': event, 'symbol': SYMBOL,
+        'at_utc': datetime.now(timezone.utc).isoformat(),
+        **details
+    }, ensure_ascii=False, sort_keys=True), flush=True)
+
+
+def missed_closed_candles(candles, max_age_minutes=60):
+    """Report recently closed candles for which a delayed run could miss signals.
+
+    Observation only: never replay a historical signal as a live trade.
+    """
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    recent = [c for c in candles if 0 <= (now_ms - (c['time'] + 300000)) / 60000 <= max_age_minutes]
+    return [datetime.fromtimestamp(c['time']/1000, tz=timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+            for c in recent[:-1]]
+
+
 def main():
     if '--test' in sys.argv:
         telegram('✅ Crypto Alert Bot מחובר! הודעת בדיקה בלבד. אין כאן איתות מסחר.')
@@ -134,18 +154,22 @@ def main():
         last = five[-1]
         age = (datetime.now(timezone.utc).timestamp() * 1000 - last['time']) / 60000
         if not 5 <= age <= 12:
-            print(f'Skipping stale 5m candle: age {age:.1f}')
+            scan_log('skip_stale_multi', candle_age_minutes=round(age, 2),
+                     recent_closed_candles=missed_closed_candles(five))
             return
         setups, metrics = candidates(five, four)
         candle_time = datetime.fromtimestamp(last['time']/1000, tz=timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
-        print(f'{SYMBOL}: {len(setups)} candidates; ADX={metrics["adx"]:.1f}, RSI={metrics["rsi"]:.1f}')
+        scan_log('multi_candidates', count=len(setups), candle_time=candle_time,
+                 adx=round(metrics['adx'], 2), rsi=round(metrics['rsi'], 2),
+                 volume_ratio=round(metrics['volume'], 2),
+                 strategies=[x['strategy'] + ':' + x['direction'] for x in setups])
         for s in setups[:2]:
             entry = last['close']
             distance = 1.5 * s['atr']
             stop = entry - distance if s['direction'] == 'LONG' else entry + distance
             stop_pct = 100 * distance / entry
             if not 0.25 <= stop_pct <= 1.5:
-                print(f'Skipped {s["strategy"]}: stop {stop_pct:.2f}% outside risk filter')
+                scan_log('skip_multi_risk', strategy=s['strategy'], stop_pct=round(stop_pct, 3))
                 continue
             target = entry + 2*distance if s['direction'] == 'LONG' else entry - 2*distance
             unique_title = f'[SIGNAL] {SYMBOL} {s["direction"]} {candle_time} {s["strategy"]}'
@@ -189,7 +213,8 @@ def main():
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     age_min = (now_ms - last['time']) / 60000
     if not 5 <= age_min <= 12 and '--diagnostic' not in sys.argv:
-        print(f'No signal: candle age {age_min:.1f} minutes (expected 5-12)')
+        scan_log('skip_stale_breakout', candle_age_minutes=round(age_min, 2),
+                 recent_closed_candles=missed_closed_candles(five))
         return
     direction = None
     if trend20 > trend50 and last['close'] > high and last['volume'] >= avg_vol * 1.5:
@@ -216,7 +241,8 @@ def main():
             reasons.append('ממוצעי EMA שווים')
         if volume_ratio < 1.5: reasons.append(f'נפח נמוך: פי {volume_ratio:.2f} (נדרש 1.5)')
     if direction is None and '--diagnostic' not in sys.argv:
-        print('No setup: ' + '; '.join(reasons))
+        scan_log('no_breakout_setup', candle_age_minutes=round(age_min, 2),
+                 volume_ratio=round(volume_ratio, 2), reasons=reasons)
         return
     entry = last['close']
     stop_pct = abs(entry - stop) / entry * 100 if direction else None
@@ -239,7 +265,7 @@ def main():
         print('Diagnostic sent: ' + '; '.join(reasons))
         return
     if not 0.25 <= stop_pct <= 1.5:
-        print(f'Stop distance {stop_pct:.2f}% outside filter')
+        scan_log('skip_breakout_risk', stop_pct=round(stop_pct, 3))
         return
     target = entry + (2 * abs(entry - stop) * (1 if direction == 'LONG' else -1))
     # $40 capital, max 2x, $1 planned risk, before fees/slippage
@@ -260,7 +286,7 @@ def main():
              f'הפסד מתוכנן לפני עמלות: ${planned_loss:.2f}\n'
              f'EMA20/50 4h: {trend20:.3f}/{trend50:.3f}\n'
              '⚠️ לא נבדקה נזילות, Funding או חדשות. אין ביצוע אוטומטי.')
-    print('Alert sent')
+    scan_log('breakout_alert_sent', direction=direction, candle_time=candle_time, score=score)
 
 if __name__ == '__main__':
     main()

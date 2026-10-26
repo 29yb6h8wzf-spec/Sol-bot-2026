@@ -31,4 +31,10 @@ jobs:
           assert isinstance(signals,list)
           assert stats['atr'] > 0
           print('Indicators OK',stats)
+          from bot import missed_closed_candles, scan_log
+          from datetime import datetime, timezone
+          now = int(datetime.now(timezone.utc).timestamp() * 1000)
+          closed = [{'time': now - i * 300000 - 600000} for i in range(4, 0, -1)]
+          assert len(missed_closed_candles(closed)) == 3
+          scan_log('validation_smoke_test', candidate_count=0)
           PY
