@@ -139,7 +139,7 @@ async function main(){
       if(row.event==='scan_failed'){
        // Only emit bounded, structured diagnostics. No request URLs, tokens or response bodies.
        const market=SYMBOLS.includes(row.symbol)?row.symbol:'unknown';
-       const reason=String(row.message||'unknown').replace(/[^a-zA-Z0-9 _.:/-]/g,'?').slice(0,160);
+       const reason=String(row.message||'unknown').replace(/[^a-zA-Z0-9 _.: -]/g,'?').slice(0,160);
        report('Market scan failed: '+market+'; '+reason);
        continue;
       }
