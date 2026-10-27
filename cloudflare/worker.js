@@ -99,6 +99,153 @@ add('RSI_BOLL','SHORT',strength<25&&cl.at(-2)>bands(cl.slice(0,-1))[1]&&last.clo
 add('MACD_VOLUME','LONG',macd.at(-2)<=sig.at(-2)&&macd.at(-1)>sig.at(-1)&&vr>=1.2&&momentum>50,65+Math.min(20,vr*10),'MACD bullish crossover; volume x'+vr.toFixed(2));
 add('MACD_VOLUME','SHORT',macd.at(-2)>=sig.at(-2)&&macd.at(-1)<sig.at(-1)&&vr>=1.2&&momentum<50,65+Math.min(20,vr*10),'MACD bearish crossover; volume x'+vr.toFixed(2));
 return out.slice(0,3).filter(s=>{let pct=100*Math.abs(last.close-s.stop)/last.close,ok=pct>=0.25&&pct<=1.5;if(!ok)checks.push(s.strategy+' '+s.direction+': נפסל — מרחק סטופ '+pct.toFixed(2)+'% מחוץ לטווח 0.25%–1.50%');return ok;}).map(s=>({...s,entry:last.close,stopPct:100*Math.abs(last.close-s.stop)/last.close,candle:last.time}));}
+
+export function tradePlan(s,bars,now=Date.now()){
+ const side=s.direction==='LONG'?1:s.direction==='SHORT'?-1:0;
+ const risk=side*(s.entry-s.stop),vol=atr(bars);
+ if(!side||!Number.isFinite(risk)||risk<=0||!Number.isFinite(vol)||vol<=0)return null;
+ const a=s.entry-side*Math.min(vol*.2,risk*.2);
+ const b=s.entry+side*Math.min(vol*.08,risk*.08);
+ const low=Math.min(a,b),high=Math.max(a,b),target=s.entry+side*2*risk;
+ const expires=s.candle+4*PERIOD;
+ const costs=.0015; // assumed combined round-trip fees and slippage, not live quotes
+ const worstRisk=Math.max(...[low,high].map(p=>side*(p-s.stop)+p*costs));
+ const worstProfit=Math.min(...[low,high].map(p=>side*(target-p)-p*costs));
+ const netR=worstProfit/worstRisk;
+ if(![low,high,target,worstRisk,netR].every(Number.isFinite)||low<=0||high<=0||target<=0||worstRisk<=0||netR<1.25||now>=expires)return null;
+ return {low,high,target,expires,netR,riskBudget:1.5,notional:1.5/worstRisk*high};
+}
+export function tradeMessage(symbol,s,p,news){
+ const money=x=>'{return Array.isArray(found)&&found.length>0;}
+export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
+ const last=five.at(-1), previous=five.slice(-13,-1), volume=last.volume/avg(previous.map(b=>b.volume));
+ const closes=four.map(b=>b.close), fast=ema(closes,20), slow=ema(closes,50);
+ const trend=fast>slow?'עולה 📈':fast<slow?'יורדת 📉':'ללא כיוון';
+ const clock=new Intl.DateTimeFormat('he-IL',{timeZone:'Asia/Jerusalem',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+ const time=value=>clock.format(new Date(value));
+ const strategies=[['BREAKOUT','פריצת מחיר'],['EMA_ADX','EMA + ADX'],['RSI_BOLL','RSI + רצועות'],['MACD_VOLUME','MACD + נפח']];
+ const levels=found.map(s=>{
+  const risk=Math.abs(s.entry-s.stop);
+  const target=s.entry+(s.direction==='LONG'?2:-2)*risk;
+  return '🔔 '+s.strategy+' '+s.direction+' | כניסה: $'+s.entry.toFixed(5)+' | 🛑 SL: $'+s.stop.toFixed(5)+' | 🎯 TP (2R): $'+target.toFixed(5);
+ });
+ const lines=strategies.map(([key,label])=>{
+  const matched=found.filter(s=>s.strategy===key);
+  return (matched.length?'✅ ':'▫️ ')+label+': '+(matched.length?'עבר ('+matched.map(s=>s.direction==='LONG'?'לונג':'שורט').join(', ')+')':'לא עבר');
+ });
+ return ['📊 '+symbol+' | נמצאו איתותים',
+  '🕒 '+time(now)+' | נר '+time(last.time)+'–'+time(last.time+PERIOD)+' (ישראל)',
+  '',
+  'מחיר סגירה: $'+last.close.toFixed(5),
+  'מגמת 4 שעות: '+trend,
+  'נפח: '+(Number.isFinite(volume)?Math.round(volume*100)+'% מהממוצע':'לא זמין'),
+  'RSI: '+rsi(five.map(b=>b.close)).toFixed(1)+' | ADX: '+adx(four).toFixed(1),
+  '',
+  'בדיקות כניסה — כולל סינון סטופ:',
+  ...lines,
+  ...(levels.length?['','📍 רמות כניסה, סטופ וטייק פרופיט (תיאורטיות):',...levels]:[]),
+  '',
+  found.length?'🔔 איתותים חדשים נשלחים בהודעה נפרדת.':'אין כניסה שעברה את תנאי הסורק.',
+  'ℹ️ דוח תנאים בלבד | Kraken Spot (USDT)',
+  '',formatNewsContext(news,symbol)
+ ].join('\n');
+}
+async function send(env,msg){let r=await fetch('https://api.telegram.org/bot'+env.TELEGRAM_BOT_TOKEN+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:env.TELEGRAM_CHAT_ID,text:msg,disable_web_page_preview:true}),signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('Telegram HTTP '+r.status);let j=await r.json();if(!j.ok)throw Error('Telegram API rejected message');}
+async function scan(symbol,env,news){let [five,four]=await Promise.all([candles(symbol,'5m',120),candles(symbol,'4h',100)]),last=five.at(-1),age=(Date.now()-(last.time+PERIOD))/60000;console.log(JSON.stringify({event:'scan',symbol,candle:new Date(last.time).toISOString(),closedAgeMinutes:+age.toFixed(2)}));if(age<0||age>7){console.warn('Skipping stale candle',symbol,age);return;}
+let checks=[],found=setups(five,four,checks);console.log(JSON.stringify({event:'candidates',symbol,count:found.length,strategies:found.map(s=>s.strategy)}));for(let s of found){let key='signal:'+symbol+':'+s.candle+':'+s.strategy+':'+s.direction;if(await env.SIGNAL_STATE.get(key)){console.log('Duplicate skipped',key);continue;}
+let risk=Math.abs(s.entry-s.stop),target=s.entry+(s.direction==='LONG'?2:-2)*risk;
+let msg='🔔 '+symbol+' '+s.direction+' | '+s.strategy+'\nדירוג תנאים: '+s.score+'/100 (לא הסתברות הצלחה)\nנר: '+new Date(s.candle).toISOString()+'\nכניסה תיאורטית: $'+s.entry.toFixed(5)+'\nסטופ: $'+s.stop.toFixed(5)+' ('+s.stopPct.toFixed(2)+'%)\nיעד 2R: $'+target.toFixed(5)+'\n'+s.reason+'\n⚠️ מחקר בלבד. אין ביצוע מסחר אוטומטי.';
+await send(env,msg+'\nמקור נתונים: Kraken Spot (USDT)\n\n'+formatNewsContext(news,symbol,2));await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});console.log('Alert sent',key);}
+const statusKey='status:'+symbol+':'+last.time;
+let statusDelivery=shouldSendScanStatus(found)?'already_sent':'suppressed_no_signal';
+if(shouldSendScanStatus(found)&&!await env.SIGNAL_STATE.get(statusKey)){
+ const status=formatScanStatus(symbol,five,four,found,Date.now(),news);
+ await send(env,status);
+ await env.SIGNAL_STATE.put(statusKey,'sent',{expirationTtl:86400});
+ statusDelivery='sent';
+ console.log(JSON.stringify({event:'status_sent',symbol,candle:new Date(last.time).toISOString(),release:RELEASE}));
+}
+await notifyFreshNews(symbol,env,news);
+return {symbol,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length};}
+export default {
+ async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}ctx.waitUntil((async()=>{const news=await loadNews(env);const results=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message:error instanceof Error?error.message:'Scan failed'}));}}console.log(JSON.stringify({event:'scan_complete',release:RELEASE,source:'kraken',cron:event.cron,scheduledTime:event.scheduledTime,ok:results.length===SYMBOLS.length,results}));if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
+ async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
+};
++x.toFixed(x>=1000?2:5);
+ return ['🚨 SIGNALPILOT | '+symbol,
+  (s.direction==='LONG'?'🟢 LONG':'🔴 SHORT')+' | '+s.strategy,
+  '━━━━━━━━━━━━━━',
+  '📍 טווח כניסה: '+money(p.low)+' – '+money(p.high),
+  '📌 מחיר אות: '+money(s.entry),
+  '🛑 סטופ: '+money(s.stop),
+  '🎯 יעד: '+money(p.target),
+  '⛔ אין להיכנס מחוץ לטווח',
+  '⏳ תוקף עד '+israelTime(p.expires)+' (ישראל)',
+  '❌ ביטול לפני כניסה: תום התוקף או נגיעה בסטופ',
+  '🛡️ סיכון תיאורטי: $1.50 | חשיפה: כ־{return Array.isArray(found)&&found.length>0;}
+export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
+ const last=five.at(-1), previous=five.slice(-13,-1), volume=last.volume/avg(previous.map(b=>b.volume));
+ const closes=four.map(b=>b.close), fast=ema(closes,20), slow=ema(closes,50);
+ const trend=fast>slow?'עולה 📈':fast<slow?'יורדת 📉':'ללא כיוון';
+ const clock=new Intl.DateTimeFormat('he-IL',{timeZone:'Asia/Jerusalem',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+ const time=value=>clock.format(new Date(value));
+ const strategies=[['BREAKOUT','פריצת מחיר'],['EMA_ADX','EMA + ADX'],['RSI_BOLL','RSI + רצועות'],['MACD_VOLUME','MACD + נפח']];
+ const levels=found.map(s=>{
+  const risk=Math.abs(s.entry-s.stop);
+  const target=s.entry+(s.direction==='LONG'?2:-2)*risk;
+  return '🔔 '+s.strategy+' '+s.direction+' | כניסה: $'+s.entry.toFixed(5)+' | 🛑 SL: $'+s.stop.toFixed(5)+' | 🎯 TP (2R): $'+target.toFixed(5);
+ });
+ const lines=strategies.map(([key,label])=>{
+  const matched=found.filter(s=>s.strategy===key);
+  return (matched.length?'✅ ':'▫️ ')+label+': '+(matched.length?'עבר ('+matched.map(s=>s.direction==='LONG'?'לונג':'שורט').join(', ')+')':'לא עבר');
+ });
+ return ['📊 '+symbol+' | נמצאו איתותים',
+  '🕒 '+time(now)+' | נר '+time(last.time)+'–'+time(last.time+PERIOD)+' (ישראל)',
+  '',
+  'מחיר סגירה: $'+last.close.toFixed(5),
+  'מגמת 4 שעות: '+trend,
+  'נפח: '+(Number.isFinite(volume)?Math.round(volume*100)+'% מהממוצע':'לא זמין'),
+  'RSI: '+rsi(five.map(b=>b.close)).toFixed(1)+' | ADX: '+adx(four).toFixed(1),
+  '',
+  'בדיקות כניסה — כולל סינון סטופ:',
+  ...lines,
+  ...(levels.length?['','📍 רמות כניסה, סטופ וטייק פרופיט (תיאורטיות):',...levels]:[]),
+  '',
+  found.length?'🔔 איתותים חדשים נשלחים בהודעה נפרדת.':'אין כניסה שעברה את תנאי הסורק.',
+  'ℹ️ דוח תנאים בלבד | Kraken Spot (USDT)',
+  '',formatNewsContext(news,symbol)
+ ].join('\n');
+}
+async function send(env,msg){let r=await fetch('https://api.telegram.org/bot'+env.TELEGRAM_BOT_TOKEN+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:env.TELEGRAM_CHAT_ID,text:msg,disable_web_page_preview:true}),signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('Telegram HTTP '+r.status);let j=await r.json();if(!j.ok)throw Error('Telegram API rejected message');}
+async function scan(symbol,env,news){let [five,four]=await Promise.all([candles(symbol,'5m',120),candles(symbol,'4h',100)]),last=five.at(-1),age=(Date.now()-(last.time+PERIOD))/60000;console.log(JSON.stringify({event:'scan',symbol,candle:new Date(last.time).toISOString(),closedAgeMinutes:+age.toFixed(2)}));if(age<0||age>7){console.warn('Skipping stale candle',symbol,age);return;}
+let checks=[],found=setups(five,four,checks);console.log(JSON.stringify({event:'candidates',symbol,count:found.length,strategies:found.map(s=>s.strategy)}));for(let s of found){let key='signal:'+symbol+':'+s.candle+':'+s.strategy+':'+s.direction;if(await env.SIGNAL_STATE.get(key)){console.log('Duplicate skipped',key);continue;}
+let risk=Math.abs(s.entry-s.stop),target=s.entry+(s.direction==='LONG'?2:-2)*risk;
+let msg='🔔 '+symbol+' '+s.direction+' | '+s.strategy+'\nדירוג תנאים: '+s.score+'/100 (לא הסתברות הצלחה)\nנר: '+new Date(s.candle).toISOString()+'\nכניסה תיאורטית: $'+s.entry.toFixed(5)+'\nסטופ: $'+s.stop.toFixed(5)+' ('+s.stopPct.toFixed(2)+'%)\nיעד 2R: $'+target.toFixed(5)+'\n'+s.reason+'\n⚠️ מחקר בלבד. אין ביצוע מסחר אוטומטי.';
+await send(env,msg+'\nמקור נתונים: Kraken Spot (USDT)\n\n'+formatNewsContext(news,symbol,2));await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});console.log('Alert sent',key);}
+const statusKey='status:'+symbol+':'+last.time;
+let statusDelivery=shouldSendScanStatus(found)?'already_sent':'suppressed_no_signal';
+if(shouldSendScanStatus(found)&&!await env.SIGNAL_STATE.get(statusKey)){
+ const status=formatScanStatus(symbol,five,four,found,Date.now(),news);
+ await send(env,status);
+ await env.SIGNAL_STATE.put(statusKey,'sent',{expirationTtl:86400});
+ statusDelivery='sent';
+ console.log(JSON.stringify({event:'status_sent',symbol,candle:new Date(last.time).toISOString(),release:RELEASE}));
+}
+await notifyFreshNews(symbol,env,news);
+return {symbol,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length};}
+export default {
+ async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}ctx.waitUntil((async()=>{const news=await loadNews(env);const results=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message:error instanceof Error?error.message:'Scan failed'}));}}console.log(JSON.stringify({event:'scan_complete',release:RELEASE,source:'kraken',cron:event.cron,scheduledTime:event.scheduledTime,ok:results.length===SYMBOLS.length,results}));if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
+ async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
+};
++p.notional.toFixed(2),
+  '📐 יחס נטו משוער בקצה הגרוע: '+p.netR.toFixed(2)+'R',
+  '💸 הנחת עלויות כוללת: 0.15% הלוך וחזור',
+  '📊 דירוג תנאים: '+s.score+'/100 (לא הסתברות)',
+  '🔎 '+s.reason,
+  '🏦 מקור: Kraken Spot USDT, לא Binance Futures',
+  '⚠️ מחקר בלבד; אין מסחר או מעקב ביטול אוטומטי',
+  '',formatNewsContext(news,symbol,1)].join('\n');
+}
 export function shouldSendScanStatus(found){return Array.isArray(found)&&found.length>0;}
 export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
  const last=five.at(-1), previous=five.slice(-13,-1), volume=last.volume/avg(previous.map(b=>b.volume));
