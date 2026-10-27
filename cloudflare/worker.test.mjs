@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const source=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
-const {candles,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const {candles,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const now=Date.now, originalFetch=globalThis.fetch;
 const fixed=1800000000000;
 let telegramMessages=[], telegramStatus=200, newsXML='<rss><channel></channel></rss>';
@@ -56,4 +56,20 @@ test('new headline notifications are coin-specific and deduplicated independentl
   await run();const alerts=telegramMessages.filter(m=>m.text.startsWith('📰 '));assert.equal(alerts.length,1);assert.ok(alerts[0].text.includes('BTCUSDT'));assert.ok(alerts[0].text.includes('https://www.coindesk.com/news/bitcoin-update'));assert.equal(telegramMessages.length,1);
   await run();assert.equal(telegramMessages.length,1);
  });}finally{console.log=oldLog;newsXML='<rss><channel></channel></rss>';}
+});
+
+test('trade plans have directional entry zones, expiry, risk sizing and clean messages',()=>{
+ const base=Date.UTC(2026,9,27,0,30);
+ const bars=Array.from({length:120},(_,i)=>({time:base-(120-i)*300000,high:100.4,low:99.6,close:100,volume:100}));
+ const long={strategy:'BREAKOUT',direction:'LONG',entry:100,stop:99,score:75,reason:'test',candle:base-300000};
+ const p=tradePlan(long,bars,base);
+ assert.ok(p);assert.ok(p.low<100&&p.high>100);assert.equal(p.target,102);
+ assert.equal(p.expires,base+900000);assert.ok(p.netR>=1.25);
+ const short={...long,direction:'SHORT',stop:101};
+ const q=tradePlan(short,bars,base);
+ assert.ok(q);assert.equal(q.target,98);
+ assert.equal(tradePlan(long,bars,base+900000),null);
+ assert.equal(tradePlan({...long,stop:101},bars,base),null);
+ const msg=tradeMessage('BTCUSDT',short,q,{status:'unavailable'});
+ for(const term of ['טווח כניסה','סטופ','יעד','תוקף','ביטול','Kraken Spot','סיכון'])assert.ok(msg.includes(term),term);
 });
