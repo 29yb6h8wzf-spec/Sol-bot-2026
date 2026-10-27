@@ -231,6 +231,23 @@ async function tgIds(env,key){
  return [...new Set(value)];
 }
 async function tgSave(env,key,ids){await env.SIGNAL_STATE.put(key,JSON.stringify([...new Set(ids)]));}
+function testSignalMessage(){
+ return [
+  '🧪 TEST SIGNAL — בדיקת שליחה בלבד',
+  '⚠️ דוגמה מלאכותית. לא אות שוק, לא המלצת מסחר, לא מחיר חי.',
+  '',
+  '📊 DEMOUSDT | LONG | BREAKOUT (דוגמה)',
+  '📍 כניסה מדומה: $100.00',
+  '🛑 Stop Loss מדומה: $99.00',
+  '🎯 Take Profit מדומה: $102.00',
+  '📈 יחס R:R לדוגמה: 1:2',
+  '🏦 מקור נתונים: DEMO — לא Binance, לא Bybit, לא Kraken',
+  '',
+  '✅ אם קיבלת את ההודעה, ערוץ השליחה למנהל פועל.',
+  '❗ הבדיקה אינה מאשרת שהסורק או מקור הנתונים פעילים.',
+  '🔒 ההודעה נשלחה למנהל בלבד. לא נפתחו עסקאות.'
+ ].join(String.fromCharCode(10));
+}
 function ownerMenu(){return [[{text:'👥 ניהול חברים',callback_data:'access:list'}]];}
 async function showAccessList(env){
  const approved=await tgIds(env,APPROVED),pending=await tgIds(env,PENDING);
@@ -288,7 +305,7 @@ export async function processTelegramAccess(env){
   const from=String(m?.from?.id||cb?.from?.id||id);
   const privateChat=chat?.type==='private'&&/^\d{1,18}$/.test(id);
   const [cmd,arg]=String(m?.text||'').trim().split(/\s+/,2);
-  if(owner){ownerMessages++;if(['/users','/approve','/remove','/start'].includes(cmd)||cb?.data?.startsWith('access:'))ownerCommands++;}
+  if(owner){ownerMessages++;if(['/users','/approve','/remove','/start','/testsignal'].includes(cmd)||cb?.data?.startsWith('access:'))ownerCommands++;}
   if(cb){
    if(!privateChat||!owner||from!==id){
     await tgAcknowledge(env,{callback_query_id:cb.id,text:'אין לך הרשאה לפעולה זו.',show_alert:true});
@@ -304,7 +321,8 @@ export async function processTelegramAccess(env){
    }
   }else if(privateChat){
    if(owner){
-    if(cmd==='/users'||cmd==='/start'||cmd==='/menu')await showAccessList(env);
+    if(cmd==='/testsignal'&&from===id)await tgDirect(env,id,testSignalMessage());
+    else if(cmd==='/users'||cmd==='/start'||cmd==='/menu')await showAccessList(env);
     else if(cmd==='/approve'||cmd==='/remove'){
      await tgDirect(env,id,await changeAccess(env,cmd.slice(1),arg));
      await showAccessList(env);
