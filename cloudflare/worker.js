@@ -81,6 +81,10 @@ export async function candles(symbol,interval,limit,venue='binance'){
  u.searchParams.set('limit',String(venue==='okx'?Math.min(limit+1,100):limit+1));
  let r;
  try{r=await fetch(u,{signal:AbortSignal.timeout(12000)});}catch{throw Error(label+' Futures network error');}
+ if(venue==='okx'&&r.status===429){
+  await new Promise(resolve=>setTimeout(resolve,1500));
+  try{r=await fetch(u,{signal:AbortSignal.timeout(12000)});}catch{throw Error(label+' Futures retry network error');}
+ }
  if(!r.ok)throw Error(label+' Futures HTTP '+r.status);
  let body;try{body=await r.json();}catch{throw Error(label+' Futures invalid JSON');}
  const rows=venue==='binance'?body:venue==='bybit'?(body?.retCode===0&&body?.result?.category==='linear'&&body?.result?.symbol===symbol?body.result.list:null):(body?.code==='0'?body.data:null);
