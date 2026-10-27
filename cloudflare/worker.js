@@ -1,9 +1,9 @@
 // SignalPilot Cloudflare Worker: scheduled market research, no trade execution.
 // Alerts are disabled until both Telegram secrets and SIGNAL_STATE KV are configured.
 const SYMBOLS = ['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'];
-const API = 'https://api.kraken.com/0/public/OHLC';
-const PAIRS = {SOLUSDT:'SOLUSDT',BTCUSDT:'XBTUSDT',ETHUSDT:'ETHUSDT',XRPUSDT:'XRPUSDT'};
-const RELEASE = 'kraken-stable-v9';
+const API = 'https://fapi.binance.com/fapi/v1/klines';
+// USDⓈ-M perpetual contract candles; never substitute Kraken/Spot on an outage.
+const RELEASE = 'futures-source-okx-cap-v8';
 const NEWS_FEEDS=[{name:'CoinDesk',url:'https://www.coindesk.com/arc/outboundfeeds/rss/',host:'coindesk.com'},{name:'Cointelegraph',url:'https://cointelegraph.com/rss',host:'cointelegraph.com'}];
 const NEWS_TERMS={SOLUSDT:/\b(solana|sol)\b/i,BTCUSDT:/\b(bitcoin|btc)\b/i,ETHUSDT:/\b(ethereum|ether|eth)\b/i,XRPUSDT:/\b(xrp|ripple|rlusd)\b/i};
 function xmlText(value){return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/<[^>]*>/g,'').replace(/&#(x[0-9a-f]+|\d+);/gi,(_,n)=>{const c=n[0].toLowerCase()==='x'?parseInt(n.slice(1),16):Number(n);return c>0&&c<=0x10ffff?String.fromCodePoint(c):'';}).replace(/&(amp|quot|apos|lt|gt);/g,(_,n)=>({amp:'&',quot:'"',apos:"'",lt:'<',gt:'>'}[n])).replace(/[\r\n\t]+/g,' ').trim();}
@@ -66,25 +66,40 @@ function atr(c,n=14) {return avg(c.slice(1).map((x,i)=>Math.max(x.high-x.low,Mat
 function adx(c,n=14) {if(c.length<2*n+2)return 0;let t=[],p=[],m=[];for(let i=1;i<c.length;i++){let x=c[i],y=c[i-1],up=x.high-y.high,down=y.low-x.low;p.push(up>down&&up>0?up:0);m.push(down>up&&down>0?down:0);t.push(Math.max(x.high-x.low,Math.abs(x.high-y.close),Math.abs(x.low-y.close)));}
 const smooth=a=>{let o=[a.slice(0,n).reduce((x,y)=>x+y,0)];for(let x of a.slice(n))o.push(o.at(-1)-o.at(-1)/n+x);return o;};
 let ts=smooth(t),ps=smooth(p),ms=smooth(m),dx=ts.map((v,i)=>{let a=v?100*ps[i]/v:0,b=v?100*ms[i]/v:0;return a+b?100*Math.abs(a-b)/(a+b):0;});let out=avg(dx.slice(0,n));for(let d of dx.slice(n))out=(out*(n-1)+d)/n;return out;}
-export async function candles(symbol,interval,limit){
- const minutes = {'5m':5,'4h':240}[interval], pair = PAIRS[symbol];
- if(!minutes||!pair)throw Error('Unsupported market or interval');
- const u=new URL(API);u.searchParams.set('pair',pair);u.searchParams.set('interval',minutes);
- let r;try{r=await fetch(u,{signal:AbortSignal.timeout(12000)});}catch{throw Error('Kraken request failed');}
- if(!r.ok)throw Error('Kraken HTTP '+r.status);
- const body=await r.json();
- if(!Array.isArray(body.error)||body.error.length)throw Error('Kraken API rejected market data request');
- const entries=Object.entries(body.result||{}).filter(([key])=>key!=='last');
- if(entries.length!==1||!Array.isArray(entries[0][1]))throw Error('Invalid Kraken OHLC response');
- // Kraken timestamps are seconds; its final row is always the open candle.
- const bars=entries[0][1].slice(0,-1).slice(-(limit-1)).map(x=>({time:Number(x[0])*1000,high:+x[2],low:+x[3],close:+x[4],volume:+x[6]}));
- if(bars.length<55)throw Error('Insufficient closed candles');
- const duration=minutes*60000, now=Date.now();
- for(let i=0;i<bars.length;i++){
-  const b=bars[i];
-  if(!Object.values(b).every(Number.isFinite)||b.low<=0||b.high<b.low||b.close<b.low||b.close>b.high||b.volume<0||b.time%duration!==0||b.time+duration>now||(i&&b.time-bars[i-1].time!==duration))throw Error('Invalid or non-contiguous Kraken candles');
+export async function candles(symbol,interval,limit,venue='binance'){
+ const minutes={'5m':5,'4h':240}[interval],duration=minutes*60000,label=venue==='binance'?'Binance':venue==='bybit'?'Bybit':'OKX';
+ if(!minutes||!SYMBOLS.includes(symbol)||!Number.isInteger(limit)||limit<55||limit>500||!['binance','bybit','okx'].includes(venue))throw Error('Unsupported futures market request');
+ const u=new URL(venue==='binance'?API:venue==='bybit'?'https://api.bybit.com/v5/market/kline':'https://www.okx.com/api/v5/market/candles');
+ if(venue==='okx'){
+  u.searchParams.set('instId',symbol.replace('USDT','-USDT-SWAP'));
+  u.searchParams.set('bar',interval==='4h'?'4Hutc':'5m');
+ }else{
+  u.searchParams.set('symbol',symbol);
+  u.searchParams.set('interval',venue==='binance'?interval:String(minutes));
+  if(venue==='bybit')u.searchParams.set('category','linear');
  }
- if(now-(bars.at(-1).time+duration)>duration+2*60000)throw Error('Stale Kraken '+interval+' candles');
+ u.searchParams.set('limit',String(venue==='okx'?Math.min(limit+1,100):limit+1));
+ let r;
+ try{r=await fetch(u,{signal:AbortSignal.timeout(12000)});}catch{throw Error(label+' Futures network error');}
+ if(venue==='okx'&&r.status===429){
+  await new Promise(resolve=>setTimeout(resolve,1500));
+  try{r=await fetch(u,{signal:AbortSignal.timeout(12000)});}catch{throw Error(label+' Futures retry network error');}
+ }
+ if(!r.ok)throw Error(label+' Futures HTTP '+r.status);
+ let body;try{body=await r.json();}catch{throw Error(label+' Futures invalid JSON');}
+ const rows=venue==='binance'?body:venue==='bybit'?(body?.retCode===0&&body?.result?.category==='linear'&&body?.result?.symbol===symbol?body.result.list:null):(body?.code==='0'?body.data:null);
+ if(!Array.isArray(rows)||rows.length<56||rows.length>limit+1)throw Error('Invalid '+label+' Futures klines response');
+ const now=Date.now();
+ const bars=rows.filter(x=>Array.isArray(x)&&x.length>=(venue==='okx'?9:venue==='binance'?7:6)&&Number(x[0])+duration<=now&&(venue!=='okx'||x[8]==='1'))
+  .map(x=>({time:Number(x[0]),high:Number(x[2]),low:Number(x[3]),close:Number(x[4]),volume:Number(x[venue==='okx'?6:5])}))
+  .sort((x,y)=>x.time-y.time).slice(-limit);
+ if(bars.length<55)throw Error('Insufficient closed '+label+' Futures candles');
+ for(let i=0;i<bars.length;i++){
+  const c=bars[i];
+  if(!Object.values(c).every(Number.isFinite)||c.low<=0||c.high<c.low||c.close<c.low||c.close>c.high||c.volume<0||
+   c.time%duration!==0||c.time+duration>now||(i&&c.time-bars[i-1].time!==duration))throw Error('Invalid or non-contiguous '+label+' Futures candles');
+ }
+ if(now-(bars.at(-1).time+duration)>duration+120000)throw Error('Stale '+label+' Futures '+interval+' candles');
  return bars;
 }
 function setups(five,four,checks=[]) {let last=five.at(-1),cl=five.map(x=>x.close),fc=four.map(x=>x.close),e20=ema(fc,20),e50=ema(fc,50),prev=five.slice(-13,-1),high=Math.max(...prev.map(x=>x.high)),low=Math.min(...prev.map(x=>x.low)),vr=last.volume/avg(prev.map(x=>x.volume)),out=[];
@@ -126,7 +141,7 @@ export function tradePlan(s,bars,now=Date.now(),config=RISK_DEFAULTS){
  const notional=quantity*Math.max(low,high);
  const margin=notional/leverage;
  return {low,high,target,expires,netR,riskBudget,quantity,notional,margin,leverage,
-  worstLoss,worstProfit,feeRate,slippageRate,source:s.source||'Kraken Spot USDT (research only)'};
+  worstLoss,worstProfit,feeRate,slippageRate,source:s.source||'Binance USDⓈ-M Perpetual (contract klines)'};
 }
 export function tradeMessage(symbol,s,p,news){
  const money=x=>'$'+x.toFixed(x>=1000?2:5);
@@ -152,7 +167,7 @@ export function tradeMessage(symbol,s,p,news){
   '• עלויות משוערות לכל צד: עמלה '+(p.feeRate*100).toFixed(3)+'% + החלקה '+(p.slippageRate*100).toFixed(3)+'%',
   '• לא כולל funding, גאפ, שינוי מרווח או ליקווידציה.',
   '• סטופ ב־Binance יכול להיות מופעל לפי Mark Price או Contract Price; יש לאמת הגדרת Trigger.',
-  ...(!p.source.startsWith('Binance')?['🚫 רמות Kraken Spot הן למחקר בלבד — אין להשתמש בהן כפקודות Binance Futures. יש לבדוק מחירים מחדש בבורסה לפני עסקה.']:[]),
+  ...(!p.source.startsWith('Binance')?['🚫 נתוני בורסה חלופית הם למחקר בלבד — אין להשתמש ברמות האלה כפקודות Binance.']:[]),
   '',
   '📊 דירוג תנאים: '+s.score+'/100 (לא הסתברות הצלחה)',
   '🔎 '+s.reason,
@@ -324,8 +339,25 @@ async function sendResearch(env,msg){
 }
 async function send(env,msg){let r=await fetch('https://api.telegram.org/bot'+env.TELEGRAM_BOT_TOKEN+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:env.TELEGRAM_CHAT_ID,text:msg,disable_web_page_preview:true}),signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('Telegram HTTP '+r.status);let j=await r.json();if(!j.ok)throw Error('Telegram API rejected message');}
 async function scan(symbol,env,news){
- const [five,four]=await Promise.all([candles(symbol,'5m',120),candles(symbol,'4h',100)]);
- const source='Kraken Spot USDT (research only, NOT Binance Futures execution prices)',sourceId='kraken_spot';
+ let five,four,source,sourceId;
+ try{
+  [five,four]=await Promise.all([candles(symbol,'5m',120,'binance'),candles(symbol,'4h',100,'binance')]);
+  source='Binance USDⓈ-M Perpetual (contract klines)';sourceId='binance_usdm';
+ }catch(error){
+  console.warn(JSON.stringify({event:'primary_data_unavailable',symbol,reason:error instanceof Error?error.message:'Binance unavailable'}));
+  // Never mix two exchanges or mix spot/futures candles in a signal.
+  try{
+   [five,four]=await Promise.all([candles(symbol,'5m',120,'bybit'),candles(symbol,'4h',100,'bybit')]);
+   source='Bybit USDT Linear Perpetual (research proxy, NOT Binance execution prices)';sourceId='bybit_linear';
+  }catch(bybitError){
+   console.warn(JSON.stringify({event:'secondary_data_unavailable',symbol,reason:bybitError instanceof Error?bybitError.message:'Bybit unavailable'}));
+   // OKX USDT-margined SWAP candles are a third, clearly labelled research proxy.
+   // Never combine venue candles within a single signal.
+   [five,four]=await Promise.all([candles(symbol,'5m',120,'okx'),candles(symbol,'4h',100,'okx')]);
+   source='OKX USDT Perpetual SWAP (research proxy, NOT Binance execution prices)';sourceId='okx_swap';
+  }
+ 
+ }
  const last=five.at(-1),age=(Date.now()-(last.time+PERIOD))/60000;
  console.log(JSON.stringify({event:'scan',symbol,source:sourceId,candle:new Date(last.time).toISOString(),closedAgeMinutes:+age.toFixed(2)}));
  if(age<0||age>7){console.warn('Skipping stale candle',symbol,age);return;}
@@ -400,7 +432,7 @@ export async function monitorBinanceAccount(env){
 }
 
 export default {
- async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}if(env.TELEGRAM_ACCESS_ENABLED!=='0')ctx.waitUntil(processTelegramAccess(env).catch(async error=>{const reason=String(error).replace(/bot[0-9]+:[A-Za-z0-9_-]+/g,'[REDACTED]').slice(0,180);console.error('Telegram access polling failed',reason);try{await env.SIGNAL_STATE.put('tg:access-health',JSON.stringify({status:'error',checkedAt:new Date().toISOString(),error:reason}));}catch{}}));ctx.waitUntil((async()=>{const news=await loadNews(env);const results=[],failures=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){const message=error instanceof Error?error.message:'Scan failed';failures.push({symbol,reason:message.slice(0,180)});console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message}));}}const receipt={event:'scan_complete',release:RELEASE,source:'kraken_spot',cron:event.cron,scheduledTime:event.scheduledTime,recordedAt:Date.now(),ok:results.length===SYMBOLS.length,results,failures};
+ async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}if(env.TELEGRAM_ACCESS_ENABLED!=='0')ctx.waitUntil(processTelegramAccess(env).catch(async error=>{const reason=String(error).replace(/bot[0-9]+:[A-Za-z0-9_-]+/g,'[REDACTED]').slice(0,180);console.error('Telegram access polling failed',reason);try{await env.SIGNAL_STATE.put('tg:access-health',JSON.stringify({status:'error',checkedAt:new Date().toISOString(),error:reason}));}catch{}}));ctx.waitUntil((async()=>{const news=await loadNews(env);const results=[],failures=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){const message=error instanceof Error?error.message:'Scan failed';failures.push({symbol,reason:message.slice(0,180)});console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message}));}}const receipt={event:'scan_complete',release:RELEASE,source:'futures_perpetual',cron:event.cron,scheduledTime:event.scheduledTime,recordedAt:Date.now(),ok:results.length===SYMBOLS.length,results,failures};
 console.log(JSON.stringify(receipt));
 await env.SIGNAL_STATE.put('health:cron:'+event.scheduledTime,JSON.stringify(receipt),{expirationTtl:86400});await monitorBinanceAccount(env);if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
  async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
