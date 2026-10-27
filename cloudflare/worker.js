@@ -3,7 +3,7 @@
 const SYMBOLS = ['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'];
 const API = 'https://fapi.binance.com/fapi/v1/klines';
 // USDⓈ-M perpetual contract candles; never substitute Kraken/Spot on an outage.
-const RELEASE = 'binance-usdm-perpetual-v6';
+const RELEASE = 'futures-source-health-v7';
 const NEWS_FEEDS=[{name:'CoinDesk',url:'https://www.coindesk.com/arc/outboundfeeds/rss/',host:'coindesk.com'},{name:'Cointelegraph',url:'https://cointelegraph.com/rss',host:'cointelegraph.com'}];
 const NEWS_TERMS={SOLUSDT:/\b(solana|sol)\b/i,BTCUSDT:/\b(bitcoin|btc)\b/i,ETHUSDT:/\b(ethereum|ether|eth)\b/i,XRPUSDT:/\b(xrp|ripple|rlusd)\b/i};
 function xmlText(value){return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/<[^>]*>/g,'').replace(/&#(x[0-9a-f]+|\d+);/gi,(_,n)=>{const c=n[0].toLowerCase()==='x'?parseInt(n.slice(1),16):Number(n);return c>0&&c<=0x10ffff?String.fromCodePoint(c):'';}).replace(/&(amp|quot|apos|lt|gt);/g,(_,n)=>({amp:'&',quot:'"',apos:"'",lt:'<',gt:'>'}[n])).replace(/[\r\n\t]+/g,' ').trim();}
@@ -66,26 +66,31 @@ function atr(c,n=14) {return avg(c.slice(1).map((x,i)=>Math.max(x.high-x.low,Mat
 function adx(c,n=14) {if(c.length<2*n+2)return 0;let t=[],p=[],m=[];for(let i=1;i<c.length;i++){let x=c[i],y=c[i-1],up=x.high-y.high,down=y.low-x.low;p.push(up>down&&up>0?up:0);m.push(down>up&&down>0?down:0);t.push(Math.max(x.high-x.low,Math.abs(x.high-y.close),Math.abs(x.low-y.close)));}
 const smooth=a=>{let o=[a.slice(0,n).reduce((x,y)=>x+y,0)];for(let x of a.slice(n))o.push(o.at(-1)-o.at(-1)/n+x);return o;};
 let ts=smooth(t),ps=smooth(p),ms=smooth(m),dx=ts.map((v,i)=>{let a=v?100*ps[i]/v:0,b=v?100*ms[i]/v:0;return a+b?100*Math.abs(a-b)/(a+b):0;});let out=avg(dx.slice(0,n));for(let d of dx.slice(n))out=(out*(n-1)+d)/n;return out;}
-export async function candles(symbol,interval,limit){
- const minutes={'5m':5,'4h':240}[interval];
- if(!minutes||!SYMBOLS.includes(symbol)||!Number.isInteger(limit)||limit<55||limit>500)throw Error('Unsupported Binance Futures market, interval or limit');
- const u=new URL(API);
- u.searchParams.set('symbol',symbol);u.searchParams.set('interval',interval);u.searchParams.set('limit',String(limit+1));
- let r;try{r=await fetch(u,{signal:AbortSignal.timeout(12000)});}catch{throw Error('Binance Futures market data request failed');}
- if(!r.ok)throw Error('Binance Futures HTTP '+r.status+'; scan disabled, no spot fallback');
- const body=await r.json();
- if(!Array.isArray(body)||body.length<56||body.length>limit+1)throw Error('Invalid Binance Futures klines response');
- const duration=minutes*60000,now=Date.now();
- // Binance returns the currently open candle: filter by its close timestamp, not array position.
- const bars=body.filter(x=>Array.isArray(x)&&x.length>=7&&Number(x[0])+duration<=now)
-  .slice(-limit).map(x=>({time:Number(x[0]),high:Number(x[2]),low:Number(x[3]),close:Number(x[4]),volume:Number(x[5])}));
- if(bars.length<55)throw Error('Insufficient closed Binance Futures candles');
+export async function candles(symbol,interval,limit,venue='binance'){
+ const minutes={'5m':5,'4h':240}[interval],duration=minutes*60000,label=venue==='binance'?'Binance':'Bybit';
+ if(!minutes||!SYMBOLS.includes(symbol)||!Number.isInteger(limit)||limit<55||limit>500||!['binance','bybit'].includes(venue))throw Error('Unsupported futures market request');
+ const u=new URL(venue==='binance'?API:'https://api.bybit.com/v5/market/kline');
+ u.searchParams.set('symbol',symbol);
+ u.searchParams.set('interval',venue==='binance'?interval:String(minutes));
+ u.searchParams.set('limit',String(limit+1));
+ if(venue==='bybit')u.searchParams.set('category','linear');
+ let r;
+ try{r=await fetch(u,{signal:AbortSignal.timeout(12000)});}catch{throw Error(label+' Futures network error');}
+ if(!r.ok)throw Error(label+' Futures HTTP '+r.status);
+ let body;try{body=await r.json();}catch{throw Error(label+' Futures invalid JSON');}
+ const rows=venue==='binance'?body:body?.retCode===0&&body?.result?.category==='linear'&&body?.result?.symbol===symbol?body.result.list:null;
+ if(!Array.isArray(rows)||rows.length<56||rows.length>limit+1)throw Error('Invalid '+label+' Futures klines response');
+ const now=Date.now();
+ const bars=rows.filter(x=>Array.isArray(x)&&x.length>=(venue==='binance'?7:6)&&Number(x[0])+duration<=now)
+  .map(x=>({time:Number(x[0]),high:Number(x[2]),low:Number(x[3]),close:Number(x[4]),volume:Number(x[5])}))
+  .sort((x,y)=>x.time-y.time).slice(-limit);
+ if(bars.length<55)throw Error('Insufficient closed '+label+' Futures candles');
  for(let i=0;i<bars.length;i++){
   const c=bars[i];
   if(!Object.values(c).every(Number.isFinite)||c.low<=0||c.high<c.low||c.close<c.low||c.close>c.high||c.volume<0||
-   c.time%duration!==0||c.time+duration>now||(i&&c.time-bars[i-1].time!==duration))throw Error('Invalid or non-contiguous Binance Futures candles');
+   c.time%duration!==0||c.time+duration>now||(i&&c.time-bars[i-1].time!==duration))throw Error('Invalid or non-contiguous '+label+' Futures candles');
  }
- if(now-(bars.at(-1).time+duration)>duration+2*60000)throw Error('Stale Binance Futures '+interval+' candles');
+ if(now-(bars.at(-1).time+duration)>duration+120000)throw Error('Stale '+label+' Futures '+interval+' candles');
  return bars;
 }
 function setups(five,four,checks=[]) {let last=five.at(-1),cl=five.map(x=>x.close),fc=four.map(x=>x.close),e20=ema(fc,20),e50=ema(fc,50),prev=five.slice(-13,-1),high=Math.max(...prev.map(x=>x.high)),low=Math.min(...prev.map(x=>x.low)),vr=last.volume/avg(prev.map(x=>x.volume)),out=[];
@@ -127,7 +132,7 @@ export function tradePlan(s,bars,now=Date.now(),config=RISK_DEFAULTS){
  const notional=quantity*Math.max(low,high);
  const margin=notional/leverage;
  return {low,high,target,expires,netR,riskBudget,quantity,notional,margin,leverage,
-  worstLoss,worstProfit,feeRate,slippageRate,source:'Binance USDⓈ-M Perpetual (contract klines)'};
+  worstLoss,worstProfit,feeRate,slippageRate,source:s.source||'Binance USDⓈ-M Perpetual (contract klines)'};
 }
 export function tradeMessage(symbol,s,p,news){
  const money=x=>'$'+x.toFixed(x>=1000?2:5);
@@ -153,6 +158,7 @@ export function tradeMessage(symbol,s,p,news){
   '• עלויות משוערות לכל צד: עמלה '+(p.feeRate*100).toFixed(3)+'% + החלקה '+(p.slippageRate*100).toFixed(3)+'%',
   '• לא כולל funding, גאפ, שינוי מרווח או ליקווידציה.',
   '• סטופ ב־Binance יכול להיות מופעל לפי Mark Price או Contract Price; יש לאמת הגדרת Trigger.',
+  ...(p.source.startsWith('Bybit')?['🚫 נתוני Bybit הם מדד מחקרי בלבד — אין להשתמש ברמות האלה כפקודות Binance.']:[]),
   '',
   '📊 דירוג תנאים: '+s.score+'/100 (לא הסתברות הצלחה)',
   '🔎 '+s.reason,
@@ -197,16 +203,29 @@ export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
  ].join('\n');
 }
 async function send(env,msg){let r=await fetch('https://api.telegram.org/bot'+env.TELEGRAM_BOT_TOKEN+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:env.TELEGRAM_CHAT_ID,text:msg,disable_web_page_preview:true}),signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('Telegram HTTP '+r.status);let j=await r.json();if(!j.ok)throw Error('Telegram API rejected message');}
-async function scan(symbol,env,news){let [five,four]=await Promise.all([candles(symbol,'5m',120),candles(symbol,'4h',100)]),last=five.at(-1),age=(Date.now()-(last.time+PERIOD))/60000;console.log(JSON.stringify({event:'scan',symbol,candle:new Date(last.time).toISOString(),closedAgeMinutes:+age.toFixed(2)}));if(age<0||age>7){console.warn('Skipping stale candle',symbol,age);return;}
+async function scan(symbol,env,news){
+ let five,four,source,sourceId;
+ try{
+  [five,four]=await Promise.all([candles(symbol,'5m',120,'binance'),candles(symbol,'4h',100,'binance')]);
+  source='Binance USDⓈ-M Perpetual (contract klines)';sourceId='binance_usdm';
+ }catch(error){
+  console.warn(JSON.stringify({event:'primary_data_unavailable',symbol,reason:error instanceof Error?error.message:'Binance unavailable'}));
+  // Never mix two exchanges or mix spot/futures candles in a signal.
+  [five,four]=await Promise.all([candles(symbol,'5m',120,'bybit'),candles(symbol,'4h',100,'bybit')]);
+  source='Bybit USDT Linear Perpetual (research proxy, NOT Binance execution prices)';sourceId='bybit_linear';
+ }
+ const last=five.at(-1),age=(Date.now()-(last.time+PERIOD))/60000;
+ console.log(JSON.stringify({event:'scan',symbol,source:sourceId,candle:new Date(last.time).toISOString(),closedAgeMinutes:+age.toFixed(2)}));
+ if(age<0||age>7){console.warn('Skipping stale candle',symbol,age);return;}
 let checks=[],raw=setups(five,four,checks),found=[];
 for(const setup of raw){
- const plan=tradePlan(setup,five);
+ const plan=tradePlan({...setup,source},five);
  if(plan)found.push({setup,plan});
  else console.log(JSON.stringify({event:'plan_filtered',symbol,strategy:setup.strategy}));
 }
 console.log(JSON.stringify({event:'candidates',symbol,count:found.length,rawCandidates:raw.length,strategies:found.map(x=>x.setup.strategy)}));
 for(const {setup,plan} of found){
- const key='signal:'+symbol+':'+setup.candle+':'+setup.strategy+':'+setup.direction;
+ const key='signal:'+sourceId+':'+symbol+':'+setup.candle+':'+setup.strategy+':'+setup.direction;
  if(await env.SIGNAL_STATE.get(key)){console.log('Duplicate skipped',key);continue;}
  await send(env,tradeMessage(symbol,setup,plan,news));
  await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});
@@ -214,8 +233,8 @@ for(const {setup,plan} of found){
 }
 const statusDelivery=found.length?'signal_only':'suppressed_no_signal';
 await notifyFreshNews(symbol,env,news);
-return {symbol,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length};}
+return {symbol,source:sourceId,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length};}
 export default {
- async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}ctx.waitUntil((async()=>{const news=await loadNews(env);const results=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message:error instanceof Error?error.message:'Scan failed'}));}}console.log(JSON.stringify({event:'scan_complete',release:RELEASE,source:'binance_usdm',cron:event.cron,scheduledTime:event.scheduledTime,ok:results.length===SYMBOLS.length,results}));if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
+ async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}ctx.waitUntil((async()=>{const news=await loadNews(env);const results=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message:error instanceof Error?error.message:'Scan failed'}));}}console.log(JSON.stringify({event:'scan_complete',release:RELEASE,source:'futures_perpetual',cron:event.cron,scheduledTime:event.scheduledTime,ok:results.length===SYMBOLS.length,results}));if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
  async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
 };
