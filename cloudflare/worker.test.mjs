@@ -260,7 +260,7 @@ test('owner /status reflects actual KV receipt, denies subscriber access and nev
   assert.match(sent.at(-1).text,/עדיין לא אומתו/);
   assert.doesNotMatch(sent.at(-1).text,/secret/);
   kv.set('health:latest',JSON.stringify({ok:false,recordedAt:nowTime-1800000,source:'kraken_spot',results:[],failures:[{symbol:'SOLUSDT',reason:'secret'}]}));
-  queue.push(msg(4,100,'/status'));await processTelegramAccess(env);
+  queue.push(msg(8,100,'/status'));await processTelegramAccess(env);
   assert.match(sent.at(-1).text,/סריקה חלקית, כושלת או לא עדכנית/);
   assert.doesNotMatch(sent.at(-1).text,/secret/);
  }finally{globalThis.fetch=saved;Date.now=nowBefore;}
