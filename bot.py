@@ -17,6 +17,77 @@ def fetch(interval, limit):
         raw = json.load(r)
     return [{'time': int(x[0]), 'high': float(x[2]), 'low': float(x[3]), 'close': float(x[4]), 'volume': float(x[5])} for x in raw[:-1]]
 
+
+# Research-only futures fallback. Never mix exchanges within one strategy evaluation.
+FUTURES_PROXIES = {
+    'bybit': 'Bybit USDT Linear Perpetual (research proxy, NOT Binance execution prices)',
+    'okx': 'OKX USDT SWAP (research proxy, NOT Binance execution prices)',
+}
+
+def fetch_proxy(interval, limit, venue):
+    if interval not in ('5m', '4h') or venue not in FUTURES_PROXIES:
+        raise ValueError('Unsupported perpetual market')
+    duration = 300000 if interval == '5m' else 14400000
+    cap = min(limit + 1, 100) if venue == 'okx' else limit + 1
+    if venue == 'bybit':
+        base = 'https://api.bybit.com/v5/market/kline'
+        params = {'category': 'linear', 'symbol': SYMBOL, 'interval': '5' if interval == '5m' else '240', 'limit': cap}
+    else:
+        base = 'https://www.okx.com/api/v5/market/candles'
+        params = {'instId': SYMBOL.replace('USDT', '-USDT-SWAP'), 'bar': '5m' if interval == '5m' else '4Hutc', 'limit': cap}
+    with urllib.request.urlopen(base + '?' + urllib.parse.urlencode(params), timeout=15) as response:
+        payload = json.load(response)
+    if venue == 'bybit':
+        if payload.get('retCode') != 0 or payload.get('result', {}).get('symbol') != SYMBOL:
+            raise ValueError('Invalid Bybit perpetual response')
+        rows = payload['result'].get('list')
+    else:
+        if payload.get('code') != '0':
+            raise ValueError('Invalid OKX perpetual response')
+        rows = payload.get('data')
+    if not isinstance(rows, list) or len(rows) < 3 or len(rows) > cap:
+        raise ValueError('Invalid perpetual candle count')
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    result = []
+    for x in rows:
+        if not isinstance(x, list) or len(x) < (9 if venue == 'okx' else 6):
+            raise ValueError('Invalid perpetual candle')
+        timestamp = int(x[0])
+        if timestamp + duration > now_ms or (venue == 'okx' and x[8] != '1'):
+            continue
+        bar = {'time': timestamp, 'high': float(x[2]), 'low': float(x[3]),
+               'close': float(x[4]), 'volume': float(x[6] if venue == 'okx' else x[5])}
+        if not (bar['low'] > 0 and bar['low'] <= bar['close'] <= bar['high'] and
+                bar['volume'] >= 0 and timestamp % duration == 0):
+            raise ValueError('Invalid perpetual OHLCV')
+        result.append(bar)
+    result.sort(key=lambda x: x['time'])
+    result = result[-limit:]
+    if len(result) < min(40, limit - 1):
+        raise ValueError('Insufficient closed perpetual candles')
+    if any(result[i]['time'] - result[i-1]['time'] != duration for i in range(1, len(result))):
+        raise ValueError('Noncontiguous perpetual candles')
+    if now_ms - result[-1]['time'] - duration > duration + 120000:
+        raise ValueError('Stale perpetual candles')
+    return result
+
+def fetch_pair(five_limit):
+    global DATA_SOURCE
+    errors = []
+    for venue in ('binance', 'bybit', 'okx'):
+        try:
+            if venue == 'binance':
+                four, five = fetch('4h', 100), fetch('5m', five_limit)
+            else:
+                four, five = fetch_proxy('4h', 100, venue), fetch_proxy('5m', five_limit, venue)
+            DATA_SOURCE = ('Binance USDⓈ-M Perpetual (contract klines)' if venue == 'binance'
+                           else FUTURES_PROXIES[venue])
+            print('FUTURES_SOURCE ' + venue, flush=True)
+            return four, five
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            errors.append(venue + ': ' + type(exc).__name__)
+    raise RuntimeError('All perpetual sources unavailable; no signal generated: ' + ', '.join(errors))
+
 def ema(values, length):
     alpha = 2 / (length + 1)
     result = values[0]
@@ -160,8 +231,7 @@ def main():
         return
     if '--multi' in sys.argv:
         from strategies import candidates
-        four = fetch('4h', 100)
-        five = fetch('5m', 120)
+        four, five = fetch_pair(120)
         log_candle_coverage(five)
         last = five[-1]
         age = (datetime.now(timezone.utc).timestamp() * 1000 - last['time']) / 60000
@@ -214,8 +284,7 @@ def main():
             evaluate_signals()
         except Exception as exc:
             print('Paper evaluation failed; continuing diagnostics:', exc)
-    four = fetch('4h', 100)
-    five = fetch('5m', 50)
+    four, five = fetch_pair(50)
     log_candle_coverage(five)
     trend20 = ema([x['close'] for x in four], 20)
     trend50 = ema([x['close'] for x in four], 50)
