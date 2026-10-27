@@ -248,6 +248,26 @@ function testSignalMessage(){
   '🔒 ההודעה נשלחה למנהל בלבד. לא נפתחו עסקאות.'
  ].join(String.fromCharCode(10));
 }
+async function showLiveScannerStatus(env){
+ const raw=await env.SIGNAL_STATE.get('health:latest');
+ if(!raw)return '📡 SignalPilot | מצב הסורק\\n⚠️ עדיין אין קבלת סריקה חיה ב־KV.\\n/testsignal בודק טלגרם בלבד.';
+ let receipt;
+ try{receipt=JSON.parse(raw);}catch{return '📡 SignalPilot | מצב הסורק\\n⚠️ קבלת הסריקה האחרונה אינה תקינה.';}
+ const age=Date.now()-Number(receipt.recordedAt);
+ const fresh=Number.isFinite(age)&&age>=0&&age<=12*60000;
+ const expected=['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'];
+ const results=Array.isArray(receipt.results)?receipt.results:[];
+ const passing=receipt.ok===true&&results.length===4&&expected.every(sym=>results.some(r=>r.symbol===sym&&r.source==='kraken_spot'));
+ const lines=['📡 SignalPilot | מצב הסורק החי',
+  '🕒 בדיקה אחרונה: '+(Number.isFinite(Number(receipt.recordedAt))?israelTime(Number(receipt.recordedAt)):'לא ידוע')+' (ישראל)',
+  '📊 מקור: '+(receipt.source==='kraken_spot'?'Kraken Spot — מחקר בלבד':'לא אומת'),
+  '🔍 מטבעות: '+results.map(r=>r.symbol).filter(sym=>expected.includes(sym)).join(', '),
+  fresh&&passing?'✅ ארבעת המטבעות נסרקו בהצלחה לאחרונה':'⚠️ סריקה חלקית, כושלת או לא עדכנית',
+  '📬 איתותים שזוהו: '+results.reduce((n,r)=>n+(Number.isInteger(r.candidates)&&r.candidates>0?r.candidates:0),0),
+  '❗ בדיקת מצב בודדת אינה מאשרת שני מחזורים רצופים.',
+  '🔒 לא מוצגים נתוני חשבון Binance.'];
+ return lines.join(String.fromCharCode(10));
+}
 function ownerMenu(){return [[{text:'👥 ניהול חברים',callback_data:'access:list'}]];}
 async function showAccessList(env){
  const approved=await tgIds(env,APPROVED),pending=await tgIds(env,PENDING);
@@ -305,7 +325,7 @@ export async function processTelegramAccess(env){
   const from=String(m?.from?.id||cb?.from?.id||id);
   const privateChat=chat?.type==='private'&&/^\d{1,18}$/.test(id);
   const [cmd,arg]=String(m?.text||'').trim().split(/\s+/,2);
-  if(owner){ownerMessages++;if(['/users','/approve','/remove','/start','/testsignal'].includes(cmd)||cb?.data?.startsWith('access:'))ownerCommands++;}
+  if(owner){ownerMessages++;if(['/users','/approve','/remove','/start','/testsignal','/status'].includes(cmd)||cb?.data?.startsWith('access:'))ownerCommands++;}
   if(cb){
    if(!privateChat||!owner||from!==id){
     await tgAcknowledge(env,{callback_query_id:cb.id,text:'אין לך הרשאה לפעולה זו.',show_alert:true});
@@ -322,6 +342,7 @@ export async function processTelegramAccess(env){
   }else if(privateChat){
    if(owner){
     if(cmd==='/testsignal'&&from===id)await tgDirect(env,id,testSignalMessage());
+    else if(cmd==='/status'&&from===id)await tgDirect(env,id,await showLiveScannerStatus(env));
     else if(cmd==='/users'||cmd==='/start'||cmd==='/menu')await showAccessList(env);
     else if(cmd==='/approve'||cmd==='/remove'){
      await tgDirect(env,id,await changeAccess(env,cmd.slice(1),arg));
@@ -437,6 +458,6 @@ export async function monitorBinanceAccount(env){
 export default {
  async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}if(env.TELEGRAM_ACCESS_ENABLED!=='0')ctx.waitUntil(processTelegramAccess(env).catch(async error=>{const reason=String(error).replace(/bot[0-9]+:[A-Za-z0-9_-]+/g,'[REDACTED]').slice(0,180);console.error('Telegram access polling failed',reason);try{await env.SIGNAL_STATE.put('tg:access-health',JSON.stringify({status:'error',checkedAt:new Date().toISOString(),error:reason}));}catch{}}));ctx.waitUntil((async()=>{const news=await loadNews(env);try{await sendHourlyNewsDigest(env,news);}catch(error){console.warn('Hourly news delivery failed');}const results=[],failures=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){const message=error instanceof Error?error.message:'Scan failed';failures.push({symbol,reason:message.slice(0,180)});console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message}));}}const receipt={event:'scan_complete',release:RELEASE,source:'kraken_spot',cron:event.cron,scheduledTime:event.scheduledTime,recordedAt:Date.now(),ok:results.length===SYMBOLS.length,results,failures};
 console.log(JSON.stringify(receipt));
-await env.SIGNAL_STATE.put('health:cron:'+event.scheduledTime,JSON.stringify(receipt),{expirationTtl:86400});await monitorBinanceAccount(env);if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
+await env.SIGNAL_STATE.put('health:cron:'+event.scheduledTime,JSON.stringify(receipt),{expirationTtl:86400});await env.SIGNAL_STATE.put('health:latest',JSON.stringify(receipt),{expirationTtl:86400});await monitorBinanceAccount(env);if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
  async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
 };

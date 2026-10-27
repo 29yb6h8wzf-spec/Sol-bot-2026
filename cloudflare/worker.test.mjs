@@ -207,3 +207,33 @@ test('owner-only testsignal delivers a clearly fake example without notifying ap
   assert.deepEqual(JSON.parse(kv.get('tg:approved')),['200']);
  }finally{globalThis.fetch=saved;}
 });
+
+test('owner /status reflects actual KV receipt, denies subscriber access and never exposes Binance data',async()=>{
+ const saved=globalThis.fetch, nowBefore=Date.now, kv=new Map(),sent=[],queue=[];
+ const nowTime=1800000000000;
+ Date.now=()=>nowTime;
+ const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'100',SIGNAL_STATE:{get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)}};
+ globalThis.fetch=async(url,options)=>{
+  const method=String(url).split('/').at(-1),body=JSON.parse(options.body);
+  if(method==='getUpdates')return new Response(JSON.stringify({ok:true,result:queue.filter(x=>x.update_id>=body.offset)}));
+  if(method==='sendMessage'){sent.push(body);return new Response(JSON.stringify({ok:true,result:{message_id:1}}));}
+  throw Error('Unexpected Telegram method '+method);
+ };
+ const msg=(n,id,text)=>({update_id:n,message:{chat:{id,type:'private'},from:{id},text}});
+ try{
+  queue.push(msg(1,200,'/status'));await processTelegramAccess(env);
+  assert.equal(sent.length,1);assert.equal(String(sent[0].chat_id),'200');
+  assert.doesNotMatch(sent[0].text,/מצב הסורק החי/);
+  queue.push(msg(2,100,'/status'));await processTelegramAccess(env);
+  assert.match(sent.at(-1).text,/אין קבלת סריקה חיה/);
+  kv.set('health:latest',JSON.stringify({ok:true,recordedAt:nowTime,source:'kraken_spot',results:['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'].map(symbol=>({symbol,source:'kraken_spot',candidates:0})),failures:[]}));
+  queue.push(msg(3,100,'/status'));await processTelegramAccess(env);
+  assert.match(sent.at(-1).text,/ארבעת המטבעות נסרקו בהצלחה/);
+  assert.match(sent.at(-1).text,/Kraken Spot/);
+  assert.doesNotMatch(sent.at(-1).text,/entryPrice|positionAmt|unrealizedPnl|API_KEY/);
+  kv.set('health:latest',JSON.stringify({ok:false,recordedAt:nowTime-1800000,source:'kraken_spot',results:[],failures:[{symbol:'SOLUSDT',reason:'secret'}]}));
+  queue.push(msg(4,100,'/status'));await processTelegramAccess(env);
+  assert.match(sent.at(-1).text,/סריקה חלקית, כושלת או לא עדכנית/);
+  assert.doesNotMatch(sent.at(-1).text,/secret/);
+ }finally{globalThis.fetch=saved;Date.now=nowBefore;}
+});
