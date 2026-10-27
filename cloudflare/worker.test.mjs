@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const source=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
-const {candles,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,readBinancePositions,monitorBinanceAccount,processTelegramAccess,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const {candles,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,readBinancePositions,monitorBinanceAccount,processTelegramAccess,sendResearch,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const now=Date.now, originalFetch=globalThis.fetch;
 const fixed=Math.floor(Date.now()/14400000)*14400000;
 let telegramMessages=[], telegramStatus=200, newsXML='<rss><channel></channel></rss>';
@@ -262,11 +262,43 @@ test('only owner can approve private SignalPilot subscribers',async()=>{
   queue.push(msg(1,200,'/start'));await processTelegramAccess(env);
   assert.deepEqual(JSON.parse(kv.get('tg:pending')),['200']);
   assert.ok(sent.some(x=>x.chat_id==='100'&&x.text.includes('/approve 200')));
+  assert.ok(sent.some(x=>x.chat_id==='100'&&x.text.includes('\n/approve 200')));
   queue.push(msg(2,300,'/approve 200'));await processTelegramAccess(env);
   assert.equal(kv.get('tg:approved'),undefined);
   queue.push(msg(3,100,'/approve 200'));await processTelegramAccess(env);
   assert.deepEqual(JSON.parse(kv.get('tg:approved')),['200']);
   queue.push(msg(4,100,'/remove 200'));await processTelegramAccess(env);
   assert.deepEqual(JSON.parse(kv.get('tg:approved')),[]);
+ }finally{globalThis.fetch=saved;}
+});
+
+test('research alerts go only to approved private subscribers; Binance positions remain owner-only',async()=>{
+ const saved=globalThis.fetch,kv=new Map([['tg:approved',JSON.stringify(['200'])]]),sent=[],requests=[];
+ const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'100',BINANCE_API_KEY:'private-key',BINANCE_API_SECRET:'private-secret',SIGNAL_STATE:{get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)}};
+ globalThis.fetch=async (url,options)=>{
+  const u=String(url);requests.push({url:u,method:options?.method});
+  if(u.endsWith('/sendMessage')){sent.push(JSON.parse(options.body));return new Response(JSON.stringify({ok:true,result:{message_id:1}}));}
+  if(u.includes('/fapi/v2/positionRisk?'))return new Response(JSON.stringify([
+   {symbol:'SOLUSDT',positionAmt:'1',entryPrice:'100',markPrice:'101',unRealizedProfit:'1',leverage:'2',marginType:'isolated'}
+  ]));
+  throw Error('Unexpected URL');
+ };
+ try{
+  await sendResearch(env,'RESEARCH ALERT SOLUSDT');
+  assert.deepEqual(sent.map(m=>String(m.chat_id)),['100','200']);
+  assert.ok(sent.every(m=>m.text==='RESEARCH ALERT SOLUSDT'));
+  sent.length=0;
+  assert.equal(await monitorBinanceAccount(env),'connected');
+  assert.equal(sent.length,1);
+  assert.equal(String(sent[0].chat_id),'100');
+  assert.match(sent[0].text,/Binance Futures/);
+  assert.ok(!sent.some(m=>String(m.chat_id)==='200'));
+  sent.length=0;
+  kv.set('tg:approved','[]');
+  await sendResearch(env,'RESEARCH ALERT BTCUSDT');
+  assert.deepEqual(sent.map(m=>String(m.chat_id)),['100']);
+  assert.ok(requests.filter(x=>x.url.includes('/fapi/')).every(x=>x.method==='GET'));
+  assert.ok(!JSON.stringify(sent).includes('private-secret'));
+  assert.ok(!JSON.stringify(sent).includes('private-key'));
  }finally{globalThis.fetch=saved;}
 });
