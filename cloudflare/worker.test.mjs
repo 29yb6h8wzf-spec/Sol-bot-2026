@@ -100,6 +100,46 @@ test('real XRP trade fixture and futures margin math are internally consistent',
  assert.equal(withHighFees,null);
 });
 
+test('Bybit USDT perpetual fallback parses reverse-ordered candles and retains source labels',async()=>{
+ const original=globalThis.fetch;Date.now=()=>fixed;
+ const calls=[];
+ globalThis.fetch=async u=>{
+  if(String(u).startsWith('https://api.bybit.com/')){
+   calls.push(String(u));
+   const interval=u.searchParams.get('interval');
+   const rows=payload(interval==='240'?240:5).reverse().map(x=>x.slice(0,6).map(String));
+   return new Response(JSON.stringify({retCode:0,result:{category:'linear',symbol:u.searchParams.get('symbol'),list:rows}}));
+  }
+  throw Error('Unexpected URL');
+ };
+ try{
+  const bars=await candles('XRPUSDT','5m',120,'bybit');
+  assert.equal(bars.length,120);assert.equal(bars.at(-1).time,fixed-300000);
+  assert.ok(calls[0].includes('category=linear'));
+  assert.equal((await candles('XRPUSDT','4h',100,'bybit')).length,100);
+ }finally{globalThis.fetch=original;Date.now=now;}
+});
+test('when Binance is down, scans use only Bybit perpetual candles and label their proxy source',async()=>{
+ const original=globalThis.fetch;Date.now=()=>fixed;const oldLog=console.log,oldWarn=console.warn;const logs=[];
+ console.log=(...a)=>logs.push(a.join(' '));console.warn=()=>{};
+ globalThis.fetch=async u=>{
+  if(String(u).startsWith('https://fapi.binance.com/'))return new Response('Unavailable',{status:451});
+  if(String(u).startsWith('https://api.bybit.com/')){
+   const interval=u.searchParams.get('interval'),rows=payload(interval==='240'?240:5).reverse().map(x=>x.slice(0,6).map(String));
+   return new Response(JSON.stringify({retCode:0,result:{category:'linear',symbol:u.searchParams.get('symbol'),list:rows}}));
+  }
+  if(String(u).startsWith('https://api.telegram.org/'))return new Response(JSON.stringify({ok:true}));
+  return new Response(newsXML);
+ };
+ try{
+  let work;const state=new Map();
+  await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},{TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}},{waitUntil:p=>work=p});
+  await work;
+  const complete=logs.map(x=>{try{return JSON.parse(x)}catch{return null}}).find(x=>x?.event==='scan_complete');
+  assert.equal(complete.ok,true);
+  assert.ok(complete.results.every(x=>x.source==='bybit_linear'));
+ }finally{Date.now=now;globalThis.fetch=original;console.log=oldLog;console.warn=oldWarn;}
+});
 test('Binance Futures rejects unavailable endpoint, spot fallback, malformed and future candles',async()=>{
  await withData({code:-1003,msg:'rate limit'},()=>assert.rejects(candles('BTCUSDT','5m',120),/Invalid Binance Futures/));
  const future=payload();future.forEach(x=>x[0]+=86400000);
