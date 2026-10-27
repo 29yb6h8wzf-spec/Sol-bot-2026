@@ -67,7 +67,7 @@ function adx(c,n=14) {if(c.length<2*n+2)return 0;let t=[],p=[],m=[];for(let i=1;
 const smooth=a=>{let o=[a.slice(0,n).reduce((x,y)=>x+y,0)];for(let x of a.slice(n))o.push(o.at(-1)-o.at(-1)/n+x);return o;};
 let ts=smooth(t),ps=smooth(p),ms=smooth(m),dx=ts.map((v,i)=>{let a=v?100*ps[i]/v:0,b=v?100*ms[i]/v:0;return a+b?100*Math.abs(a-b)/(a+b):0;});let out=avg(dx.slice(0,n));for(let d of dx.slice(n))out=(out*(n-1)+d)/n;return out;}
 export async function candles(symbol,interval,limit,venue='binance'){
- const minutes={'5m':5,'4h':240}[interval],duration=minutes*60000;
+ const minutes={'5m':5,'4h':240}[interval],duration=minutes*60000,label=venue==='binance'?'Binance':'Bybit';
  if(!minutes||!SYMBOLS.includes(symbol)||!Number.isInteger(limit)||limit<55||limit>500||!['binance','bybit'].includes(venue))throw Error('Unsupported futures market request');
  const u=new URL(venue==='binance'?API:'https://api.bybit.com/v5/market/kline');
  u.searchParams.set('symbol',symbol);
@@ -75,22 +75,22 @@ export async function candles(symbol,interval,limit,venue='binance'){
  u.searchParams.set('limit',String(limit+1));
  if(venue==='bybit')u.searchParams.set('category','linear');
  let r;
- try{r=await fetch(u,{signal:AbortSignal.timeout(12000)});}catch{throw Error(venue+' Futures network error');}
- if(!r.ok)throw Error(venue+' Futures HTTP '+r.status);
- let body;try{body=await r.json();}catch{throw Error(venue+' Futures invalid JSON');}
+ try{r=await fetch(u,{signal:AbortSignal.timeout(12000)});}catch{throw Error(label+' Futures network error');}
+ if(!r.ok)throw Error(label+' Futures HTTP '+r.status);
+ let body;try{body=await r.json();}catch{throw Error(label+' Futures invalid JSON');}
  const rows=venue==='binance'?body:body?.retCode===0&&body?.result?.category==='linear'&&body?.result?.symbol===symbol?body.result.list:null;
- if(!Array.isArray(rows)||rows.length<56||rows.length>limit+1)throw Error('Invalid '+venue+' Futures klines response');
+ if(!Array.isArray(rows)||rows.length<56||rows.length>limit+1)throw Error('Invalid '+label+' Futures klines response');
  const now=Date.now();
  const bars=rows.filter(x=>Array.isArray(x)&&x.length>=(venue==='binance'?7:6)&&Number(x[0])+duration<=now)
   .map(x=>({time:Number(x[0]),high:Number(x[2]),low:Number(x[3]),close:Number(x[4]),volume:Number(x[5])}))
   .sort((x,y)=>x.time-y.time).slice(-limit);
- if(bars.length<55)throw Error('Insufficient closed '+venue+' Futures candles');
+ if(bars.length<55)throw Error('Insufficient closed '+label+' Futures candles');
  for(let i=0;i<bars.length;i++){
   const c=bars[i];
   if(!Object.values(c).every(Number.isFinite)||c.low<=0||c.high<c.low||c.close<c.low||c.close>c.high||c.volume<0||
-   c.time%duration!==0||c.time+duration>now||(i&&c.time-bars[i-1].time!==duration))throw Error('Invalid or non-contiguous '+venue+' Futures candles');
+   c.time%duration!==0||c.time+duration>now||(i&&c.time-bars[i-1].time!==duration))throw Error('Invalid or non-contiguous '+label+' Futures candles');
  }
- if(now-(bars.at(-1).time+duration)>duration+120000)throw Error('Stale '+venue+' Futures '+interval+' candles');
+ if(now-(bars.at(-1).time+duration)>duration+120000)throw Error('Stale '+label+' Futures '+interval+' candles');
  return bars;
 }
 function setups(five,four,checks=[]) {let last=five.at(-1),cl=five.map(x=>x.close),fc=four.map(x=>x.close),e20=ema(fc,20),e50=ema(fc,50),prev=five.slice(-13,-1),high=Math.max(...prev.map(x=>x.high)),low=Math.min(...prev.map(x=>x.low)),vr=last.volume/avg(prev.map(x=>x.volume)),out=[];
