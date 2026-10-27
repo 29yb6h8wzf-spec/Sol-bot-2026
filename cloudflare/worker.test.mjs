@@ -19,7 +19,7 @@ test('4h freshness uses its own interval rather than the 5m age limit',async()=>
 test('rejects API errors, malformed prices, gaps, stale data and HTTP failures',async()=>{await withData({code:-1121,msg:'Invalid symbol'},()=>assert.rejects(candles('SOLUSDT','5m',120),/Invalid Binance Futures klines response/));for(const mutate of [b=>b[100][4]='NaN',b=>b.splice(90,1),b=>b.forEach(r=>r[0]-=3600000)]){let b=payload();mutate(b);await withData(b,()=>assert.rejects(candles('ETHUSDT','5m',120)));}await withData({},()=>assert.rejects(candles('XRPUSDT','5m',120),/HTTP 403/),403);});
 test('scheduled scans remain silent without setups, but still scan all four markets',async()=>{
  const logs=[],oldLog=console.log,state=new Map();console.log=(...args)=>logs.push(args);telegramMessages=[];
- const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}};
+ const env={TELEGRAM_ACCESS_ENABLED:'0',TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}};
  try{await withData(u=>payload(u.searchParams.get('interval')==='4h'?240:5),async()=>{
   async function run(){let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},env,{waitUntil:p=>work=p});await work;}
   await run();assert.equal(telegramMessages.length,0);
@@ -33,7 +33,7 @@ test('Telegram rejection for breaking news does not mark news as delivered',asyn
  const state=new Map(),oldLog=console.log,oldError=console.error;console.log=()=>{};console.error=()=>{};telegramStatus=403;
  newsXML='<rss><channel><item><title>Bitcoin network update</title><link>https://www.coindesk.com/news/bitcoin-update</link><pubDate>'+new Date(fixed-60000).toUTCString()+'</pubDate></item></channel></rss>';
  try{await withData(u=>payload(u.searchParams.get('interval')==='4h'?240:5),async()=>{
-  let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},{TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}},{waitUntil:p=>work=p});
+  let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},{TELEGRAM_ACCESS_ENABLED:'0',TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}},{waitUntil:p=>work=p});
   await assert.rejects(work,/market scans failed/);
   assert.equal([...state.keys()].filter(k=>k.startsWith('news:sent:')).length,0);
  });}finally{console.log=oldLog;console.error=oldError;telegramStatus=200;newsXML='<rss><channel></channel></rss>';}
@@ -57,7 +57,7 @@ test('new headline notifications are coin-specific and deduplicated independentl
  const state=new Map(),oldLog=console.log;console.log=()=>{};telegramMessages=[];
  newsXML='<rss><channel><item><title>Bitcoin network update</title><link>https://www.coindesk.com/news/bitcoin-update</link><pubDate>'+new Date(fixed-60000).toUTCString()+'</pubDate></item></channel></rss>';
  try{await withData(u=>payload(u.searchParams.get('interval')==='4h'?240:5),async()=>{
-  const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}};
+  const env={TELEGRAM_ACCESS_ENABLED:'0',TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}};
   async function run(){let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},env,{waitUntil:p=>work=p});await work;}
   await run();const alerts=telegramMessages.filter(m=>m.text.startsWith('📰 '));assert.equal(alerts.length,1);assert.ok(alerts[0].text.includes('BTCUSDT'));assert.ok(alerts[0].text.includes('https://www.coindesk.com/news/bitcoin-update'));assert.equal(telegramMessages.length,1);
   await run();assert.equal(telegramMessages.length,1);
@@ -133,7 +133,7 @@ test('when Binance is down, scans use only Bybit perpetual candles and label the
  };
  try{
   let work;const state=new Map();
-  await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},{TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}},{waitUntil:p=>work=p});
+  await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},{TELEGRAM_ACCESS_ENABLED:'0',TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}},{waitUntil:p=>work=p});
   await work;
   const complete=logs.map(x=>{try{return JSON.parse(x)}catch{return null}}).find(x=>x?.event==='scan_complete');
   assert.equal(complete.ok,true);
@@ -174,7 +174,7 @@ test('Binance 451 and Bybit 403 fall back to isolated OKX research-only market d
  };
  try{
   let work;const state=new Map();
-  await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},{TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}},{waitUntil:p=>work=p});
+  await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},{TELEGRAM_ACCESS_ENABLED:'0',TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}},{waitUntil:p=>work=p});
   await work;
   const receipt=JSON.parse(state.get('health:cron:'+fixed));
   assert.equal(receipt.ok,true);
@@ -193,7 +193,7 @@ test('scheduled worker persists durable KV receipt with all four futures sources
  const logs=[],stored=new Map(),oldLog=console.log;console.log=(...args)=>logs.push(args);
  try{await withData(u=>payload(u.searchParams.get('interval')==='4h'?240:5),async()=>{
   let work;
-  const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>stored.get(k)||null,put:async(k,v)=>stored.set(k,v)}};
+  const env={TELEGRAM_ACCESS_ENABLED:'0',TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>stored.get(k)||null,put:async(k,v)=>stored.set(k,v)}};
   await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},env,{waitUntil:p=>work=p});await work;
   const receipt=JSON.parse(stored.get('health:cron:'+fixed));
   assert.equal(receipt.ok,true);assert.equal(receipt.release,'futures-source-health-v7');
@@ -204,7 +204,7 @@ test('scheduled worker persists durable KV receipt with all four futures sources
 test('scheduled worker persists failure receipt for debugging without suppressing failure',async()=>{
  const stored=new Map(),oldError=console.error,oldLog=console.log;console.error=()=>{};console.log=()=>{};
  try{await withData({},async()=>{
-  let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},{TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>stored.get(k)||null,put:async(k,v)=>stored.set(k,v)}},{waitUntil:p=>work=p});
+  let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},{TELEGRAM_ACCESS_ENABLED:'0',TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>stored.get(k)||null,put:async(k,v)=>stored.set(k,v)}},{waitUntil:p=>work=p});
   await assert.rejects(work,/market scans failed/);
   const receipt=JSON.parse(stored.get('health:cron:'+fixed));
   assert.equal(receipt.ok,false);assert.equal(receipt.failures.length,4);
@@ -223,7 +223,7 @@ test('Binance account monitor uses signed GET and never enables trade actions',a
   if(String(url).includes('api.telegram.org'))return new Response(JSON.stringify({ok:true}));
   throw Error('Unexpected URL');
  };
- const env={BINANCE_API_KEY:'test-key',BINANCE_API_SECRET:'test-secret',TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)}};
+ const env={BINANCE_API_KEY:'test-key',BINANCE_API_SECRET:'test-secret',TELEGRAM_ACCESS_ENABLED:'0',TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)}};
  try{
   const positions=await readBinancePositions(env);
   assert.equal(positions.length,1);assert.equal(positions[0].side,'SHORT');assert.equal(positions[0].entry,1.2955);
@@ -250,7 +250,7 @@ test('Binance monitor records inaccessible API as health error without leaking s
 
 test('only owner can approve private SignalPilot subscribers',async()=>{
  const saved=globalThis.fetch,kv=new Map(),sent=[],queue=[];
- const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'100',SIGNAL_STATE:{get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)}};
+ const env={TELEGRAM_ACCESS_ENABLED:'0',TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'100',SIGNAL_STATE:{get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)}};
  globalThis.fetch=async (url,options)=>{
   const method=String(url).split('/').at(-1),body=JSON.parse(options.body);
   if(method==='getUpdates')return new Response(JSON.stringify({ok:true,result:queue.filter(x=>x.update_id>=body.offset)}));
