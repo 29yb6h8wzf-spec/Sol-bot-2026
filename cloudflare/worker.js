@@ -9,7 +9,7 @@ const NEWS_TERMS={SOLUSDT:/\b(solana|sol)\b/i,BTCUSDT:/\b(bitcoin|btc)\b/i,ETHUS
 function xmlText(value){return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/<[^>]*>/g,'').replace(/&#(x[0-9a-f]+|\d+);/gi,(_,n)=>{const c=n[0].toLowerCase()==='x'?parseInt(n.slice(1),16):Number(n);return c>0&&c<=0x10ffff?String.fromCodePoint(c):'';}).replace(/&(amp|quot|apos|lt|gt);/g,(_,n)=>({amp:'&',quot:'"',apos:"'",lt:'<',gt:'>'}[n])).replace(/[\r\n\t]+/g,' ').trim();}
 export function parseNewsFeed(xml,feed,now=Date.now()){
  if(!/<rss\b/i.test(xml)||xml.length>1000000)throw Error('Invalid news RSS');
- const field=(item,tag)=>xmlText(item.match(new RegExp('<'+tag+'(?:\s[^>]*)?>([\s\\S]*?)<\\/'+tag+'>','i'))?.[1]||'');
+ const field=(item,tag)=>xmlText(item.match(new RegExp('<'+tag+'(?:\\s[^>]*)?>([\\s\\S]*?)<\\/'+tag+'>','i'))?.[1]||'');
  const out=[];
  for(const match of xml.matchAll(/<item(?:\s[^>]*)?>([\s\S]*?)<\/item>/gi)){
   const item=match[1],title=field(item,'title').slice(0,220),url=field(item,'link'),publishedAt=Date.parse(field(item,'pubDate'));
