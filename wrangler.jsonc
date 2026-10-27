@@ -8,6 +8,7 @@
     ]
   },
   "keep_vars": true,
+  "vars": {"TELEGRAM_ACCESS_ENABLED": "1"},
   "kv_namespaces": [
     {
       "binding": "SIGNAL_STATE",
