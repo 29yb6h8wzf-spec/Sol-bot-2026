@@ -2,7 +2,7 @@
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
 
-const WORKER='sol-bot-2026', RELEASE='futures-source-okx-cap-v8', CRON='*/5 * * * *';
+const WORKER='sol-bot-2026', RELEASE='kraken-stable-v9', CRON='*/5 * * * *';
 const SYMBOLS=['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'];
 let account=(process.env.CLOUDFLARE_ACCOUNT_ID||'').trim();
 // Account confirmed by the owner via the production dashboard URL; this is not a credential.
@@ -141,7 +141,7 @@ async function main(){
    const row=await kvRequest('/values/'+encodeURIComponent(key.name),{json:false});
    if(!row||row.release!==RELEASE||row.scheduledTime!==time||row.cron!==CRON)continue;
    const seen=new Set((row.results||[]).map(r=>r.symbol));
-   const valid=row.ok===true&&Array.isArray(row.failures)&&row.failures.length===0&&row.source==='futures_perpetual'&&seen.size===4&&SYMBOLS.every(s=>seen.has(s))&&row.results.every(r=>Number.isFinite(r.closedAgeMinutes)&&r.closedAgeMinutes>=0&&r.closedAgeMinutes<=7&&['binance_usdm','bybit_linear','okx_swap'].includes(r.source)&&Number.isInteger(r.candidates)&&r.candidates>=0&&(r.candidates===0?r.statusDelivery==='suppressed_no_signal':r.statusDelivery==='signal_only')&&['ready','partial','unavailable','stale'].includes(r.newsStatus));
+   const valid=row.ok===true&&Array.isArray(row.failures)&&row.failures.length===0&&row.source==='kraken_spot'&&seen.size===4&&SYMBOLS.every(s=>seen.has(s))&&row.results.every(r=>Number.isFinite(r.closedAgeMinutes)&&r.closedAgeMinutes>=0&&r.closedAgeMinutes<=7&&r.source==='kraken_spot'&&Number.isInteger(r.candidates)&&r.candidates>=0&&(r.candidates===0?r.statusDelivery==='suppressed_no_signal':r.statusDelivery==='signal_only')&&['ready','partial','unavailable','stale'].includes(r.newsStatus));
    observed.set(time,{row,valid});
    report('KV scheduled '+new Date(time).toISOString()+' ['+(row.results||[]).map(r=>r.symbol+':'+r.source).join(',')+']: '+(valid?'PASS':'FAIL')+(row.failures?.length?' failures='+row.failures.map(f=>f.symbol+':'+String(f.reason).replace(/[^a-zA-Z0-9 _.: -]/g,'?').slice(0,110)).join('; '):''));
    if(!valid)continue;
