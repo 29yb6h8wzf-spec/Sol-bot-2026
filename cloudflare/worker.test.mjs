@@ -11,16 +11,16 @@ async function withData(body,fn,status=200){Date.now=()=>fixed;globalThis.fetch=
 test('Kraken maps seconds and base volume and excludes open candle',async()=>{await withData(payload(),async()=>{const bars=await candles('BTCUSDT','5m',120);assert.equal(bars.length,119);assert.equal(bars.at(-1).time,fixed-300000);assert.equal(bars[0].volume,42);});});
 test('4h freshness uses its own interval rather than the 5m age limit',async()=>{await withData(payload(240),async()=>{Date.now=()=>fixed+90*60000;assert.equal((await candles('SOLUSDT','4h',100)).length,99);});});
 test('rejects API errors, malformed prices, gaps, stale data and HTTP failures',async()=>{await withData({error:['EQuery:Unknown asset pair']},()=>assert.rejects(candles('SOLUSDT','5m',120),/API rejected/));for(const mutate of [b=>b.result.TESTPAIR[100][4]='NaN',b=>b.result.TESTPAIR.splice(90,1),b=>b.result.TESTPAIR.forEach(r=>r[0]-=3600)]){let b=payload();mutate(b);await withData(b,()=>assert.rejects(candles('ETHUSDT','5m',120)));}await withData({},()=>assert.rejects(candles('XRPUSDT','5m',120),/HTTP 403/),403);});
-test('scheduled scans remain silent without setups, but still scan all four markets',async()=>{
+test('scheduled scans send owner-only heartbeat for all four markets without setups',async()=>{
  const logs=[],oldLog=console.log,state=new Map();console.log=(...args)=>logs.push(args);telegramMessages=[];
  const env={TELEGRAM_ACCESS_ENABLED:'0',TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}};
  try{await withData(u=>payload(Number(u.searchParams.get('interval'))),async()=>{
   async function run(){let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},env,{waitUntil:p=>work=p});await work;}
-  await run();assert.equal(telegramMessages.length,0);
+  await run();assert.equal(telegramMessages.length,5);assert.equal(telegramMessages.filter(m=>m.text.startsWith('SignalPilot scan ')).length,4);assert.equal(telegramMessages.filter(m=>m.text.startsWith('📰 SignalPilot | עדכון חדשות שעתי')).length,1);
   const result=logs.map(a=>{try{return JSON.parse(a[0]);}catch{return {};}}).find(x=>x.event==='scan_complete');
   assert.equal(result.ok,true);assert.equal(result.results.length,4);
-  assert.ok(result.results.every(x=>x.statusDelivery==='suppressed_no_signal'&&x.candidates===0));
-  await run();assert.equal(telegramMessages.length,0);
+  assert.ok(result.results.every(x=>x.statusDelivery==='heartbeat_no_signal'&&x.candidates===0));
+  await run();assert.equal(telegramMessages.length,9);assert.equal(telegramMessages.filter(m=>m.text.startsWith('📰 SignalPilot | עדכון חדשות שעתי')).length,1);
  });}finally{console.log=oldLog;}
 });
 test('Telegram rejection for breaking news does not mark news as delivered',async()=>{
@@ -53,8 +53,8 @@ test('new headline notifications are coin-specific and deduplicated independentl
  try{await withData(u=>payload(Number(u.searchParams.get('interval'))),async()=>{
   const env={TELEGRAM_ACCESS_ENABLED:'0',TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}};
   async function run(){let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},env,{waitUntil:p=>work=p});await work;}
-  await run();const alerts=telegramMessages.filter(m=>m.text.startsWith('📰 '));assert.equal(alerts.length,1);assert.ok(alerts[0].text.includes('BTCUSDT'));assert.ok(alerts[0].text.includes('https://www.coindesk.com/news/bitcoin-update'));assert.equal(telegramMessages.length,1);
-  await run();assert.equal(telegramMessages.length,1);
+  await run();const alerts=telegramMessages.filter(m=>m.text.startsWith('📰 '));assert.equal(alerts.length,1);assert.ok(alerts[0].text.includes('BTCUSDT'));assert.ok(alerts[0].text.includes('https://www.coindesk.com/news/bitcoin-update'));assert.equal(telegramMessages.length,6);
+  await run();assert.equal(telegramMessages.length,10);
  });}finally{console.log=oldLog;newsXML='<rss><channel></channel></rss>';}
 });
 
