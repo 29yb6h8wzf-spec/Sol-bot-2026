@@ -360,7 +360,77 @@ for(const {setup,plan} of found){
  await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});
  console.log('Alert sent',key);
 }
-const statusDelivery=found.length?'signal_only':'suppressed_no_signal';
+// Owner-only five-minute heartbeat, independent of signal qualification.
+const heartbeat='📡 SignalPilot | סריקה חיה '+symbol+'\n'+
+ '🕒 '+israelTime(Date.now())+' (ישראל) | נר סגור '+israelTime(last.time)+'\n'+
+ 'מחיר: 
+await notifyFreshNews(symbol,env,news);
+return {symbol,source:sourceId,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length};}
+
+// Signed GET only: read-only Binance USD-M Futures account monitoring.
+// Never log API credentials, signatures, signed URLs, balances or raw responses.
+export async function readBinancePositions(env){
+ if(!env.BINANCE_API_KEY||!env.BINANCE_API_SECRET)throw Error('missing_credentials');
+ const query='timestamp='+Date.now()+'&recvWindow=5000';
+ const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(env.BINANCE_API_SECRET),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+ const signed=await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(query));
+ const signature=Array.from(new Uint8Array(signed),b=>b.toString(16).padStart(2,'0')).join('');
+ let response;
+ try{response=await fetch('https://fapi.binance.com/fapi/v2/positionRisk?'+query+'&signature='+signature,{
+  method:'GET',headers:{'X-MBX-APIKEY':env.BINANCE_API_KEY},signal:AbortSignal.timeout(10000)
+ });}catch{throw Error('network_unavailable');}
+ if(!response.ok)throw Error('binance_http_'+response.status);
+ let body;try{body=await response.json();}catch{throw Error('invalid_json');}
+ if(!Array.isArray(body))throw Error('invalid_positions_response');
+ return body.filter(p=>SYMBOLS.includes(p.symbol)&&Number.isFinite(Number(p.positionAmt))&&Number(p.positionAmt)!==0)
+ .map(p=>({
+  symbol:p.symbol,side:Number(p.positionAmt)<0?'SHORT':'LONG',
+  quantity:Math.abs(Number(p.positionAmt)),entry:Number(p.entryPrice),mark:Number(p.markPrice),
+  unrealizedPnl:Number(p.unRealizedProfit),leverage:Number(p.leverage),
+  isolated:p.marginType==='isolated'
+ })).filter(p=>[p.quantity,p.entry,p.mark,p.unrealizedPnl,p.leverage].every(Number.isFinite)&&p.entry>0&&p.mark>0);
+}
+export async function monitorBinanceAccount(env){
+ if(!env.BINANCE_API_KEY||!env.BINANCE_API_SECRET)return 'not_configured';
+ try{
+  const positions=await readBinancePositions(env);
+  const old=JSON.parse(await env.SIGNAL_STATE.get('account:positions')||'[]');
+  const snapshot=positions.map(p=>({symbol:p.symbol,side:p.side,quantity:p.quantity,entry:p.entry,mark:p.mark,unrealizedPnl:p.unrealizedPnl,leverage:p.leverage,isolated:p.isolated}));
+  const stateKey=p=>p.symbol+':'+p.side+':'+p.quantity+':'+p.entry;
+  const before=new Set(old.map(stateKey)),after=new Set(snapshot.map(stateKey));
+  const changed=snapshot.filter(p=>!before.has(stateKey(p)));
+  const closed=old.filter(p=>!after.has(stateKey(p)));
+  // Store state before sending to avoid repeating alerts after transient Telegram failures.
+  await env.SIGNAL_STATE.put('account:positions',JSON.stringify(snapshot));
+  await env.SIGNAL_STATE.put('account:health',JSON.stringify({status:'connected',checkedAt:Date.now(),openPositions:snapshot.length}),{expirationTtl:86400});
+  if(changed.length||closed.length){
+   const lines=['🔐 Binance Futures — עדכון פוזיציות (קריאה בלבד)'];
+   for(const p of changed)lines.push('🟢 '+p.symbol+' '+p.side+' | כמות '+p.quantity+' | כניסה '+p.entry+' | PNL לא ממומש '+p.unrealizedPnl.toFixed(3)+' USDT');
+   for(const p of closed)lines.push('⚪ '+p.symbol+' '+p.side+' | הפוזיציה כבר לא מופיעה ב-API; יש לבדוק היסטוריית עסקאות לתוצאה נטו');
+   await send(env,lines.join('\n'));
+  }
+  return 'connected';
+ }catch(error){
+  const reason=error instanceof Error?error.message:'unknown';
+  const safe=/^(missing_credentials|network_unavailable|invalid_json|invalid_positions_response|binance_http_\d{3})$/.test(reason)?reason:'monitor_failed';
+  await env.SIGNAL_STATE.put('account:health',JSON.stringify({status:'error',reason:safe,checkedAt:Date.now()}),{expirationTtl:86400});
+  console.warn(JSON.stringify({event:'binance_account_monitor',status:'error',reason:safe}));
+  return 'error';
+ }
+}
+
+export default {
+ async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}if(env.TELEGRAM_ACCESS_ENABLED!=='0')ctx.waitUntil(processTelegramAccess(env).catch(async error=>{const reason=String(error).replace(/bot[0-9]+:[A-Za-z0-9_-]+/g,'[REDACTED]').slice(0,180);console.error('Telegram access polling failed',reason);try{await env.SIGNAL_STATE.put('tg:access-health',JSON.stringify({status:'error',checkedAt:new Date().toISOString(),error:reason}));}catch{}}));ctx.waitUntil((async()=>{const news=await loadNews(env);try{await sendHourlyNewsDigest(env,news);}catch(error){console.warn('Hourly news delivery failed',String(error).slice(0,120));}const results=[],failures=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){const message=error instanceof Error?error.message:'Scan failed';failures.push({symbol,reason:message.slice(0,180)});console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message}));}}const receipt={event:'scan_complete',release:RELEASE,source:'kraken_spot',cron:event.cron,scheduledTime:event.scheduledTime,recordedAt:Date.now(),ok:results.length===SYMBOLS.length,results,failures};
+console.log(JSON.stringify(receipt));
+await env.SIGNAL_STATE.put('health:cron:'+event.scheduledTime,JSON.stringify(receipt),{expirationTtl:86400});await monitorBinanceAccount(env);if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
+ async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
+};
++last.close.toFixed(5)+' | מקור: '+sourceId+'\n'+
+ 'איתותים שעברו סינון: '+found.length+'\n'+
+ (found.length?'🔔 איתותים נשלחו בנפרד.':'⏸ אין כרגע איתות שעבר את כל התנאים.')+'\n'+
+ formatNewsContext(news,symbol,1);
+await send(env,heartbeat);
+const statusDelivery=found.length?'signal_and_heartbeat':'heartbeat_no_signal';
 await notifyFreshNews(symbol,env,news);
 return {symbol,source:sourceId,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length};}
 
