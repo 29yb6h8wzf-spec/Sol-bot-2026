@@ -7,7 +7,7 @@ class MarketDataError(RuntimeError):
     pass
 
 
-def closed_futures_bars(symbol, timeframe, limit=240):
+def closed_futures_bars(symbol, timeframe, limit=1001):
     import ccxt
     exchange = ccxt.binanceusdm({'enableRateLimit': True, 'timeout': 15000})
     try:
@@ -40,7 +40,7 @@ def closed_futures_bars(symbol, timeframe, limit=240):
                 or not row[3] <= row[4] <= row[2]):
                 raise MarketDataError('invalid futures candle')
         closed = [row for row in rows if row[0] + duration <= now]
-        if len(closed) < 202:
+        if len(closed) < 1000:
             raise MarketDataError('insufficient closed candles')
         if now - (closed[-1][0] + duration) > duration + 120000:
             raise MarketDataError('stale futures candles')

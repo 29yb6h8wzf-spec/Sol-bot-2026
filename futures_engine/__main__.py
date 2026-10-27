@@ -3,9 +3,10 @@ import json
 import os
 from decimal import Decimal as D
 from dotenv import load_dotenv
-from .core import Config, crossover_signal, plan_trade
+from .core import Config, plan_trade
 from .market import closed_futures_bars
 from .paper import locked_ledger
+from .indicators import advance_indicators
 
 
 def main():
@@ -24,9 +25,11 @@ def main():
                            D(os.getenv('PAPER_START_EQUITY','1000')),
                            config.symbol, config.timeframe,
                            exchange.parse_timeframe(config.timeframe) * 1000) as ledger:
+            indicators = advance_indicators(ledger.state.get('indicators'), bars,
+                                            exchange.parse_timeframe(config.timeframe)*1000)
             exit_event = ledger.evaluate_exit(bars, config.taker_fee, config.slippage_fraction)
             ledger.roll_day(bars[-1][0])
-            signal = crossover_signal(bars)
+            signal = indicators['signal']
             result = {'mode':'paper','symbol':config.symbol,'timeframe':config.timeframe,
                       'closed_candle':bars[-1][0],'equity':ledger.state['equity'],
                       'signal':signal,'exit':exit_event,'entry':None}
@@ -49,6 +52,8 @@ def main():
                     raw[key] = str(D(raw[key]) * ratio)
                 ledger.open_position(raw,bars[-1][0])
                 result['entry'] = raw
+            ledger.state['indicators'] = indicators
+            ledger.save()
             print(json.dumps(result,ensure_ascii=False))
     finally:
         exchange.close() if hasattr(exchange,'close') else None

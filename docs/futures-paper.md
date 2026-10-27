@@ -15,7 +15,7 @@ Run python -m futures_engine once per closed 15-minute candle using a local sche
 
 ## Strategy and paper risk
 
-- One symbol, default BTC/USDT:USDT 15m; at least 202 closed contiguous candles.
+- One symbol, default BTC/USDT:USDT 15m; at least 1,000 closed contiguous candles for initial indicator warmup.
 - LONG on EMA(50) crossing above EMA(200) with RSI(14) below 55; SHORT on reverse crossing with RSI above 45.
 - 2% simulated stop, 4% simulated target, 2x maximum notional/equity, 1% maximum estimated stop loss including modeled fees/slippage.
 - 5% UTC calendar-day realized-equity breaker, also limits remaining daily loss allowance. It is **not** a rolling 24-hour exchange-account drawdown.
@@ -40,3 +40,9 @@ No API keys are needed. Never put secrets in GitHub, screenshots, Telegram or Ac
 `python -m unittest discover -s tests -p 'test_futures_paper*.py' -v`
 
 Offline tests cover long/short stop gaps, ambiguous stop/target candles, UTC rollover, repeated scans, restart cursors, missing history, market identity, cross-process lock contention and release, atomic-write failure, frozen costs, remaining daily risk, malformed/stale data, retries, and rejection of live mode before data access. CI runs Python 3.11, 3.12 and 3.13. These tests do not certify exchange connectivity or strategy profitability.
+
+## Incremental indicators (research follow-up)
+
+The production paper scanner now bootstraps EMA50/200 and Wilder RSI14 from at least 1,000 closed candles (requests 1,001 to allow one open candle). It persists versioned decimal indicator state in the locked paper ledger, then processes only new contiguous candles. Rolling fetch windows no longer reseed EMA or RSI. Saved state retains the last signal so a repeated scan is idempotent. Missing history, a revised last processed close, incompatible state or backwards time fails closed. Historical corrections earlier than the last processed candle are not automatically detected; a verified full replay is required for dataset revisions.
+
+Warmup reduces seed sensitivity; it does not establish a unique infinite-history EMA. Exact replay parity requires the same recorded origin and input history. Existing market-bound ledgers without indicator state bootstrap on their next successful scan; this does not reconstruct prior signals. Offline tests compare 100 moving-window incremental updates and JSON restarts against full-history EMA, RSI and crossover decisions, plus actual CLI restart persistence. Live trading remains unavailable.

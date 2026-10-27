@@ -159,14 +159,14 @@ class RiskHardeningTests(unittest.TestCase):
 class FakeExchange:
     timeframes = {'15m': '15m'}
     def __init__(self):
-        self.rows = [[i*STEP,100,101,99,100,1] for i in range(241)]
+        self.rows = [[i*STEP,100,101,99,100,1] for i in range(1001)]
         self.closed = False
         self.calls = 0
         self.failures = 0
     def load_markets(self):
         return {'BTC/USDT:USDT':{'swap':True,'linear':True,'settle':'USDT'}}
     def parse_timeframe(self, timeframe): return 900
-    def milliseconds(self): return 240*STEP
+    def milliseconds(self): return 1000*STEP
     def fetch_ohlcv(self,*args,**kwargs):
         self.calls += 1
         if self.calls <= self.failures: raise ConnectionError('temporary')
@@ -185,8 +185,8 @@ class MarketTests(unittest.TestCase):
     def test_open_candle_excluded(self):
         exchange=FakeExchange()
         _,_,bars=self.fetch(exchange)
-        self.assertEqual(len(bars),240)
-        self.assertEqual(bars[-1][0],239*STEP)
+        self.assertEqual(len(bars),1000)
+        self.assertEqual(bars[-1][0],999*STEP)
 
     def test_invalid_data_rejected_and_closed(self):
         mutations = [lambda rows:rows.__setitem__(30,[]),
@@ -228,10 +228,22 @@ class CLITests(unittest.TestCase):
         module=self.module();exchange=FakeExchange()
         exchange.amount_to_precision=lambda symbol,quantity:str(D(quantity).quantize(D('.001'),rounding='ROUND_DOWN'))
         bars=exchange.rows[:-1]
-        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ,{'TRADING_MODE':'paper','PAPER_LEDGER':tmp+'/ledger.json','FUTURES_SYMBOL':'BTC/USDT:USDT','TIMEFRAME':'15m'}), patch.object(module,'closed_futures_bars',return_value=(exchange,{},bars)), patch.object(module,'crossover_signal',return_value='long'), contextlib.redirect_stdout(io.StringIO()):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ,{'TRADING_MODE':'paper','PAPER_LEDGER':tmp+'/ledger.json','FUTURES_SYMBOL':'BTC/USDT:USDT','TIMEFRAME':'15m'}), patch.object(module,'closed_futures_bars',return_value=(exchange,{},bars)), patch.object(module,'advance_indicators',return_value={'signal':'long'}), contextlib.redirect_stdout(io.StringIO()):
             module.main();module.main()
             state=json.loads(Path(tmp+'/ledger.json').read_text())
             self.assertEqual(len(state['history']),1)
             self.assertLessEqual(D(state['position']['max_estimated_loss']),D(10))
             self.assertEqual(state['market']['symbol'],'BTC/USDT:USDT')
         self.assertTrue(exchange.closed)
+
+    def test_real_indicator_state_survives_cli_restart(self):
+        module=self.module();exchange=FakeExchange()
+        from futures_engine.indicators import advance_indicators
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ,{'TRADING_MODE':'paper','PAPER_LEDGER':tmp+'/ledger.json','FUTURES_SYMBOL':'BTC/USDT:USDT','TIMEFRAME':'15m'}), contextlib.redirect_stdout(io.StringIO()):
+            with patch.object(module,'closed_futures_bars',return_value=(exchange,{},exchange.rows[:1000])):
+                module.main()
+            with patch.object(module,'closed_futures_bars',return_value=(exchange,{},exchange.rows[1:])):
+                module.main()
+            state=json.loads(Path(tmp+'/ledger.json').read_text())
+            self.assertEqual(state['indicators'],advance_indicators(None,exchange.rows,900000))
+            self.assertEqual(state['indicators']['origin'],0)
