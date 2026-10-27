@@ -5,46 +5,88 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
-BASE = 'https://api.kraken.com/0/public/OHLC'
-DATA_SOURCE = 'Kraken Spot USDT (research only, NOT Binance Futures execution prices)'
+BASE = 'https://fapi.binance.com/fapi/v1/klines'
+DATA_SOURCE = 'Binance USDⓈ-M Perpetual (contract klines)'
 SYMBOL = os.environ.get('SYMBOL', 'SOLUSDT')
-PAIRS = {'SOLUSDT': 'SOLUSDT', 'BTCUSDT': 'XBTUSDT', 'ETHUSDT': 'ETHUSDT', 'XRPUSDT': 'XRPUSDT'}
-if SYMBOL not in PAIRS:
+if SYMBOL not in ('SOLUSDT', 'BTCUSDT', 'ETHUSDT', 'XRPUSDT'):
     raise ValueError('Unsupported trading pair')
 
 def fetch(interval, limit):
-    if interval not in ('5m', '4h') or limit < 3 or limit > 720:
-        raise ValueError('Unsupported Kraken OHLC request')
-    minutes = 5 if interval == '5m' else 240
-    query = urllib.parse.urlencode({'pair': PAIRS[SYMBOL], 'interval': minutes})
-    with urllib.request.urlopen(BASE + '?' + query, timeout=15) as response:
+    query = urllib.parse.urlencode({'symbol': SYMBOL, 'interval': interval, 'limit': limit})
+    with urllib.request.urlopen(BASE + '?' + query, timeout=15) as r:
+        raw = json.load(r)
+    return [{'time': int(x[0]), 'high': float(x[2]), 'low': float(x[3]), 'close': float(x[4]), 'volume': float(x[5])} for x in raw[:-1]]
+
+
+# Research-only futures fallback. Never mix exchanges within one strategy evaluation.
+FUTURES_PROXIES = {
+    'bybit': 'Bybit USDT Linear Perpetual (research proxy, NOT Binance execution prices)',
+    'okx': 'OKX USDT SWAP (research proxy, NOT Binance execution prices)',
+}
+
+def fetch_proxy(interval, limit, venue):
+    if interval not in ('5m', '4h') or venue not in FUTURES_PROXIES:
+        raise ValueError('Unsupported perpetual market')
+    duration = 300000 if interval == '5m' else 14400000
+    cap = min(limit + 1, 100) if venue == 'okx' else limit + 1
+    if venue == 'bybit':
+        base = 'https://api.bybit.com/v5/market/kline'
+        params = {'category': 'linear', 'symbol': SYMBOL, 'interval': '5' if interval == '5m' else '240', 'limit': cap}
+    else:
+        base = 'https://www.okx.com/api/v5/market/candles'
+        params = {'instId': SYMBOL.replace('USDT', '-USDT-SWAP'), 'bar': '5m' if interval == '5m' else '4Hutc', 'limit': cap}
+    with urllib.request.urlopen(base + '?' + urllib.parse.urlencode(params), timeout=15) as response:
         payload = json.load(response)
-    if payload.get('error') or not isinstance(payload.get('result'), dict):
-        raise ValueError('Kraken OHLC unavailable')
-    entries = [value for key, value in payload['result'].items() if key != 'last']
-    if len(entries) != 1 or not isinstance(entries[0], list):
-        raise ValueError('Invalid Kraken OHLC response')
-    # Kraken always returns the current, unfinished candle as the final row.
-    rows = entries[0][:-1][-limit:]
-    bars = [{'time': int(x[0]) * 1000, 'high': float(x[2]), 'low': float(x[3]),
-             'close': float(x[4]), 'volume': float(x[6])} for x in rows]
-    duration = minutes * 60000
+    if venue == 'bybit':
+        if payload.get('retCode') != 0 or payload.get('result', {}).get('symbol') != SYMBOL:
+            raise ValueError('Invalid Bybit perpetual response')
+        rows = payload['result'].get('list')
+    else:
+        if payload.get('code') != '0':
+            raise ValueError('Invalid OKX perpetual response')
+        rows = payload.get('data')
+    if not isinstance(rows, list) or len(rows) < 3 or len(rows) > cap:
+        raise ValueError('Invalid perpetual candle count')
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
-    if len(bars) < min(2, limit - 1):
-        raise ValueError('Insufficient Kraken candles')
-    for i, bar in enumerate(bars):
-        if (bar['low'] <= 0 or not bar['low'] <= bar['close'] <= bar['high'] or
-                bar['volume'] < 0 or bar['time'] % duration or bar['time'] + duration > now_ms or
-                (i and bar['time'] - bars[i-1]['time'] != duration)):
-            raise ValueError('Invalid or noncontiguous Kraken candles')
-    if now_ms - (bars[-1]['time'] + duration) > duration + 120000:
-        raise ValueError('Stale Kraken candles')
-    return bars
+    result = []
+    for x in rows:
+        if not isinstance(x, list) or len(x) < (9 if venue == 'okx' else 6):
+            raise ValueError('Invalid perpetual candle')
+        timestamp = int(x[0])
+        if timestamp + duration > now_ms or (venue == 'okx' and x[8] != '1'):
+            continue
+        bar = {'time': timestamp, 'high': float(x[2]), 'low': float(x[3]),
+               'close': float(x[4]), 'volume': float(x[6] if venue == 'okx' else x[5])}
+        if not (bar['low'] > 0 and bar['low'] <= bar['close'] <= bar['high'] and
+                bar['volume'] >= 0 and timestamp % duration == 0):
+            raise ValueError('Invalid perpetual OHLCV')
+        result.append(bar)
+    result.sort(key=lambda x: x['time'])
+    result = result[-limit:]
+    if len(result) < min(40, limit - 1):
+        raise ValueError('Insufficient closed perpetual candles')
+    if any(result[i]['time'] - result[i-1]['time'] != duration for i in range(1, len(result))):
+        raise ValueError('Noncontiguous perpetual candles')
+    if now_ms - result[-1]['time'] - duration > duration + 120000:
+        raise ValueError('Stale perpetual candles')
+    return result
 
 def fetch_pair(five_limit):
-    four, five = fetch('4h', 100), fetch('5m', five_limit)
-    print('MARKET_SOURCE kraken_spot', flush=True)
-    return four, five
+    global DATA_SOURCE
+    errors = []
+    for venue in ('binance', 'bybit', 'okx'):
+        try:
+            if venue == 'binance':
+                four, five = fetch('4h', 100), fetch('5m', five_limit)
+            else:
+                four, five = fetch_proxy('4h', 100, venue), fetch_proxy('5m', five_limit, venue)
+            DATA_SOURCE = ('Binance USDⓈ-M Perpetual (contract klines)' if venue == 'binance'
+                           else FUTURES_PROXIES[venue])
+            print('FUTURES_SOURCE ' + venue, flush=True)
+            return four, five
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            errors.append(venue + ': ' + type(exc).__name__)
+    raise RuntimeError('All perpetual sources unavailable; no signal generated: ' + ', '.join(errors))
 
 def ema(values, length):
     alpha = 2 / (length + 1)
