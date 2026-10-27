@@ -6,15 +6,21 @@ const {candles,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,
 const now=Date.now, originalFetch=globalThis.fetch;
 const fixed=1800000000000;
 let telegramMessages=[], telegramStatus=200, newsXML='<rss><channel></channel></rss>';
-function payload(minutes=5){const duration=minutes*60,end=Math.floor(fixed/1000/duration)*duration;return {error:[],result:{TESTPAIR:Array.from({length:121},(_,i)=>[end-(120-i)*duration,'100','102','99','101','100','42',5]),last:end}};}
-async function withData(body,fn,status=200){Date.now=()=>fixed;globalThis.fetch=async (u,options)=>{if(['https://www.coindesk.com/arc/outboundfeeds/rss/','https://cointelegraph.com/rss'].includes(String(u)))return new Response(newsXML);if(String(u).startsWith('https://api.telegram.org/')){telegramMessages.push(JSON.parse(options.body));return new Response(JSON.stringify({ok:telegramStatus===200}),{status:telegramStatus});}assert.equal(u.origin,'https://api.kraken.com');assert.ok(['5','240'].includes(u.searchParams.get('interval')));return new Response(JSON.stringify(typeof body==='function'?body(u):body),{status});};try{await fn();}finally{Date.now=now;globalThis.fetch=originalFetch;}}
-test('Kraken maps seconds and base volume and excludes open candle',async()=>{await withData(payload(),async()=>{const bars=await candles('BTCUSDT','5m',120);assert.equal(bars.length,119);assert.equal(bars.at(-1).time,fixed-300000);assert.equal(bars[0].volume,42);});});
-test('4h freshness uses its own interval rather than the 5m age limit',async()=>{await withData(payload(240),async()=>{Date.now=()=>fixed+90*60000;assert.equal((await candles('SOLUSDT','4h',100)).length,99);});});
-test('rejects API errors, malformed prices, gaps, stale data and HTTP failures',async()=>{await withData({error:['EQuery:Unknown asset pair']},()=>assert.rejects(candles('SOLUSDT','5m',120),/API rejected/));for(const mutate of [b=>b.result.TESTPAIR[100][4]='NaN',b=>b.result.TESTPAIR.splice(90,1),b=>b.result.TESTPAIR.forEach(r=>r[0]-=3600)]){let b=payload();mutate(b);await withData(b,()=>assert.rejects(candles('ETHUSDT','5m',120)));}await withData({},()=>assert.rejects(candles('XRPUSDT','5m',120),/HTTP 403/),403);});
+function payload(minutes=5){
+ const duration=minutes*60000,end=Math.floor(fixed/duration)*duration,count=minutes===240?101:121;
+ return Array.from({length:count},(_,i)=>{
+  const open=end-(count-1-i)*duration;
+  return [open,'100','102','99','101','42',open+duration-1,'4200',100,'21','2100','0'];
+ });
+}
+async function withData(body,fn,status=200){Date.now=()=>fixed;globalThis.fetch=async (u,options)=>{if(['https://www.coindesk.com/arc/outboundfeeds/rss/','https://cointelegraph.com/rss'].includes(String(u)))return new Response(newsXML);if(String(u).startsWith('https://api.telegram.org/')){telegramMessages.push(JSON.parse(options.body));return new Response(JSON.stringify({ok:telegramStatus===200}),{status:telegramStatus});}assert.equal(u.origin,'https://fapi.binance.com');assert.equal(u.pathname,'/fapi/v1/klines');assert.ok(['5m','4h'].includes(u.searchParams.get('interval')));assert.ok(['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'].includes(u.searchParams.get('symbol')));return new Response(JSON.stringify(typeof body==='function'?body(u):body),{status});};try{await fn();}finally{Date.now=now;globalThis.fetch=originalFetch;}}
+test('Binance Futures maps milliseconds and base volume and excludes open candle',async()=>{await withData(payload(),async()=>{const bars=await candles('BTCUSDT','5m',120);assert.equal(bars.length,120);assert.equal(bars.at(-1).time,fixed-300000);assert.equal(bars[0].volume,42);});});
+test('4h freshness uses its own interval rather than the 5m age limit',async()=>{await withData(payload(240),async()=>{Date.now=()=>fixed+90*60000;assert.equal((await candles('SOLUSDT','4h',100)).length,100);});});
+test('rejects API errors, malformed prices, gaps, stale data and HTTP failures',async()=>{await withData({code:-1121,msg:'Invalid symbol'},()=>assert.rejects(candles('SOLUSDT','5m',120),/Invalid Binance Futures klines response/));for(const mutate of [b=>b[100][4]='NaN',b=>b.splice(90,1),b=>b.forEach(r=>r[0]-=3600000)]){let b=payload();mutate(b);await withData(b,()=>assert.rejects(candles('ETHUSDT','5m',120)));}await withData({},()=>assert.rejects(candles('XRPUSDT','5m',120),/HTTP 403/),403);});
 test('scheduled scans remain silent without setups, but still scan all four markets',async()=>{
  const logs=[],oldLog=console.log,state=new Map();console.log=(...args)=>logs.push(args);telegramMessages=[];
  const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}};
- try{await withData(u=>payload(Number(u.searchParams.get('interval'))),async()=>{
+ try{await withData(u=>payload(u.searchParams.get('interval')==='4h'?240:5),async()=>{
   async function run(){let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},env,{waitUntil:p=>work=p});await work;}
   await run();assert.equal(telegramMessages.length,0);
   const result=logs.map(a=>{try{return JSON.parse(a[0]);}catch{return {};}}).find(x=>x.event==='scan_complete');
@@ -26,7 +32,7 @@ test('scheduled scans remain silent without setups, but still scan all four mark
 test('Telegram rejection for breaking news does not mark news as delivered',async()=>{
  const state=new Map(),oldLog=console.log,oldError=console.error;console.log=()=>{};console.error=()=>{};telegramStatus=403;
  newsXML='<rss><channel><item><title>Bitcoin network update</title><link>https://www.coindesk.com/news/bitcoin-update</link><pubDate>'+new Date(fixed-60000).toUTCString()+'</pubDate></item></channel></rss>';
- try{await withData(u=>payload(Number(u.searchParams.get('interval'))),async()=>{
+ try{await withData(u=>payload(u.searchParams.get('interval')==='4h'?240:5),async()=>{
   let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},{TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}},{waitUntil:p=>work=p});
   await assert.rejects(work,/market scans failed/);
   assert.equal([...state.keys()].filter(k=>k.startsWith('news:sent:')).length,0);
@@ -50,7 +56,7 @@ test('news source outages are explicit and do not claim there are no headlines',
 test('new headline notifications are coin-specific and deduplicated independently of scan reports',async()=>{
  const state=new Map(),oldLog=console.log;console.log=()=>{};telegramMessages=[];
  newsXML='<rss><channel><item><title>Bitcoin network update</title><link>https://www.coindesk.com/news/bitcoin-update</link><pubDate>'+new Date(fixed-60000).toUTCString()+'</pubDate></item></channel></rss>';
- try{await withData(u=>payload(Number(u.searchParams.get('interval'))),async()=>{
+ try{await withData(u=>payload(u.searchParams.get('interval')==='4h'?240:5),async()=>{
   const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}};
   async function run(){let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},env,{waitUntil:p=>work=p});await work;}
   await run();const alerts=telegramMessages.filter(m=>m.text.startsWith('📰 '));assert.equal(alerts.length,1);assert.ok(alerts[0].text.includes('BTCUSDT'));assert.ok(alerts[0].text.includes('https://www.coindesk.com/news/bitcoin-update'));assert.equal(telegramMessages.length,1);
@@ -71,7 +77,7 @@ test('trade plans have directional entry zones, expiry, risk sizing and clean me
  assert.equal(tradePlan(long,bars,base+900000),null);
  assert.equal(tradePlan({...long,stop:101},bars,base),null);
  const msg=tradeMessage('BTCUSDT',short,q,{status:'unavailable'});
- for(const term of ['טווח כניסה','סטופ','יעד','תוקף','ביטול','Kraken Spot','סיכון'])assert.ok(msg.includes(term),term);
+ for(const term of ['טווח כניסה','סטופ','יעד','תוקף','ביטול','Binance USDⓈ-M Perpetual','סיכון'])assert.ok(msg.includes(term),term);
 });
 
 test('real XRP trade fixture and futures margin math are internally consistent',()=>{
@@ -89,7 +95,15 @@ test('real XRP trade fixture and futures margin math are internally consistent',
  assert.ok(plan.quantity*plan.worstLoss<=1.50000001);
  assert.ok(plan.netR>=1.25);
  const text=tradeMessage('XRPUSDT',short,plan,{status:'unavailable'});
- for(const term of ['XRP','2X','ביטחונות','עמלה','החלקה','funding','Kraken Spot'])assert.ok(text.includes(term),term);
+ for(const term of ['XRP','2X','ביטחונות','עמלה','החלקה','funding','Binance USDⓈ-M Perpetual'])assert.ok(text.includes(term),term);
  const withHighFees=tradePlan(short,bars,base,{riskBudget:1.5,leverage:2,feeRate:0.005,slippageRate:0.0025,minNetR:1.25});
  assert.equal(withHighFees,null);
+});
+
+test('Binance Futures rejects unavailable endpoint, spot fallback, malformed and future candles',async()=>{
+ await withData({code:-1003,msg:'rate limit'},()=>assert.rejects(candles('BTCUSDT','5m',120),/Invalid Binance Futures/));
+ const future=payload();future.forEach(x=>x[0]+=86400000);
+ await withData(future,()=>assert.rejects(candles('BTCUSDT','5m',120),/Invalid|Stale|Insufficient/));
+ const bad=payload();bad[90][5]='NaN';
+ await withData(bad,()=>assert.rejects(candles('BTCUSDT','5m',120),/Invalid or non-contiguous/));
 });
