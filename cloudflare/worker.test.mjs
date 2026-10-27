@@ -102,7 +102,7 @@ test('real XRP trade fixture and futures margin math are internally consistent',
 
 test('Binance Futures rejects unavailable endpoint, spot fallback, malformed and future candles',async()=>{
  await withData({code:-1003,msg:'rate limit'},()=>assert.rejects(candles('BTCUSDT','5m',120),/Invalid Binance Futures/));
- const future=payload();future.forEach(x=>x[0]+=300000);
+ const future=payload();future.forEach(x=>x[0]+=86400000);
  await withData(future,()=>assert.rejects(candles('BTCUSDT','5m',120),/Invalid|Stale|Insufficient/));
  const bad=payload();bad[90][5]='NaN';
  await withData(bad,()=>assert.rejects(candles('BTCUSDT','5m',120),/Invalid or non-contiguous/));
