@@ -3,7 +3,7 @@
 const SYMBOLS = ['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'];
 const API = 'https://api.kraken.com/0/public/OHLC';
 const PAIRS = {SOLUSDT:'SOLUSDT',BTCUSDT:'XBTUSDT',ETHUSDT:'ETHUSDT',XRPUSDT:'XRPUSDT'};
-const RELEASE = 'kraken-news-v3';
+const RELEASE = 'kraken-entry-zone-v4';
 const NEWS_FEEDS=[{name:'CoinDesk',url:'https://www.coindesk.com/arc/outboundfeeds/rss/',host:'coindesk.com'},{name:'Cointelegraph',url:'https://cointelegraph.com/rss',host:'cointelegraph.com'}];
 const NEWS_TERMS={SOLUSDT:/\b(solana|sol)\b/i,BTCUSDT:/\b(bitcoin|btc)\b/i,ETHUSDT:/\b(ethereum|ether|eth)\b/i,XRPUSDT:/\b(xrp|ripple|rlusd)\b/i};
 function xmlText(value){return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/<[^>]*>/g,'').replace(/&#(x[0-9a-f]+|\d+);/gi,(_,n)=>{const c=n[0].toLowerCase()==='x'?parseInt(n.slice(1),16):Number(n);return c>0&&c<=0x10ffff?String.fromCodePoint(c):'';}).replace(/&(amp|quot|apos|lt|gt);/g,(_,n)=>({amp:'&',quot:'"',apos:"'",lt:'<',gt:'>'}[n])).replace(/[\r\n\t]+/g,' ').trim();}
@@ -99,6 +99,43 @@ add('RSI_BOLL','SHORT',strength<25&&cl.at(-2)>bands(cl.slice(0,-1))[1]&&last.clo
 add('MACD_VOLUME','LONG',macd.at(-2)<=sig.at(-2)&&macd.at(-1)>sig.at(-1)&&vr>=1.2&&momentum>50,65+Math.min(20,vr*10),'MACD bullish crossover; volume x'+vr.toFixed(2));
 add('MACD_VOLUME','SHORT',macd.at(-2)>=sig.at(-2)&&macd.at(-1)<sig.at(-1)&&vr>=1.2&&momentum<50,65+Math.min(20,vr*10),'MACD bearish crossover; volume x'+vr.toFixed(2));
 return out.slice(0,3).filter(s=>{let pct=100*Math.abs(last.close-s.stop)/last.close,ok=pct>=0.25&&pct<=1.5;if(!ok)checks.push(s.strategy+' '+s.direction+': נפסל — מרחק סטופ '+pct.toFixed(2)+'% מחוץ לטווח 0.25%–1.50%');return ok;}).map(s=>({...s,entry:last.close,stopPct:100*Math.abs(last.close-s.stop)/last.close,candle:last.time}));}
+
+export function tradePlan(s,bars,now=Date.now()){
+ const side=s.direction==='LONG'?1:s.direction==='SHORT'?-1:0;
+ const risk=side*(s.entry-s.stop),vol=atr(bars);
+ if(!side||!Number.isFinite(risk)||risk<=0||!Number.isFinite(vol)||vol<=0)return null;
+ const a=s.entry-side*Math.min(vol*.2,risk*.2);
+ const b=s.entry+side*Math.min(vol*.08,risk*.08);
+ const low=Math.min(a,b),high=Math.max(a,b),target=s.entry+side*2*risk;
+ const expires=s.candle+4*PERIOD;
+ const costs=.0015; // assumed combined round-trip fees and slippage, not live quotes
+ const worstRisk=Math.max(...[low,high].map(p=>side*(p-s.stop)+p*costs));
+ const worstProfit=Math.min(...[low,high].map(p=>side*(target-p)-p*costs));
+ const netR=worstProfit/worstRisk;
+ if(![low,high,target,worstRisk,netR].every(Number.isFinite)||low<=0||high<=0||target<=0||worstRisk<=0||netR<1.25||now>=expires)return null;
+ return {low,high,target,expires,netR,riskBudget:1.5,notional:1.5/worstRisk*high};
+}
+export function tradeMessage(symbol,s,p,news){
+ const money=x=>'$'+x.toFixed(x>=1000?2:5);
+ return ['🚨 SIGNALPILOT | '+symbol,
+  (s.direction==='LONG'?'🟢 LONG':'🔴 SHORT')+' | '+s.strategy,
+  '━━━━━━━━━━━━━━',
+  '📍 טווח כניסה: '+money(p.low)+' – '+money(p.high),
+  '📌 מחיר אות: '+money(s.entry),
+  '🛑 סטופ: '+money(s.stop),
+  '🎯 יעד: '+money(p.target),
+  '⛔ אין להיכנס מחוץ לטווח',
+  '⏳ תוקף עד '+israelTime(p.expires)+' (ישראל)',
+  '❌ ביטול לפני כניסה: תום התוקף או נגיעה בסטופ',
+  '🛡️ סיכון תיאורטי: $1.50 | חשיפה: כ־$'+p.notional.toFixed(2),
+  '📐 יחס נטו משוער בקצה הגרוע: '+p.netR.toFixed(2)+'R',
+  '💸 הנחת עלויות כוללת: 0.15% הלוך וחזור',
+  '📊 דירוג תנאים: '+s.score+'/100 (לא הסתברות)',
+  '🔎 '+s.reason,
+  '🏦 מקור: Kraken Spot USDT, לא Binance Futures',
+  '⚠️ מחקר בלבד; אין מסחר או מעקב ביטול אוטומטי',
+  '',formatNewsContext(news,symbol,1)].join('\n');
+}
 export function shouldSendScanStatus(found){return Array.isArray(found)&&found.length>0;}
 export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
  const last=five.at(-1), previous=five.slice(-13,-1), volume=last.volume/avg(previous.map(b=>b.volume));
@@ -135,19 +172,21 @@ export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
 }
 async function send(env,msg){let r=await fetch('https://api.telegram.org/bot'+env.TELEGRAM_BOT_TOKEN+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:env.TELEGRAM_CHAT_ID,text:msg,disable_web_page_preview:true}),signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('Telegram HTTP '+r.status);let j=await r.json();if(!j.ok)throw Error('Telegram API rejected message');}
 async function scan(symbol,env,news){let [five,four]=await Promise.all([candles(symbol,'5m',120),candles(symbol,'4h',100)]),last=five.at(-1),age=(Date.now()-(last.time+PERIOD))/60000;console.log(JSON.stringify({event:'scan',symbol,candle:new Date(last.time).toISOString(),closedAgeMinutes:+age.toFixed(2)}));if(age<0||age>7){console.warn('Skipping stale candle',symbol,age);return;}
-let checks=[],found=setups(five,four,checks);console.log(JSON.stringify({event:'candidates',symbol,count:found.length,strategies:found.map(s=>s.strategy)}));for(let s of found){let key='signal:'+symbol+':'+s.candle+':'+s.strategy+':'+s.direction;if(await env.SIGNAL_STATE.get(key)){console.log('Duplicate skipped',key);continue;}
-let risk=Math.abs(s.entry-s.stop),target=s.entry+(s.direction==='LONG'?2:-2)*risk;
-let msg='🔔 '+symbol+' '+s.direction+' | '+s.strategy+'\nדירוג תנאים: '+s.score+'/100 (לא הסתברות הצלחה)\nנר: '+new Date(s.candle).toISOString()+'\nכניסה תיאורטית: $'+s.entry.toFixed(5)+'\nסטופ: $'+s.stop.toFixed(5)+' ('+s.stopPct.toFixed(2)+'%)\nיעד 2R: $'+target.toFixed(5)+'\n'+s.reason+'\n⚠️ מחקר בלבד. אין ביצוע מסחר אוטומטי.';
-await send(env,msg+'\nמקור נתונים: Kraken Spot (USDT)\n\n'+formatNewsContext(news,symbol,2));await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});console.log('Alert sent',key);}
-const statusKey='status:'+symbol+':'+last.time;
-let statusDelivery=shouldSendScanStatus(found)?'already_sent':'suppressed_no_signal';
-if(shouldSendScanStatus(found)&&!await env.SIGNAL_STATE.get(statusKey)){
- const status=formatScanStatus(symbol,five,four,found,Date.now(),news);
- await send(env,status);
- await env.SIGNAL_STATE.put(statusKey,'sent',{expirationTtl:86400});
- statusDelivery='sent';
- console.log(JSON.stringify({event:'status_sent',symbol,candle:new Date(last.time).toISOString(),release:RELEASE}));
+let checks=[],raw=setups(five,four,checks),found=[];
+for(const setup of raw){
+ const plan=tradePlan(setup,five);
+ if(plan)found.push({setup,plan});
+ else console.log(JSON.stringify({event:'plan_filtered',symbol,strategy:setup.strategy}));
 }
+console.log(JSON.stringify({event:'candidates',symbol,count:found.length,rawCandidates:raw.length,strategies:found.map(x=>x.setup.strategy)}));
+for(const {setup,plan} of found){
+ const key='signal:'+symbol+':'+setup.candle+':'+setup.strategy+':'+setup.direction;
+ if(await env.SIGNAL_STATE.get(key)){console.log('Duplicate skipped',key);continue;}
+ await send(env,tradeMessage(symbol,setup,plan,news));
+ await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});
+ console.log('Alert sent',key);
+}
+const statusDelivery=found.length?'signal_only':'suppressed_no_signal';
 await notifyFreshNews(symbol,env,news);
 return {symbol,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length};}
 export default {
