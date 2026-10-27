@@ -266,6 +266,10 @@ async function changeAccess(env,action,id){
  }
  return '⚠️ פעולה לא מוכרת.';
 }
+async function tgAcknowledge(env,body){
+ try{await tgRequest(env,'answerCallbackQuery',body);}
+ catch(error){console.warn('Telegram callback acknowledgement expired or failed; continuing access processing');}
+}
 export async function processTelegramAccess(env){
  const offset=Number(await env.SIGNAL_STATE.get(OFFSET)||0);
  if(!Number.isSafeInteger(offset)||offset<0)throw Error('Invalid update offset');
@@ -282,13 +286,13 @@ export async function processTelegramAccess(env){
   if(owner){ownerMessages++;if(['/users','/approve','/remove','/start'].includes(cmd)||cb?.data?.startsWith('access:'))ownerCommands++;}
   if(cb){
    if(!privateChat||!owner||from!==id){
-    await tgRequest(env,'answerCallbackQuery',{callback_query_id:cb.id,text:'אין לך הרשאה לפעולה זו.',show_alert:true});
+    await tgAcknowledge(env,{callback_query_id:cb.id,text:'אין לך הרשאה לפעולה זו.',show_alert:true});
    }else{
     const match=/^access:(list|approve|remove)(?::(\d{1,18}))?$/.exec(String(cb.data||''));
     if(!match||((match[1]==='list')!==!match[2])){
-     await tgRequest(env,'answerCallbackQuery',{callback_query_id:cb.id,text:'פעולה לא תקינה'});
+     await tgAcknowledge(env,{callback_query_id:cb.id,text:'פעולה לא תקינה'});
     }else{
-     await tgRequest(env,'answerCallbackQuery',{callback_query_id:cb.id});
+     await tgAcknowledge(env,{callback_query_id:cb.id});
      if(match[1]==='list')await showAccessList(env);
      else{const result=await changeAccess(env,match[1],match[2]);await tgDirect(env,id,result);await showAccessList(env);}
     }
