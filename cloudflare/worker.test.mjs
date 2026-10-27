@@ -73,3 +73,23 @@ test('trade plans have directional entry zones, expiry, risk sizing and clean me
  const msg=tradeMessage('BTCUSDT',short,q,{status:'unavailable'});
  for(const term of ['טווח כניסה','סטופ','יעד','תוקף','ביטול','Kraken Spot','סיכון'])assert.ok(msg.includes(term),term);
 });
+
+test('real XRP trade fixture and futures margin math are internally consistent',()=>{
+ const entry=1.3106,exit=1.3025,qty=56.1,reportedNet=0.38;
+ const gross=(entry-exit)*qty;
+ assert.ok(Math.abs(gross-0.45441)<1e-8);
+ assert.ok(gross>reportedNet);
+ const base=Date.UTC(2026,9,27,0,30);
+ const bars=Array.from({length:120},(_,i)=>({time:base-(120-i)*300000,high:1.32,low:1.30,close:1.31,volume:100}));
+ const short={strategy:'BREAKOUT',direction:'SHORT',entry:1.3106,stop:1.325,score:75,reason:'test',candle:base-300000};
+ const plan=tradePlan(short,bars,base);
+ assert.ok(plan);
+ assert.equal(plan.leverage,2);
+ assert.ok(Math.abs(plan.margin*2-plan.notional)<1e-8);
+ assert.ok(plan.quantity*plan.worstLoss<=1.50000001);
+ assert.ok(plan.netR>=1.25);
+ const text=tradeMessage('XRPUSDT',short,plan,{status:'unavailable'});
+ for(const term of ['XRP','2X','ביטחונות','עמלה','החלקה','funding','Kraken Spot'])assert.ok(text.includes(term),term);
+ const withHighFees=tradePlan(short,bars,base,{riskBudget:1.5,leverage:2,feeRate:0.005,slippageRate:0.0025,minNetR:1.25});
+ assert.equal(withHighFees,null);
+});
