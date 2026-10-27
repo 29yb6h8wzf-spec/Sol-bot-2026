@@ -147,3 +147,25 @@ test('Binance Futures rejects unavailable endpoint, spot fallback, malformed and
  const bad=payload();bad[90][5]='NaN';
  await withData(bad,()=>assert.rejects(candles('BTCUSDT','5m',120),/Invalid or non-contiguous/));
 });
+
+test('scheduled worker persists durable KV receipt with all four futures sources',async()=>{
+ const logs=[],stored=new Map(),oldLog=console.log;console.log=(...args)=>logs.push(args);
+ try{await withData(u=>payload(u.searchParams.get('interval')==='4h'?240:5),async()=>{
+  let work;
+  const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>stored.get(k)||null,put:async(k,v)=>stored.set(k,v)}};
+  await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},env,{waitUntil:p=>work=p});await work;
+  const receipt=JSON.parse(stored.get('health:cron:'+fixed));
+  assert.equal(receipt.ok,true);assert.equal(receipt.release,'futures-source-health-v7');
+  assert.equal(receipt.results.length,4);assert.equal(receipt.failures.length,0);
+  assert.ok(receipt.results.every(x=>x.source==='binance_usdm'));
+ });}finally{console.log=oldLog;}
+});
+test('scheduled worker persists failure receipt for debugging without suppressing failure',async()=>{
+ const stored=new Map(),oldError=console.error,oldLog=console.log;console.error=()=>{};console.log=()=>{};
+ try{await withData({},async()=>{
+  let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},{TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>stored.get(k)||null,put:async(k,v)=>stored.set(k,v)}},{waitUntil:p=>work=p});
+  await assert.rejects(work,/market scans failed/);
+  const receipt=JSON.parse(stored.get('health:cron:'+fixed));
+  assert.equal(receipt.ok,false);assert.equal(receipt.failures.length,4);
+ });}finally{console.error=oldError;console.log=oldLog;}
+});

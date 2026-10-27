@@ -115,55 +115,46 @@ async function main(){
  const actual=scheduleList(await api('/schedules'));
  assert.ok(actual.some(s=>s.cron===CRON),'Five-minute cron not configured');
  report('Confirmed cron '+CRON+'. WARNING: GitHub scan workflows are also enabled; duplicate signal sources remain.');
- const tail=await api('/tails',{method:'POST',body:JSON.stringify({filters:[]})});
- let ws;
- try{
-  const verificationStart=Date.now(), deadline=verificationStart+26*60*1000, verified=new Map();
-  await new Promise((resolve,reject)=>{
-   let settled=false;
-   const timer=setTimeout(()=>finish(Error('Timed out: two consecutive successful scheduled scans were not verified; GitHub scans remain enabled')),deadline-Date.now());
-   function finish(error){if(settled)return;settled=true;clearTimeout(timer);error?reject(error):resolve();}
-   // Tail URL is an ephemeral credential: keep it out of logs and artifacts.
-   ws=new WebSocket(tail.url,'trace-v1');
-   ws.addEventListener('open',()=>{ws.send(JSON.stringify({debug:false}));report('Listening for actual Cloudflare cron executions (not manual tests).');});
-   ws.addEventListener('error',()=>finish(Error('Cloudflare live-log connection failed; deployment not verified')));
-   ws.addEventListener('close',()=>{if(!settled)finish(Error('Cloudflare live-log connection closed before verification'));});
-   ws.addEventListener('message',async message=>{
-    try{
-     const raw=typeof message.data==='string'?message.data:await message.data.text();
-     const trace=JSON.parse(raw);
-     if(trace.scriptName!==WORKER||trace.event?.cron!==CRON)return;
-     for(const log of trace.logs||[]){for(const item of log.message||[]){
-      let row;try{row=typeof item==='string'?JSON.parse(item):item;}catch{continue;}
-      if(row?.release!==RELEASE)continue;
-      if(row.event==='scan_failed'){
-       // Only emit bounded, structured diagnostics. No request URLs, tokens or response bodies.
-       const market=SYMBOLS.includes(row.symbol)?row.symbol:'unknown';
-       const reason=String(row.message||'unknown').replace(/[^a-zA-Z0-9 _.: -]/g,'?').slice(0,160);
-       report('Market scan failed: '+market+'; '+reason);
-       continue;
-      }
-      if(row.event!=='scan_complete')continue;
-      const seen=new Set((row.results||[]).map(r=>r.symbol));
-      const sources=(row.results||[]).map(r=>r.symbol+':'+r.source).join(',');
-      const valid=trace.outcome==='ok'&&!(trace.exceptions||[]).length&&row.ok===true&&row.source==='futures_perpetual'&&row.cron===CRON&&SYMBOLS.every(s=>seen.has(s))&&seen.size===4&&row.results.every(r=>Number.isFinite(r.closedAgeMinutes)&&r.closedAgeMinutes>=0&&r.closedAgeMinutes<=7&&['binance_usdm','bybit_linear'].includes(r.source)&&Number.isInteger(r.candidates)&&r.candidates>=0&&(r.candidates===0?r.statusDelivery==='suppressed_no_signal':r.statusDelivery==='signal_only')&&['ready','partial','unavailable','stale'].includes(r.newsStatus));
-      const time=Number(row.scheduledTime);
-      if(!Number.isFinite(time)||time<verificationStart-60000)continue;
-      report('Scheduled '+new Date(time).toISOString()+' ['+sources+']: '+(valid?'PASS (SOL, BTC, ETH, XRP; fresh perpetual futures candles (Binance or labeled Bybit proxy); Telegram delivery checked only when signals exist; silent scans verified; news status recorded)':'FAIL (scan errors, incomplete markets or inconsistent signal delivery)'));
-      if(!valid){verified.clear();continue;}
-      const prior=verified.get(time-300000);
-      verified.set(time,row);
-      if(prior&&row.results.every(r=>Date.parse(r.candle)-Date.parse(prior.results.find(p=>p.symbol===r.symbol).candle)===300000)){
-       report('VERIFIED: two consecutive automatic scans exactly five minutes apart; all four markets advanced to the next closed candle.');finish();
-      }
-     }}
-    }catch{finish(Error('Could not validate a Cloudflare scheduled log message'));}
-   });
-  });
- }finally{
-  ws?.close();
-  try{await api('/tails/'+encodeURIComponent(tail.id),{method:'DELETE'});}catch{report('Temporary tail session cleanup failed; it will expire automatically.');}
+
+ // Durable verification: read receipts persisted by the scheduled Worker in KV.
+ // Never depend on a Cloudflare tail WebSocket remaining connected.
+ const prefix='health:cron:',namespace=kv.namespace_id;
+ const kvRoot='https://api.cloudflare.com/client/v4/accounts/'+account+'/storage/kv/namespaces/'+namespace;
+ async function kvRequest(path,{json=true}={}){
+  const response=await fetch(kvRoot+path,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(15000)});
+  if(!response.ok)throw Error('Cloudflare KV read HTTP '+response.status+'; grant Workers KV Storage Read to the deployment token');
+  const data=await response.json();
+  if(json&&data.success!==true)throw Error('Cloudflare KV API returned unsuccessful response; verify KV Storage Read permission');
+  return json?data.result:data;
  }
+ // Fail early with a precise actionable error if this token cannot read verification receipts.
+ await kvRequest('/keys?prefix='+encodeURIComponent(prefix)+'&limit=100');
+ report('Cloudflare KV read access confirmed; verification uses durable cron receipts, not WebSocket logs.');
+ const verificationStart=Date.now(),deadline=verificationStart+22*60*1000,observed=new Map();
+ let success=false;
+ while(Date.now()<deadline&&!success){
+  const keys=await kvRequest('/keys?prefix='+encodeURIComponent(prefix)+'&limit=100');
+  if(!Array.isArray(keys))throw Error('Unexpected KV key-list format');
+  for(const key of keys.filter(k=>k.name?.startsWith(prefix)).sort((a,b)=>Number(a.name.slice(prefix.length))-Number(b.name.slice(prefix.length)))){
+   const time=Number(key.name.slice(prefix.length));
+   if(!Number.isFinite(time)||time<verificationStart-60000||observed.has(time))continue;
+   const row=await kvRequest('/values/'+encodeURIComponent(key.name),{json:false});
+   if(!row||row.release!==RELEASE||row.scheduledTime!==time||row.cron!==CRON)continue;
+   const seen=new Set((row.results||[]).map(r=>r.symbol));
+   const valid=row.ok===true&&Array.isArray(row.failures)&&row.failures.length===0&&row.source==='futures_perpetual'&&seen.size===4&&SYMBOLS.every(s=>seen.has(s))&&row.results.every(r=>Number.isFinite(r.closedAgeMinutes)&&r.closedAgeMinutes>=0&&r.closedAgeMinutes<=7&&['binance_usdm','bybit_linear'].includes(r.source)&&Number.isInteger(r.candidates)&&r.candidates>=0&&(r.candidates===0?r.statusDelivery==='suppressed_no_signal':r.statusDelivery==='signal_only')&&['ready','partial','unavailable','stale'].includes(r.newsStatus));
+   observed.set(time,{row,valid});
+   report('KV scheduled '+new Date(time).toISOString()+' ['+(row.results||[]).map(r=>r.symbol+':'+r.source).join(',')+']: '+(valid?'PASS':'FAIL')+(row.failures?.length?' failures='+row.failures.map(f=>f.symbol+':'+String(f.reason).replace(/[^a-zA-Z0-9 _.: -]/g,'?').slice(0,110)).join('; '):''));
+   if(!valid)continue;
+   const prior=observed.get(time-300000);
+   if(prior?.valid&&row.results.every(r=>{const p=prior.row.results.find(x=>x.symbol===r.symbol);return p&&Date.parse(r.candle)-Date.parse(p.candle)===300000;})){
+    report('VERIFIED: two consecutive successful actual scheduled scans, five minutes apart, all four futures markets advanced, with durable KV receipts.');
+    success=true;break;
+   }
+  }
+  if(!success)await new Promise(resolve=>setTimeout(resolve,20000));
+ }
+ if(!success)throw Error('Timed out: no two consecutive successful cron receipts in KV; GitHub scans remain enabled');
+
 }
 try{await main();}catch(error){report('FAILED: '+error.message);process.exitCode=1;}finally{
  if(process.env.GITHUB_STEP_SUMMARY)await fs.appendFile(process.env.GITHUB_STEP_SUMMARY,'## Cloudflare scanner deployment\n\n'+summary.map(x=>'- '+x).join('\n')+'\n');
