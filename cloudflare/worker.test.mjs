@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const source=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
-const {candles,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,readBinancePositions,monitorBinanceAccount,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const {candles,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,readBinancePositions,monitorBinanceAccount,processTelegramAccess,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const now=Date.now, originalFetch=globalThis.fetch;
 const fixed=1800000000000;
 let telegramMessages=[], telegramStatus=200, newsXML='<rss><channel></channel></rss>';
@@ -246,4 +246,27 @@ test('Binance monitor records inaccessible API as health error without leaking s
   assert.ok(!logs.join(' ').includes('private-secret'));
   assert.ok(!logs.join(' ').includes('private-key'));
  }finally{globalThis.fetch=oldFetch;console.warn=oldWarn;}
+});
+
+test('only owner can approve private SignalPilot subscribers',async()=>{
+ const saved=globalThis.fetch,kv=new Map(),sent=[],queue=[];
+ const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'100',SIGNAL_STATE:{get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)}};
+ globalThis.fetch=async (url,options)=>{
+  const method=String(url).split('/').at(-1),body=JSON.parse(options.body);
+  if(method==='getUpdates')return new Response(JSON.stringify({ok:true,result:queue.filter(x=>x.update_id>=body.offset)}));
+  if(method==='sendMessage'){sent.push(body);return new Response(JSON.stringify({ok:true,result:{message_id:1}}));}
+  throw Error('Unexpected Telegram method '+method);
+ };
+ const msg=(n,id,text)=>({update_id:n,message:{chat:{id,type:'private'},text}});
+ try{
+  queue.push(msg(1,200,'/start'));await processTelegramAccess(env);
+  assert.deepEqual(JSON.parse(kv.get('tg:pending')),['200']);
+  assert.ok(sent.some(x=>x.chat_id==='100'&&x.text.includes('/approve 200')));
+  queue.push(msg(2,300,'/approve 200'));await processTelegramAccess(env);
+  assert.equal(kv.get('tg:approved'),undefined);
+  queue.push(msg(3,100,'/approve 200'));await processTelegramAccess(env);
+  assert.deepEqual(JSON.parse(kv.get('tg:approved')),['200']);
+  queue.push(msg(4,100,'/remove 200'));await processTelegramAccess(env);
+  assert.deepEqual(JSON.parse(kv.get('tg:approved')),[]);
+ }finally{globalThis.fetch=saved;}
 });
