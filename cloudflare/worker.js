@@ -81,14 +81,44 @@ function atr(c,n=14) {return avg(c.slice(1).map((x,i)=>Math.max(x.high-x.low,Mat
 function adx(c,n=14) {if(c.length<2*n+2)return 0;let t=[],p=[],m=[];for(let i=1;i<c.length;i++){let x=c[i],y=c[i-1],up=x.high-y.high,down=y.low-x.low;p.push(up>down&&up>0?up:0);m.push(down>up&&down>0?down:0);t.push(Math.max(x.high-x.low,Math.abs(x.high-y.close),Math.abs(x.low-y.close)));}
 const smooth=a=>{let o=[a.slice(0,n).reduce((x,y)=>x+y,0)];for(let x of a.slice(n))o.push(o.at(-1)-o.at(-1)/n+x);return o;};
 let ts=smooth(t),ps=smooth(p),ms=smooth(m),dx=ts.map((v,i)=>{let a=v?100*ps[i]/v:0,b=v?100*ms[i]/v:0;return a+b?100*Math.abs(a-b)/(a+b):0;});let out=avg(dx.slice(0,n));for(let d of dx.slice(n))out=(out*(n-1)+d)/n;return out;}
+// Retry only transient transport, rate-limit and upstream failures. Never retry invalid pairs or malformed candles.
+// No stale-cache fallback: every signal still requires newly validated, closed Kraken candles.
+export async function fetchKrakenOHLC(url,symbol,interval){
+ const delays=[0,300,900];
+ for(let attempt=0;attempt<delays.length;attempt++){
+  if(delays[attempt])await new Promise(resolve=>setTimeout(resolve,delays[attempt]));
+  let response;
+  try{response=await fetch(url,{signal:AbortSignal.timeout(12000)});}
+  catch(error){
+   const reason=error?.name==='TimeoutError'?'timeout':'network';
+   console.warn(JSON.stringify({event:'kraken_retry',symbol,interval,attempt:attempt+1,reason}));
+   if(attempt===delays.length-1)throw Error('Kraken '+reason+' after '+delays.length+' attempts');
+   continue;
+  }
+  if(!response.ok){
+   const transient=response.status===408||response.status===429||response.status>=500;
+   if(transient&&attempt<delays.length-1){console.warn(JSON.stringify({event:'kraken_retry',symbol,interval,attempt:attempt+1,reason:'http_'+response.status}));continue;}
+   throw Error('Kraken HTTP '+response.status);
+  }
+  let body;
+  try{body=await response.json();}catch{throw Error('Invalid Kraken OHLC JSON');}
+  if(!Array.isArray(body.error))throw Error('Invalid Kraken OHLC error field');
+  if(body.error.length){
+   const codes=body.error.map(String);
+   const transient=codes.some(code=>/rate limit|temporary lockout|service:unavailable|service:busy|internal error|throttl/i.test(code));
+   if(transient&&attempt<delays.length-1){console.warn(JSON.stringify({event:'kraken_retry',symbol,interval,attempt:attempt+1,reason:'api_transient'}));continue;}
+   throw Error('Kraken API rejected market data request ('+(transient?'transient exhausted':'non-retryable')+')');
+  }
+  return body;
+ }
+ throw Error('Kraken retry exhausted');
+}
+
 export async function candles(symbol,interval,limit){
  const minutes = {'5m':5,'4h':240}[interval], pair = PAIRS[symbol];
  if(!minutes||!pair)throw Error('Unsupported market or interval');
  const u=new URL(API);u.searchParams.set('pair',pair);u.searchParams.set('interval',minutes);
- let r;try{r=await fetch(u,{signal:AbortSignal.timeout(12000)});}catch{throw Error('Kraken request failed');}
- if(!r.ok)throw Error('Kraken HTTP '+r.status);
- const body=await r.json();
- if(!Array.isArray(body.error)||body.error.length)throw Error('Kraken API rejected market data request');
+ const body=await fetchKrakenOHLC(u,symbol,interval);
  const entries=Object.entries(body.result||{}).filter(([key])=>key!=='last');
  if(entries.length!==1||!Array.isArray(entries[0][1]))throw Error('Invalid Kraken OHLC response');
  // Kraken timestamps are seconds; its final row is always the open candle.
