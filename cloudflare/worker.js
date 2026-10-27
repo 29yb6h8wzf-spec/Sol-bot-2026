@@ -56,6 +56,21 @@ async function notifyFreshNews(symbol,env,news){
   console.log(JSON.stringify({event:'news_sent',symbol,source:article.source,publishedAt:article.publishedAt}));
  }
 }
+async function sendHourlyNewsDigest(env,news,now=Date.now()){
+ const hour=Math.floor(now/3600000),key='news:hourly:owner:'+hour;
+ if(await env.SIGNAL_STATE.get(key))return;
+ const lines=['📰 SignalPilot | עדכון חדשות שעתי','🕒 '+israelTime(now)+' (ישראל)',''];
+ if(!news||news.status==='unavailable')lines.push('⚠️ מקורות החדשות לא זמינים כרגע.');
+ else{
+  lines.push('סטטוס: '+news.status);
+  const recent=(news.items||[]).filter(x=>x.publishedAt>now-3600000&&x.publishedAt<=now).slice(0,5);
+  if(!recent.length)lines.push('לא נמצאו כותרות חדשות בשעה האחרונה.');
+  for(const item of recent)lines.push('• '+item.title.slice(0,130),item.source+' | '+item.url);
+ }
+ lines.push('','ℹ️ חדשות בלבד, לא איתות מסחר.');
+ await send(env,lines.join(String.fromCharCode(10)));
+ await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:7200});
+}
 const PERIOD = 300000;
 const avg = a => a.reduce((x,y)=>x+y,0)/a.length;
 function ema(v,n) {let x=v[0], a=2/(n+1);for(const y of v.slice(1))x=a*y+(1-a)*x;return x;}
@@ -343,7 +358,9 @@ for(const {setup,plan} of found){
  await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});
  console.log('Alert sent',key);
 }
-const statusDelivery=found.length?'signal_only':'suppressed_no_signal';
+const heartbeat=['SignalPilot scan '+symbol,'Time '+israelTime(Date.now()),'Price '+last.close.toFixed(5)+' source '+sourceId,'Candidates '+found.length].join(String.fromCharCode(10));
+await send(env,heartbeat);
+const statusDelivery=found.length?'signal_and_heartbeat':'heartbeat_no_signal';
 await notifyFreshNews(symbol,env,news);
 return {symbol,source:sourceId,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length};}
 
@@ -400,7 +417,7 @@ export async function monitorBinanceAccount(env){
 }
 
 export default {
- async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}if(env.TELEGRAM_ACCESS_ENABLED!=='0')ctx.waitUntil(processTelegramAccess(env).catch(async error=>{const reason=String(error).replace(/bot[0-9]+:[A-Za-z0-9_-]+/g,'[REDACTED]').slice(0,180);console.error('Telegram access polling failed',reason);try{await env.SIGNAL_STATE.put('tg:access-health',JSON.stringify({status:'error',checkedAt:new Date().toISOString(),error:reason}));}catch{}}));ctx.waitUntil((async()=>{const news=await loadNews(env);const results=[],failures=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){const message=error instanceof Error?error.message:'Scan failed';failures.push({symbol,reason:message.slice(0,180)});console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message}));}}const receipt={event:'scan_complete',release:RELEASE,source:'kraken_spot',cron:event.cron,scheduledTime:event.scheduledTime,recordedAt:Date.now(),ok:results.length===SYMBOLS.length,results,failures};
+ async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}if(env.TELEGRAM_ACCESS_ENABLED!=='0')ctx.waitUntil(processTelegramAccess(env).catch(async error=>{const reason=String(error).replace(/bot[0-9]+:[A-Za-z0-9_-]+/g,'[REDACTED]').slice(0,180);console.error('Telegram access polling failed',reason);try{await env.SIGNAL_STATE.put('tg:access-health',JSON.stringify({status:'error',checkedAt:new Date().toISOString(),error:reason}));}catch{}}));ctx.waitUntil((async()=>{const news=await loadNews(env);try{await sendHourlyNewsDigest(env,news);}catch(error){console.warn('Hourly news delivery failed');}const results=[],failures=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){const message=error instanceof Error?error.message:'Scan failed';failures.push({symbol,reason:message.slice(0,180)});console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message}));}}const receipt={event:'scan_complete',release:RELEASE,source:'kraken_spot',cron:event.cron,scheduledTime:event.scheduledTime,recordedAt:Date.now(),ok:results.length===SYMBOLS.length,results,failures};
 console.log(JSON.stringify(receipt));
 await env.SIGNAL_STATE.put('health:cron:'+event.scheduledTime,JSON.stringify(receipt),{expirationTtl:86400});await monitorBinanceAccount(env);if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
  async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
