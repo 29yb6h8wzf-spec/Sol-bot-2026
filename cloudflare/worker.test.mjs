@@ -225,8 +225,9 @@ test('Bitget v3 USDT-FUTURES fallback parses contract candles and rejects Spot o
   assert.equal(five.length,120);assert.equal(four.length,100);
   assert.equal(five.at(-1).time,fixed-300000);assert.equal(five.at(-1).volume,42);
   assert.equal(calls.length,2);
+  globalThis.fetch=async()=>new Response(JSON.stringify({code:'10001',data:[]}));
+  await assert.rejects(candles('SOLUSDT','5m',120,'bitget'),/Invalid Bitget Futures klines response/);
  }finally{globalThis.fetch=original;Date.now=now;}
- await withData({},()=>assert.rejects(candles('SOLUSDT','5m',120,'bitget'),/Invalid Bitget Futures klines response/));
 });
 test('Binance 451 and Bybit 403 use only Bitget futures, label source, and retain four-market receipts',async()=>{
  const original=globalThis.fetch,oldLog=console.log,oldWarn=console.warn;Date.now=()=>fixed;
