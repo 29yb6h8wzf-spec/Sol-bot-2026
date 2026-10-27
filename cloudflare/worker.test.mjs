@@ -7,9 +7,9 @@ const now=Date.now, originalFetch=globalThis.fetch;
 const fixed=1800000000000;
 let telegramMessages=[], telegramStatus=200, newsXML='<rss><channel></channel></rss>';
 function payload(minutes=5){
- const duration=minutes*60000,end=Math.floor(fixed/duration)*duration;
- return Array.from({length:121},(_,i)=>{
-  const open=end-(120-i)*duration;
+ const duration=minutes*60000,end=Math.floor(fixed/duration)*duration,count=minutes===240?101:121;
+ return Array.from({length:count},(_,i)=>{
+  const open=end-(count-1-i)*duration;
   return [open,'100','102','99','101','42',open+duration-1,'4200',100,'21','2100','0'];
  });
 }
