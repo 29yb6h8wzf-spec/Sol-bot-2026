@@ -207,6 +207,60 @@ export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
   '',formatNewsContext(news,symbol)
  ].join('\n');
 }
+
+const APPROVED='tg:approved',PENDING='tg:pending',OFFSET='tg:offset';
+async function tgRequest(env,method,body){
+ const response=await fetch('https://api.telegram.org/bot'+env.TELEGRAM_BOT_TOKEN+'/'+method,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(12000)});
+ if(!response.ok)throw Error('Telegram '+method+' HTTP '+response.status);
+ const result=await response.json();if(!result.ok)throw Error('Telegram '+method+' failed');
+ return result.result;
+}
+async function tgDirect(env,id,message){return tgRequest(env,'sendMessage',{chat_id:id,text:message.slice(0,3900)});}
+async function tgIds(env,key){const value=JSON.parse(await env.SIGNAL_STATE.get(key)||'[]');if(!Array.isArray(value)||value.length>200||!value.every(x=>typeof x==='string'&&/^\d{1,18}$/.test(x)))throw Error('Invalid subscriber list');return value;}
+async function tgSave(env,key,ids){await env.SIGNAL_STATE.put(key,JSON.stringify([...new Set(ids)]));}
+export async function processTelegramAccess(env){
+ const offset=Number(await env.SIGNAL_STATE.get(OFFSET)||0);
+ if(!Number.isSafeInteger(offset)||offset<0)throw Error('Invalid update offset');
+ const updates=await tgRequest(env,'getUpdates',{offset,limit:50,timeout:0,allowed_updates:['message']});
+ for(const update of updates){
+  const m=update.message,id=String(m?.chat?.id||''),owner=id===String(env.TELEGRAM_CHAT_ID);
+  const [cmd,arg]=String(m?.text||'').trim().split(/\s+/,2);
+  if(m?.chat?.type==='private'&&/^\d{1,18}$/.test(id)){
+   if(owner&&cmd==='/users'){
+    const a=await tgIds(env,APPROVED),p=await tgIds(env,PENDING);
+    await tgDirect(env,id,'Approved: '+(a.join(', ')||'none')+'\nPending: '+(p.join(', ')||'none')+'\\n/approve ID or /remove ID');
+   }else if(owner&&(cmd==='/approve'||cmd==='/remove')){
+    if(!/^\d{1,18}$/.test(arg||'')){await tgDirect(env,id,'Usage: '+cmd+' ID');}
+    else{
+     const p=await tgIds(env,PENDING),a=await tgIds(env,APPROVED);
+     if(cmd==='/approve'&&!p.includes(arg)){await tgDirect(env,id,'No pending request from '+arg);}
+     else{
+      await tgSave(env,APPROVED,cmd==='/approve'?[...a,arg]:a.filter(x=>x!==arg));
+      await tgSave(env,PENDING,p.filter(x=>x!==arg));
+      await tgDirect(env,id,cmd==='/approve'?'Approved '+arg:'Removed '+arg);
+      if(cmd==='/approve')try{await tgDirect(env,arg,'SignalPilot: approved for private research alerts.');}catch{}
+     }
+    }
+   }else if(!owner&&cmd==='/start'){
+    const a=await tgIds(env,APPROVED),p=await tgIds(env,PENDING);
+    if(a.includes(id))await tgDirect(env,id,'SignalPilot: you are already approved.');
+    else{
+     if(!p.includes(id)){await tgSave(env,PENDING,[...p,id]);await tgDirect(env,env.TELEGRAM_CHAT_ID,'New SignalPilot request: '+id+'\\n/approve '+id);}
+     await tgDirect(env,id,'Your request is pending owner approval.');
+    }
+   }else if(owner&&cmd==='/start')await tgDirect(env,id,'SignalPilot owner: /users, /approve ID, /remove ID');
+   else if(!owner)await tgDirect(env,id,'SignalPilot: send /start to request access. Alerts are research only.');
+  }
+  await env.SIGNAL_STATE.put(OFFSET,String(update.update_id+1));
+ }
+}
+async function sendResearch(env,msg){
+ await send(env,msg);
+ for(const id of await tgIds(env,APPROVED)){
+  if(id===String(env.TELEGRAM_CHAT_ID))continue;
+  try{await tgDirect(env,id,msg);}catch(error){console.warn('Subscriber delivery failed',String(error));}
+ }
+}
 async function send(env,msg){let r=await fetch('https://api.telegram.org/bot'+env.TELEGRAM_BOT_TOKEN+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:env.TELEGRAM_CHAT_ID,text:msg,disable_web_page_preview:true}),signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('Telegram HTTP '+r.status);let j=await r.json();if(!j.ok)throw Error('Telegram API rejected message');}
 async function scan(symbol,env,news){
  let five,four,source,sourceId;
@@ -241,7 +295,7 @@ console.log(JSON.stringify({event:'candidates',symbol,count:found.length,rawCand
 for(const {setup,plan} of found){
  const key='signal:'+sourceId+':'+symbol+':'+setup.candle+':'+setup.strategy+':'+setup.direction;
  if(await env.SIGNAL_STATE.get(key)){console.log('Duplicate skipped',key);continue;}
- await send(env,tradeMessage(symbol,setup,plan,news));
+ await sendResearch(env,tradeMessage(symbol,setup,plan,news));
  await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});
  console.log('Alert sent',key);
 }
@@ -302,7 +356,7 @@ export async function monitorBinanceAccount(env){
 }
 
 export default {
- async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}ctx.waitUntil((async()=>{const news=await loadNews(env);const results=[],failures=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){const message=error instanceof Error?error.message:'Scan failed';failures.push({symbol,reason:message.slice(0,180)});console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message}));}}const receipt={event:'scan_complete',release:RELEASE,source:'futures_perpetual',cron:event.cron,scheduledTime:event.scheduledTime,recordedAt:Date.now(),ok:results.length===SYMBOLS.length,results,failures};
+ async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}if(env.TELEGRAM_ACCESS_ENABLED!=='0')ctx.waitUntil(processTelegramAccess(env).catch(error=>console.error('Telegram access polling failed',String(error))));ctx.waitUntil((async()=>{const news=await loadNews(env);const results=[],failures=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){const message=error instanceof Error?error.message:'Scan failed';failures.push({symbol,reason:message.slice(0,180)});console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message}));}}const receipt={event:'scan_complete',release:RELEASE,source:'futures_perpetual',cron:event.cron,scheduledTime:event.scheduledTime,recordedAt:Date.now(),ok:results.length===SYMBOLS.length,results,failures};
 console.log(JSON.stringify(receipt));
 await env.SIGNAL_STATE.put('health:cron:'+event.scheduledTime,JSON.stringify(receipt),{expirationTtl:86400});await monitorBinanceAccount(env);if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
  async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
