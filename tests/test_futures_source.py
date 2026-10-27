@@ -10,40 +10,41 @@ import bot
 
 class FuturesSourceTests(unittest.TestCase):
     def test_source_is_binance_usdm_perpetual(self):
-        self.assertEqual(bot.BASE, 'https://fapi.binance.com/fapi/v1/klines')
-        self.assertIn('Perpetual', bot.DATA_SOURCE)
+        self.assertEqual(bot.BASE, 'https://api.kraken.com/0/public/OHLC')
+        self.assertIn('Kraken Spot', bot.DATA_SOURCE)
         self.assertNotIn('/api/v3/', bot.BASE)
 
-    def test_fetch_uses_only_futures_and_excludes_open_candle(self):
-        rows = [[i * 300000, '100', '101', '99', '100.5', '200', i * 300000 + 299999]
-                for i in range(3)]
+    def test_kraken_public_ohlc_excludes_open_candle(self):
+        import time
+        end = int(time.time()) // 300 * 300
+        rows = [[end - 900, '100', '101', '99', '100.5', '100', '200', 1],
+                [end - 600, '100', '101', '99', '100.5', '100', '201', 1],
+                [end - 300, '100', '101', '99', '100.5', '100', '202', 1],
+                [end, '100', '101', '99', '100.5', '100', '203', 1]]
         called = []
-
         def fake_urlopen(url, timeout):
             called.append(url)
-            return io.BytesIO(json.dumps(rows).encode('utf-8'))
-
+            return io.BytesIO(json.dumps({'error': [], 'result': {'TEST': rows, 'last': end}}).encode())
         with mock.patch.object(bot.urllib.request, 'urlopen', side_effect=fake_urlopen):
-            candles = bot.fetch('5m', 3)
-        self.assertEqual(len(candles), 2)
-        self.assertEqual(candles[0]['volume'], 200.0)
-        self.assertEqual(len(called), 1)
-        self.assertTrue(called[0].startswith(bot.BASE + '?'))
-        self.assertIn('symbol=SOLUSDT', called[0])
-        self.assertIn('interval=5m', called[0])
+            bars = bot.fetch('5m', 3)
+        self.assertEqual(len(bars), 3)
+        self.assertEqual(bars[-1]['volume'], 202.0)
+        self.assertEqual(bars[-1]['time'], (end - 300) * 1000)
+        self.assertIn('interval=5', called[0])
 
-    def test_futures_outage_fails_closed_without_spot_fallback(self):
-        called = []
-
-        def unavailable(url, timeout):
-            called.append(url)
-            raise OSError('Futures unavailable')
-
-        with mock.patch.object(bot.urllib.request, 'urlopen', side_effect=unavailable):
-            with self.assertRaises(OSError):
+    def test_kraken_error_fails_closed(self):
+        def fake_urlopen(url, timeout):
+            return io.BytesIO(json.dumps({'error': ['EQuery:Unknown asset pair']}).encode())
+        with mock.patch.object(bot.urllib.request, 'urlopen', side_effect=fake_urlopen):
+            with self.assertRaises(ValueError):
                 bot.fetch('5m', 3)
-        self.assertEqual(len(called), 1)
-        self.assertTrue(called[0].startswith(bot.BASE))
+
+    def test_pair_uses_only_kraken(self):
+        with mock.patch.object(bot, 'fetch', side_effect=lambda interval, limit: [interval]) as fetch:
+            with contextlib.redirect_stdout(io.StringIO()):
+                four, five = bot.fetch_pair(120)
+        self.assertEqual((four, five), (['4h'], ['5m']))
+        self.assertEqual(fetch.call_count, 2)
 
     def test_diagnostic_logs_identify_futures_source(self):
         output = io.StringIO()
