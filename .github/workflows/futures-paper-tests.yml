@@ -3,24 +3,27 @@ on:
   push:
     paths:
       - 'futures_engine/**'
-      - 'tests/test_futures_paper.py'
+      - 'tests/test_futures_paper*.py'
       - '.github/workflows/futures-paper-tests.yml'
   pull_request:
     paths:
       - 'futures_engine/**'
-      - 'tests/test_futures_paper.py'
+      - 'tests/test_futures_paper*.py'
       - '.github/workflows/futures-paper-tests.yml'
 permissions:
   contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.11', '3.12', '3.13']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python }}
       - name: Unit tests (no exchange credentials)
-        run: python -m unittest discover -s tests -p 'test_futures_paper.py' -v
+        run: python -m unittest discover -s tests -p 'test_futures_paper*.py' -v
       - name: Compile Python modules
         run: python -m compileall -q futures_engine

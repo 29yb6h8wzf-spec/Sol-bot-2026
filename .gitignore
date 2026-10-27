@@ -5,3 +5,5 @@ paper-ledger.json
 paper-ledger.json.tmp
 __pycache__/
 .venv/
+paper-ledger.json.lock
+paper-ledger.json.*.tmp
