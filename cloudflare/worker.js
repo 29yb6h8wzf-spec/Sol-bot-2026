@@ -223,9 +223,11 @@ export async function processTelegramAccess(env){
  if(!Number.isSafeInteger(offset)||offset<0)throw Error('Invalid update offset');
  const updates=await tgRequest(env,'getUpdates',{offset,limit:50,timeout:0,allowed_updates:['message']});
  if(!Array.isArray(updates))throw Error('Invalid Telegram updates response');
+ let ownerMessages=0,ownerCommands=0;
  for(const update of updates){
   const m=update.message,id=String(m?.chat?.id||''),owner=id===String(env.TELEGRAM_CHAT_ID);
   const [cmd,arg]=String(m?.text||'').trim().split(/\s+/,2);
+  if(owner){ownerMessages++;if(['/users','/approve','/remove','/start'].includes(cmd))ownerCommands++;}
   if(m?.chat?.type==='private'&&/^\d{1,18}$/.test(id)){
    if(owner&&cmd==='/users'){
     const a=await tgIds(env,APPROVED),p=await tgIds(env,PENDING);
@@ -254,7 +256,7 @@ export async function processTelegramAccess(env){
   }
   await env.SIGNAL_STATE.put(OFFSET,String(update.update_id+1));
  }
- await env.SIGNAL_STATE.put('tg:access-health',JSON.stringify({status:'ok',checkedAt:new Date().toISOString(),updates:updates.length}));
+ await env.SIGNAL_STATE.put('tg:access-health',JSON.stringify({status:'ok',checkedAt:new Date().toISOString(),updates:updates.length,ownerMessages,ownerCommands}));
 }
 async function sendResearch(env,msg){
  await send(env,msg);
