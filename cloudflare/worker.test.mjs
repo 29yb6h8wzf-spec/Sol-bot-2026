@@ -155,7 +155,7 @@ test('scheduled worker persists durable KV receipt with all four futures sources
   const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>stored.get(k)||null,put:async(k,v)=>stored.set(k,v)}};
   await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},env,{waitUntil:p=>work=p});await work;
   const receipt=JSON.parse(stored.get('health:cron:'+fixed));
-  assert.equal(receipt.ok,true);assert.equal(receipt.release,'futures-source-health-v7');
+  assert.equal(receipt.ok,true);assert.equal(receipt.release,'futures-source-health-v8');
   assert.equal(receipt.results.length,4);assert.equal(receipt.failures.length,0);
   assert.ok(receipt.results.every(x=>x.source==='binance_usdm'));
  });}finally{console.log=oldLog;}
@@ -205,4 +205,53 @@ test('Binance monitor records inaccessible API as health error without leaking s
   assert.ok(!logs.join(' ').includes('private-secret'));
   assert.ok(!logs.join(' ').includes('private-key'));
  }finally{globalThis.fetch=oldFetch;console.warn=oldWarn;}
+});
+
+test('Bitget v3 USDT-FUTURES fallback parses contract candles and rejects Spot or bad responses',async()=>{
+ const original=globalThis.fetch;Date.now=()=>fixed;const calls=[];
+ globalThis.fetch=async u=>{
+  calls.push(String(u));assert.equal(u.origin,'https://api.bitget.com');
+  assert.equal(u.pathname,'/api/v3/market/candles');
+  assert.equal(u.searchParams.get('category'),'USDT-FUTURES');
+  assert.equal(u.searchParams.get('type'),'market');
+  const interval=u.searchParams.get('interval');
+  assert.ok(['5m','4H'].includes(interval));
+  const rows=payload(interval==='4H'?240:5).reverse().map(x=>x.slice(0,7).map(String));
+  return new Response(JSON.stringify({code:'00000',data:rows}));
+ };
+ try{
+  const five=await candles('SOLUSDT','5m',120,'bitget');
+  const four=await candles('SOLUSDT','4h',100,'bitget');
+  assert.equal(five.length,120);assert.equal(four.length,100);
+  assert.equal(five.at(-1).time,fixed-300000);assert.equal(five.at(-1).volume,42);
+  assert.equal(calls.length,2);
+ }finally{globalThis.fetch=original;Date.now=now;}
+ await withData({},()=>assert.rejects(candles('SOLUSDT','5m',120,'bitget'),/Invalid Bitget Futures klines response/));
+});
+test('Binance 451 and Bybit 403 use only Bitget futures, label source, and retain four-market receipts',async()=>{
+ const original=globalThis.fetch,oldLog=console.log,oldWarn=console.warn;Date.now=()=>fixed;
+ const logs=[],state=new Map(),calls=[];console.log=(...a)=>logs.push(a.join(' '));console.warn=()=>{};
+ globalThis.fetch=async u=>{
+  calls.push(String(u));
+  if(String(u).startsWith('https://fapi.binance.com/'))return new Response('blocked',{status:451});
+  if(String(u).startsWith('https://api.bybit.com/'))return new Response('blocked',{status:403});
+  if(String(u).startsWith('https://api.bitget.com/')){
+   assert.equal(u.searchParams.get('category'),'USDT-FUTURES');
+   const interval=u.searchParams.get('interval');
+   const rows=payload(interval==='4H'?240:5).reverse().map(x=>x.slice(0,7).map(String));
+   return new Response(JSON.stringify({code:'00000',data:rows}));
+  }
+  if(String(u).startsWith('https://api.telegram.org/'))return new Response(JSON.stringify({ok:true}));
+  return new Response(newsXML);
+ };
+ try{
+  let work;
+  const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}};
+  await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},env,{waitUntil:p=>work=p});await work;
+  const receipt=JSON.parse(state.get('health:cron:'+fixed));
+  assert.equal(receipt.ok,true);assert.equal(receipt.results.length,4);
+  assert.ok(receipt.results.every(r=>r.source==='bitget_usdt_futures'));
+  assert.ok(calls.filter(u=>u.startsWith('https://api.bitget.com/')).length===8);
+  assert.ok(!calls.some(u=>u.includes('/api/v3/klines')||u.includes('category=SPOT')));
+ }finally{globalThis.fetch=original;Date.now=now;console.log=oldLog;console.warn=oldWarn;}
 });
