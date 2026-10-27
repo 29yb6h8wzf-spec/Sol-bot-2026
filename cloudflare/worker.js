@@ -215,44 +215,108 @@ async function tgRequest(env,method,body){
  const result=await response.json();if(!result.ok)throw Error('Telegram '+method+' failed');
  return result.result;
 }
-async function tgDirect(env,id,message){return tgRequest(env,'sendMessage',{chat_id:id,text:message.slice(0,3900)});}
-async function tgIds(env,key){const value=JSON.parse(await env.SIGNAL_STATE.get(key)||'[]');if(!Array.isArray(value)||value.length>200||!value.every(x=>typeof x==='string'&&/^\d{1,18}$/.test(x)))throw Error('Invalid subscriber list');return value;}
+async function tgDirect(env,id,message,buttons){
+ const body={chat_id:id,text:message.slice(0,3900),disable_web_page_preview:true};
+ if(buttons?.length)body.reply_markup={inline_keyboard:buttons};
+ return tgRequest(env,'sendMessage',body);
+}
+async function tgIds(env,key){
+ const value=JSON.parse(await env.SIGNAL_STATE.get(key)||'[]');
+ if(!Array.isArray(value)||value.length>200||!value.every(x=>typeof x==='string'&&/^\d{1,18}$/.test(x)))throw Error('Invalid subscriber list');
+ return [...new Set(value)];
+}
 async function tgSave(env,key,ids){await env.SIGNAL_STATE.put(key,JSON.stringify([...new Set(ids)]));}
+function ownerMenu(){return [[{text:'👥 ניהול חברים',callback_data:'access:list'}]];}
+async function showAccessList(env){
+ const approved=await tgIds(env,APPROVED),pending=await tgIds(env,PENDING);
+ const lines=['👥 SignalPilot | ניהול חברים','','⏳ ממתינים לאישור: '+pending.length];
+ for(const id of pending.slice(0,20))lines.push('• '+id);
+ if(!pending.length)lines.push('אין בקשות ממתינות');
+ lines.push('','✅ מאושרים: '+approved.length);
+ for(const id of approved.slice(0,20))lines.push('• '+id);
+ if(!approved.length)lines.push('אין חברים מאושרים');
+ if(pending.length>20||approved.length>20)lines.push('מוצגים עד 20 בכל קבוצה. ניתן להשתמש בפקודות לניהול השאר.');
+ lines.push('','🔒 רק המנהל יכול לאשר או להסיר חברים.');
+ const buttons=[];
+ for(const id of pending.slice(0,20))buttons.push([
+  {text:'✅ אשר '+id,callback_data:'access:approve:'+id},
+  {text:'❌ דחה '+id,callback_data:'access:remove:'+id}
+ ]);
+ for(const id of approved.slice(0,20))buttons.push([{text:'🚫 הסר '+id,callback_data:'access:remove:'+id}]);
+ buttons.push([{text:'🔄 רענון רשימה',callback_data:'access:list'}]);
+ await tgDirect(env,env.TELEGRAM_CHAT_ID,lines.join('\n'),buttons);
+}
+async function changeAccess(env,action,id){
+ if(!/^\d{1,18}$/.test(id||''))return '⚠️ מספר משתמש לא תקין.';
+ if(id===String(env.TELEGRAM_CHAT_ID))return '⚠️ לא ניתן לשנות הרשאת מנהל.';
+ const pending=await tgIds(env,PENDING),approved=await tgIds(env,APPROVED);
+ if(action==='approve'){
+  if(!pending.includes(id))return approved.includes(id)?'ℹ️ המשתמש כבר מאושר.':'ℹ️ הבקשה כבר טופלה או אינה קיימת.';
+  // Store approval before notifying; a retry must not grant duplicate permissions.
+  await tgSave(env,APPROVED,[...approved,id]);
+  await tgSave(env,PENDING,pending.filter(x=>x!==id));
+  try{await tgDirect(env,id,'✅ בקשתך אושרה!\nמעכשיו תקבל איתותי מחקר מ־SignalPilot כאשר יהיו איתותים חדשים.\n⚠️ לא המלצת מסחר.');}catch{console.warn('Subscriber approval notice delivery failed');}
+  return '✅ המשתמש '+id+' אושר בהצלחה.';
+ }
+ if(action==='remove'){
+  if(!pending.includes(id)&&!approved.includes(id))return 'ℹ️ המשתמש כבר אינו ברשימות.';
+  await tgSave(env,APPROVED,approved.filter(x=>x!==id));
+  await tgSave(env,PENDING,pending.filter(x=>x!==id));
+  return '🚫 הגישה למשתמש '+id+' הוסרה / הבקשה נדחתה.';
+ }
+ return '⚠️ פעולה לא מוכרת.';
+}
 export async function processTelegramAccess(env){
  const offset=Number(await env.SIGNAL_STATE.get(OFFSET)||0);
  if(!Number.isSafeInteger(offset)||offset<0)throw Error('Invalid update offset');
- const updates=await tgRequest(env,'getUpdates',{offset,limit:50,timeout:0,allowed_updates:['message']});
+ const updates=await tgRequest(env,'getUpdates',{offset,limit:50,timeout:0,allowed_updates:['message','callback_query']});
  if(!Array.isArray(updates))throw Error('Invalid Telegram updates response');
  let ownerMessages=0,ownerCommands=0;
  for(const update of updates){
-  const m=update.message,id=String(m?.chat?.id||''),owner=id===String(env.TELEGRAM_CHAT_ID);
+  const m=update.message,cb=update.callback_query;
+  const chat=m?.chat||cb?.message?.chat;
+  const id=String(chat?.id||''),owner=id===String(env.TELEGRAM_CHAT_ID);
+  const from=String(m?.from?.id||cb?.from?.id||id);
+  const privateChat=chat?.type==='private'&&/^\d{1,18}$/.test(id);
   const [cmd,arg]=String(m?.text||'').trim().split(/\s+/,2);
-  if(owner){ownerMessages++;if(['/users','/approve','/remove','/start'].includes(cmd))ownerCommands++;}
-  if(m?.chat?.type==='private'&&/^\d{1,18}$/.test(id)){
-   if(owner&&cmd==='/users'){
-    const a=await tgIds(env,APPROVED),p=await tgIds(env,PENDING);
-    await tgDirect(env,id,'Approved: '+(a.join(', ')||'none')+'\nPending: '+(p.join(', ')||'none')+'\\n/approve ID or /remove ID');
-   }else if(owner&&(cmd==='/approve'||cmd==='/remove')){
-    if(!/^\d{1,18}$/.test(arg||'')){await tgDirect(env,id,'Usage: '+cmd+' ID');}
-    else{
-     const p=await tgIds(env,PENDING),a=await tgIds(env,APPROVED);
-     if(cmd==='/approve'&&!p.includes(arg)){await tgDirect(env,id,'No pending request from '+arg);}
-     else{
-      await tgSave(env,APPROVED,cmd==='/approve'?[...a,arg]:a.filter(x=>x!==arg));
-      await tgSave(env,PENDING,p.filter(x=>x!==arg));
-      await tgDirect(env,id,cmd==='/approve'?'Approved '+arg:'Removed '+arg);
-      if(cmd==='/approve')try{await tgDirect(env,arg,'SignalPilot: approved for private research alerts.');}catch{}
-     }
+  if(owner){ownerMessages++;if(['/users','/approve','/remove','/start'].includes(cmd)||cb?.data?.startsWith('access:'))ownerCommands++;}
+  if(cb){
+   if(!privateChat||!owner||from!==id){
+    await tgRequest(env,'answerCallbackQuery',{callback_query_id:cb.id,text:'אין לך הרשאה לפעולה זו.',show_alert:true});
+   }else{
+    const match=/^access:(list|approve|remove)(?::(\d{1,18}))?$/.exec(String(cb.data||''));
+    if(!match||((match[1]==='list')!==!match[2])){
+     await tgRequest(env,'answerCallbackQuery',{callback_query_id:cb.id,text:'פעולה לא תקינה'});
+    }else{
+     await tgRequest(env,'answerCallbackQuery',{callback_query_id:cb.id});
+     if(match[1]==='list')await showAccessList(env);
+     else{const result=await changeAccess(env,match[1],match[2]);await tgDirect(env,id,result);await showAccessList(env);}
     }
-   }else if(!owner&&cmd==='/start'){
-    const a=await tgIds(env,APPROVED),p=await tgIds(env,PENDING);
-    if(a.includes(id))await tgDirect(env,id,'SignalPilot: you are already approved.');
-    else{
-     if(!p.includes(id)){await tgSave(env,PENDING,[...p,id]);await tgDirect(env,env.TELEGRAM_CHAT_ID,'New SignalPilot request: '+id+'\\n/approve '+id);}
-     await tgDirect(env,id,'Your request is pending owner approval.');
+   }
+  }else if(privateChat){
+   if(owner){
+    if(cmd==='/users'||cmd==='/start'||cmd==='/menu')await showAccessList(env);
+    else if(cmd==='/approve'||cmd==='/remove'){
+     await tgDirect(env,id,await changeAccess(env,cmd.slice(1),arg));
+     await showAccessList(env);
     }
-   }else if(owner&&cmd==='/start')await tgDirect(env,id,'SignalPilot owner: /users, /approve ID, /remove ID');
-   else if(!owner)await tgDirect(env,id,'SignalPilot: send /start to request access. Alerts are research only.');
+   }else if(cmd==='/start'){
+    const approved=await tgIds(env,APPROVED),pending=await tgIds(env,PENDING);
+    if(approved.includes(id))await tgDirect(env,id,'✅ אתה כבר מאושר לקבלת איתותים מ־SignalPilot.');
+    else{
+     if(!pending.includes(id)){
+      if(pending.length>=200){await tgDirect(env,id,'⚠️ כרגע לא ניתן לקבל בקשות נוספות.');}
+      else{
+       await tgSave(env,PENDING,[...pending,id]);
+       await tgDirect(env,env.TELEGRAM_CHAT_ID,'🔔 בקשת הצטרפות חדשה ל־SignalPilot\n\n👤 משתמש: '+id+'\n\nאפשר לאשר או לדחות בלחיצה:',[[
+        {text:'✅ אישור',callback_data:'access:approve:'+id},
+        {text:'❌ דחייה',callback_data:'access:remove:'+id}
+       ],[{text:'👥 כל החברים',callback_data:'access:list'}]]);
+       await tgDirect(env,id,'⏳ בקשת ההצטרפות נשלחה למנהל.\nנעדכן אותך לאחר אישור.');
+      }
+     }else await tgDirect(env,id,'⏳ הבקשה שלך עדיין ממתינה לאישור.');
+    }
+   }else await tgDirect(env,id,'🤖 SignalPilot\nכדי לבקש גישה לאיתותים, שלח /start.\n⚠️ איתותים למחקר בלבד.');
   }
   await env.SIGNAL_STATE.put(OFFSET,String(update.update_id+1));
  }
