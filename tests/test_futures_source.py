@@ -8,8 +8,8 @@ from unittest import mock
 import bot
 
 
-class FuturesSourceTests(unittest.TestCase):
-    def test_source_is_binance_usdm_perpetual(self):
+class KrakenSourceTests(unittest.TestCase):
+    def test_source_is_public_kraken_spot(self):
         self.assertEqual(bot.BASE, 'https://api.kraken.com/0/public/OHLC')
         self.assertIn('Kraken Spot', bot.DATA_SOURCE)
         self.assertNotIn('/api/v3/', bot.BASE)
@@ -46,7 +46,7 @@ class FuturesSourceTests(unittest.TestCase):
         self.assertEqual((four, five), (['4h'], ['5m']))
         self.assertEqual(fetch.call_count, 2)
 
-    def test_diagnostic_logs_identify_futures_source(self):
+    def test_diagnostic_logs_identify_spot_source(self):
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
             bot.scan_log('test')
@@ -54,32 +54,6 @@ class FuturesSourceTests(unittest.TestCase):
         self.assertEqual(json.loads(line)['source'], bot.DATA_SOURCE)
 
 
-    def test_fallback_uses_one_perpetual_venue_for_both_timeframes(self):
-        with mock.patch.object(bot, 'fetch', side_effect=OSError('HTTP 451')), \
-             mock.patch.object(bot, 'fetch_proxy', side_effect=lambda interval, limit, venue:
-                               [{'time': 1, 'high': 2, 'low': 1, 'close': 1.5, 'volume': 3}]) as proxy:
-            four, five = bot.fetch_pair(50)
-        self.assertEqual(len(four), 1)
-        self.assertEqual(len(five), 1)
-        self.assertEqual([call.args[2] for call in proxy.call_args_list], ['bybit', 'bybit'])
-        self.assertIn('Bybit', bot.DATA_SOURCE)
-
-    def test_all_futures_venues_fail_closed(self):
-        with mock.patch.object(bot, 'fetch', side_effect=OSError('HTTP 451')), \
-             mock.patch.object(bot, 'fetch_proxy', side_effect=OSError('Futures unavailable')):
-            with self.assertRaisesRegex(RuntimeError, 'All perpetual sources unavailable'):
-                bot.fetch_pair(50)
-
-    def test_okx_never_requests_more_than_100_candles(self):
-        called = []
-        def fake_urlopen(url, timeout):
-            called.append(url)
-            return io.BytesIO(json.dumps({'code': '1', 'data': []}).encode())
-        with mock.patch.object(bot.urllib.request, 'urlopen', side_effect=fake_urlopen):
-            with self.assertRaises(ValueError):
-                bot.fetch_proxy('5m', 120, 'okx')
-        self.assertIn('limit=100', called[0])
-        self.assertNotIn('limit=121', called[0])
 
 
 if __name__ == '__main__':
