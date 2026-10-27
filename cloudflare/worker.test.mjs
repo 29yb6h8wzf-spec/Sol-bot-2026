@@ -53,7 +53,7 @@ test('new headline notifications are coin-specific and deduplicated independentl
  try{await withData(u=>payload(Number(u.searchParams.get('interval'))),async()=>{
   const env={TELEGRAM_ACCESS_ENABLED:'0',TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}};
   async function run(){let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},env,{waitUntil:p=>work=p});await work;}
-  await run();const alerts=telegramMessages.filter(m=>m.text.startsWith('📰 '));assert.equal(alerts.length,1);assert.ok(alerts[0].text.includes('BTCUSDT'));assert.ok(alerts[0].text.includes('https://www.coindesk.com/news/bitcoin-update'));assert.equal(telegramMessages.length,6);
+  await run();const alerts=telegramMessages.filter(m=>m.text.startsWith('📰 BTCUSDT'));assert.equal(alerts.length,1);assert.ok(alerts[0].text.includes('BTCUSDT'));assert.ok(alerts[0].text.includes('https://www.coindesk.com/news/bitcoin-update'));assert.equal(telegramMessages.length,6);
   await run();assert.equal(telegramMessages.length,10);
  });}finally{console.log=oldLog;newsXML='<rss><channel></channel></rss>';}
 });
