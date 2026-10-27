@@ -228,7 +228,7 @@ export async function processTelegramAccess(env){
   if(m?.chat?.type==='private'&&/^\d{1,18}$/.test(id)){
    if(owner&&cmd==='/users'){
     const a=await tgIds(env,APPROVED),p=await tgIds(env,PENDING);
-    await tgDirect(env,id,'Approved: '+(a.join(', ')||'none')+'\nPending: '+(p.join(', ')||'none')+'\\n/approve ID or /remove ID');
+    await tgDirect(env,id,'Approved: '+(a.join(', ')||'none')+'\nPending: '+(p.join(', ')||'none')+'\n/approve ID or /remove ID');
    }else if(owner&&(cmd==='/approve'||cmd==='/remove')){
     if(!/^\d{1,18}$/.test(arg||'')){await tgDirect(env,id,'Usage: '+cmd+' ID');}
     else{
@@ -245,7 +245,7 @@ export async function processTelegramAccess(env){
     const a=await tgIds(env,APPROVED),p=await tgIds(env,PENDING);
     if(a.includes(id))await tgDirect(env,id,'SignalPilot: you are already approved.');
     else{
-     if(!p.includes(id)){await tgSave(env,PENDING,[...p,id]);await tgDirect(env,env.TELEGRAM_CHAT_ID,'New SignalPilot request: '+id+'\\n/approve '+id);}
+     if(!p.includes(id)){await tgSave(env,PENDING,[...p,id]);await tgDirect(env,env.TELEGRAM_CHAT_ID,'New SignalPilot request: '+id+'\n/approve '+id);}
      await tgDirect(env,id,'Your request is pending owner approval.');
     }
    }else if(owner&&cmd==='/start')await tgDirect(env,id,'SignalPilot owner: /users, /approve ID, /remove ID');
@@ -254,7 +254,7 @@ export async function processTelegramAccess(env){
   await env.SIGNAL_STATE.put(OFFSET,String(update.update_id+1));
  }
 }
-async function sendResearch(env,msg){
+export async function sendResearch(env,msg){
  await send(env,msg);
  for(const id of await tgIds(env,APPROVED)){
   if(id===String(env.TELEGRAM_CHAT_ID))continue;
