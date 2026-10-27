@@ -3,7 +3,7 @@
 const SYMBOLS = ['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'];
 const API = 'https://fapi.binance.com/fapi/v1/klines';
 // USDⓈ-M perpetual contract candles; never substitute Kraken/Spot on an outage.
-const RELEASE = 'futures-source-health-v7';
+const RELEASE = 'futures-source-health-v8';
 const NEWS_FEEDS=[{name:'CoinDesk',url:'https://www.coindesk.com/arc/outboundfeeds/rss/',host:'coindesk.com'},{name:'Cointelegraph',url:'https://cointelegraph.com/rss',host:'cointelegraph.com'}];
 const NEWS_TERMS={SOLUSDT:/\b(solana|sol)\b/i,BTCUSDT:/\b(bitcoin|btc)\b/i,ETHUSDT:/\b(ethereum|ether|eth)\b/i,XRPUSDT:/\b(xrp|ripple|rlusd)\b/i};
 function xmlText(value){return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/<[^>]*>/g,'').replace(/&#(x[0-9a-f]+|\d+);/gi,(_,n)=>{const c=n[0].toLowerCase()==='x'?parseInt(n.slice(1),16):Number(n);return c>0&&c<=0x10ffff?String.fromCodePoint(c):'';}).replace(/&(amp|quot|apos|lt|gt);/g,(_,n)=>({amp:'&',quot:'"',apos:"'",lt:'<',gt:'>'}[n])).replace(/[\r\n\t]+/g,' ').trim();}
@@ -67,21 +67,22 @@ function adx(c,n=14) {if(c.length<2*n+2)return 0;let t=[],p=[],m=[];for(let i=1;
 const smooth=a=>{let o=[a.slice(0,n).reduce((x,y)=>x+y,0)];for(let x of a.slice(n))o.push(o.at(-1)-o.at(-1)/n+x);return o;};
 let ts=smooth(t),ps=smooth(p),ms=smooth(m),dx=ts.map((v,i)=>{let a=v?100*ps[i]/v:0,b=v?100*ms[i]/v:0;return a+b?100*Math.abs(a-b)/(a+b):0;});let out=avg(dx.slice(0,n));for(let d of dx.slice(n))out=(out*(n-1)+d)/n;return out;}
 export async function candles(symbol,interval,limit,venue='binance'){
- const minutes={'5m':5,'4h':240}[interval],duration=minutes*60000,label=venue==='binance'?'Binance':'Bybit';
- if(!minutes||!SYMBOLS.includes(symbol)||!Number.isInteger(limit)||limit<55||limit>500||!['binance','bybit'].includes(venue))throw Error('Unsupported futures market request');
- const u=new URL(venue==='binance'?API:'https://api.bybit.com/v5/market/kline');
+ const minutes={'5m':5,'4h':240}[interval],duration=minutes*60000,label={binance:'Binance',bybit:'Bybit',bitget:'Bitget'}[venue];
+ if(!minutes||!SYMBOLS.includes(symbol)||!Number.isInteger(limit)||limit<55||limit>500||!['binance','bybit','bitget'].includes(venue))throw Error('Unsupported futures market request');
+ const u=new URL(venue==='binance'?API:venue==='bybit'?'https://api.bybit.com/v5/market/kline':'https://api.bitget.com/api/v3/market/candles');
  u.searchParams.set('symbol',symbol);
- u.searchParams.set('interval',venue==='binance'?interval:String(minutes));
+ u.searchParams.set('interval',venue==='binance'?interval:venue==='bybit'?String(minutes):interval==='4h'?'4H':'5m');
  u.searchParams.set('limit',String(limit+1));
  if(venue==='bybit')u.searchParams.set('category','linear');
+ if(venue==='bitget'){u.searchParams.set('category','USDT-FUTURES');u.searchParams.set('type','market');}
  let r;
  try{r=await fetch(u,{signal:AbortSignal.timeout(12000)});}catch{throw Error(label+' Futures network error');}
  if(!r.ok)throw Error(label+' Futures HTTP '+r.status);
  let body;try{body=await r.json();}catch{throw Error(label+' Futures invalid JSON');}
- const rows=venue==='binance'?body:body?.retCode===0&&body?.result?.category==='linear'&&body?.result?.symbol===symbol?body.result.list:null;
+ const rows=venue==='binance'?body:venue==='bybit'?(body?.retCode===0&&body?.result?.category==='linear'&&body?.result?.symbol===symbol?body.result.list:null):(body?.code==='00000'&&Array.isArray(body?.data)?body.data:null);
  if(!Array.isArray(rows)||rows.length<56||rows.length>limit+1)throw Error('Invalid '+label+' Futures klines response');
  const now=Date.now();
- const bars=rows.filter(x=>Array.isArray(x)&&x.length>=(venue==='binance'?7:6)&&Number(x[0])+duration<=now)
+ const bars=rows.filter(x=>Array.isArray(x)&&x.length>=(venue==='bybit'?6:7)&&Number(x[0])+duration<=now)
   .map(x=>({time:Number(x[0]),high:Number(x[2]),low:Number(x[3]),close:Number(x[4]),volume:Number(x[5])}))
   .sort((x,y)=>x.time-y.time).slice(-limit);
  if(bars.length<55)throw Error('Insufficient closed '+label+' Futures candles');
@@ -158,7 +159,7 @@ export function tradeMessage(symbol,s,p,news){
   '• עלויות משוערות לכל צד: עמלה '+(p.feeRate*100).toFixed(3)+'% + החלקה '+(p.slippageRate*100).toFixed(3)+'%',
   '• לא כולל funding, גאפ, שינוי מרווח או ליקווידציה.',
   '• סטופ ב־Binance יכול להיות מופעל לפי Mark Price או Contract Price; יש לאמת הגדרת Trigger.',
-  ...(p.source.startsWith('Bybit')?['🚫 נתוני Bybit הם מדד מחקרי בלבד — אין להשתמש ברמות האלה כפקודות Binance.']:[]),
+  ...(!p.source.startsWith('Binance')?['🚫 נתוני בורסה חלופית הם מדד מחקרי בלבד — אין להשתמש ברמות האלה כפקודות Binance.']:[]),
   '',
   '📊 דירוג תנאים: '+s.score+'/100 (לא הסתברות הצלחה)',
   '🔎 '+s.reason,
@@ -211,8 +212,15 @@ async function scan(symbol,env,news){
  }catch(error){
   console.warn(JSON.stringify({event:'primary_data_unavailable',symbol,reason:error instanceof Error?error.message:'Binance unavailable'}));
   // Never mix two exchanges or mix spot/futures candles in a signal.
-  [five,four]=await Promise.all([candles(symbol,'5m',120,'bybit'),candles(symbol,'4h',100,'bybit')]);
-  source='Bybit USDT Linear Perpetual (research proxy, NOT Binance execution prices)';sourceId='bybit_linear';
+  try{
+   [five,four]=await Promise.all([candles(symbol,'5m',120,'bybit'),candles(symbol,'4h',100,'bybit')]);
+   source='Bybit USDT Linear Perpetual (research proxy, NOT Binance execution prices)';sourceId='bybit_linear';
+  }catch(bybitError){
+   console.warn(JSON.stringify({event:'secondary_data_unavailable',symbol,reason:bybitError instanceof Error?bybitError.message:'Bybit unavailable'}));
+   // Public USDT-FUTURES market candles only; never substitute Spot or mix venues.
+   [five,four]=await Promise.all([candles(symbol,'5m',120,'bitget'),candles(symbol,'4h',100,'bitget')]);
+   source='Bitget USDT-M Futures Perpetual (research proxy, NOT Binance execution prices)';sourceId='bitget_usdt_futures';
+  }
  }
  const last=five.at(-1),age=(Date.now()-(last.time+PERIOD))/60000;
  console.log(JSON.stringify({event:'scan',symbol,source:sourceId,candle:new Date(last.time).toISOString(),closedAgeMinutes:+age.toFixed(2)}));
