@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const source=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
-const {candles,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const {candles,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,readBinancePositions,monitorBinanceAccount,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const now=Date.now, originalFetch=globalThis.fetch;
 const fixed=1800000000000;
 let telegramMessages=[], telegramStatus=200, newsXML='<rss><channel></channel></rss>';
@@ -168,4 +168,41 @@ test('scheduled worker persists failure receipt for debugging without suppressin
   const receipt=JSON.parse(stored.get('health:cron:'+fixed));
   assert.equal(receipt.ok,false);assert.equal(receipt.failures.length,4);
  });}finally{console.error=oldError;console.log=oldLog;}
+});
+
+test('Binance account monitor uses signed GET and never enables trade actions',async()=>{
+ const oldFetch=globalThis.fetch,oldDate=Date.now,kv=new Map(),requests=[];
+ Date.now=()=>fixed;
+ globalThis.fetch=async (url,options)=>{
+  requests.push({url:String(url),method:options.method,headers:options.headers});
+  if(String(url).includes('/fapi/v2/positionRisk?'))return new Response(JSON.stringify([
+   {symbol:'XRPUSDT',positionAmt:'-75.34',entryPrice:'1.2955',markPrice:'1.2960',unRealizedProfit:'-0.03',leverage:'2',marginType:'isolated'},
+   {symbol:'BTCUSDT',positionAmt:'0',entryPrice:'0',markPrice:'90000',unRealizedProfit:'0',leverage:'2',marginType:'isolated'}
+  ]));
+  if(String(url).includes('api.telegram.org'))return new Response(JSON.stringify({ok:true}));
+  throw Error('Unexpected URL');
+ };
+ const env={BINANCE_API_KEY:'test-key',BINANCE_API_SECRET:'test-secret',TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)}};
+ try{
+  const positions=await readBinancePositions(env);
+  assert.equal(positions.length,1);assert.equal(positions[0].side,'SHORT');assert.equal(positions[0].entry,1.2955);
+  assert.equal(await monitorBinanceAccount(env),'connected');
+  assert.equal(JSON.parse(kv.get('account:health')).status,'connected');
+  assert.equal(JSON.parse(kv.get('account:positions')).length,1);
+  assert.equal(await monitorBinanceAccount(env),'connected');
+  assert.equal(requests.filter(x=>x.url.includes('api.telegram.org')).length,1);
+  assert.ok(requests.filter(x=>x.url.includes('/positionRisk')).every(x=>x.method==='GET'&&x.headers['X-MBX-APIKEY']==='test-key'&&x.url.includes('signature=')));
+  assert.ok(!JSON.stringify(kv).includes('test-secret'));
+ }finally{globalThis.fetch=oldFetch;Date.now=oldDate;}
+});
+test('Binance monitor records inaccessible API as health error without leaking secrets or stopping scanner',async()=>{
+ const oldFetch=globalThis.fetch,oldWarn=console.warn,kv=new Map(),logs=[];console.warn=(...a)=>logs.push(a.join(' '));
+ globalThis.fetch=async()=>new Response('Access denied',{status:403});
+ const env={BINANCE_API_KEY:'private-key',BINANCE_API_SECRET:'private-secret',SIGNAL_STATE:{get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)}};
+ try{
+  assert.equal(await monitorBinanceAccount(env),'error');
+  assert.equal(JSON.parse(kv.get('account:health')).reason,'binance_http_403');
+  assert.ok(!logs.join(' ').includes('private-secret'));
+  assert.ok(!logs.join(' ').includes('private-key'));
+ }finally{globalThis.fetch=oldFetch;console.warn=oldWarn;}
 });
