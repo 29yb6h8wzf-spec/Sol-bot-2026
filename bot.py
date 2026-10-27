@@ -5,7 +5,8 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
-BASE = 'https://data-api.binance.vision/api/v3/klines'
+BASE = 'https://fapi.binance.com/fapi/v1/klines'
+DATA_SOURCE = 'Binance USDⓈ-M Perpetual (contract klines)'
 SYMBOL = os.environ.get('SYMBOL', 'SOLUSDT')
 if SYMBOL not in ('SOLUSDT', 'BTCUSDT', 'ETHUSDT', 'XRPUSDT'):
     raise ValueError('Unsupported trading pair')
@@ -110,7 +111,7 @@ def evaluate_signals():
 def scan_log(event, **details):
     """Structured log for diagnosing silent scans in GitHub Actions."""
     print('SCAN_EVENT ' + json.dumps({
-        'event': event, 'symbol': SYMBOL,
+        'event': event, 'symbol': SYMBOL, 'source': DATA_SOURCE,
         'at_utc': datetime.now(timezone.utc).isoformat(),
         **details
     }, ensure_ascii=False, sort_keys=True), flush=True)
@@ -152,7 +153,8 @@ def main():
                  f'זמן בדיקה: {timestamp}\n'
                  f'{SYMBOL} (נר סגור אחרון): ${last["close"]:.3f}\n'
                  f'גיל הנתונים: {max(age_min, 0):.1f} דקות\n'
-                 '✅ Binance נגיש והבוט מצליח לשלוח לטלגרם.\n'
+                 f'מקור נתונים: {DATA_SOURCE}\n'
+                  '✅ Binance Futures נגיש והבוט מצליח לשלוח לטלגרם.\n'
                  'ℹ️ זו בדיקת תקינות נקודתית, לא אישור שכל הסריקות במהלך היום הצליחו. אין כאן איתות מסחר.')
         print('Daily status message sent')
         return
@@ -204,7 +206,8 @@ def main():
                      f'יעד 2R: ${target:.5f}\n'
                      f'חשיפה לדוגמה: ${notional:.2f}, סיכון לפני עמלות עד $1\n'
                      f'{s["reason"]}\n'
-                     '⚠️ איתות מחקר בלבד; אין ביצוע אוטומטי או הבטחת רווח.')
+                     f'מקור נתונים: {DATA_SOURCE}\n'
+                      '⚠️ איתות מחקר בלבד; אין ביצוע אוטומטי או הבטחת רווח.')
         return
     if '--diagnostic' in sys.argv:
         try:
@@ -297,7 +300,8 @@ def main():
              f'חשיפה מרבית לדוגמה: ${notional:.2f}\n'
              f'הפסד מתוכנן לפני עמלות: ${planned_loss:.2f}\n'
              f'EMA20/50 4h: {trend20:.3f}/{trend50:.3f}\n'
-             '⚠️ לא נבדקה נזילות, Funding או חדשות. אין ביצוע אוטומטי.')
+             f'מקור נתונים: {DATA_SOURCE}\n'
+              '⚠️ לא נבדקה נזילות, Funding או חדשות. אין ביצוע אוטומטי.')
     scan_log('breakout_alert_sent', direction=direction, candle_time=candle_time, score=score)
 
 if __name__ == '__main__':

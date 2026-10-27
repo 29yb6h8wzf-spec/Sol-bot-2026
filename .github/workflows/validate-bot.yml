@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'bot.py'
+      - 'tests/**'
       - 'strategies.py'
       - 'news.py'
       - '.github/workflows/validate-bot.yml'
@@ -19,6 +20,8 @@ jobs:
           python-version: '3.11'
       - name: Python syntax check
         run: python -m py_compile bot.py strategies.py news.py
+      - name: Futures-only market source regression tests
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Indicator smoke test without live data
         run: |
           python - <<'PY'
