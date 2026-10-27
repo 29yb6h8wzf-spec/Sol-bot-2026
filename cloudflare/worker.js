@@ -65,10 +65,10 @@ async function sendHourlyNewsDigest(env,news,now=Date.now()){
   lines.push('סטטוס: '+news.status);
   const recent=(news.items||[]).filter(x=>x.publishedAt>now-3600000&&x.publishedAt<=now).slice(0,5);
   if(!recent.length)lines.push('לא נמצאו כותרות חדשות בשעה האחרונה.');
-  for(const item of recent)lines.push('• '+item.title.slice(0,130)+'\\n'+item.source+' | '+item.url);
+  for(const item of recent)lines.push('• '+item.title.slice(0,130),item.source+' | '+item.url);
  }
  lines.push('','ℹ️ חדשות בלבד, לא איתות מסחר.');
- await send(env,lines.join('\\n'));
+ await send(env,lines.join(String.fromCharCode(10)));
  await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:7200});
 }
 const PERIOD = 300000;
@@ -420,7 +420,7 @@ console.log(JSON.stringify(receipt));
 await env.SIGNAL_STATE.put('health:cron:'+event.scheduledTime,JSON.stringify(receipt),{expirationTtl:86400});await monitorBinanceAccount(env);if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
  async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
 };
-+last.close.toFixed(5)+' | מקור: '+sourceId,'איתותים שעברו סינון: '+found.length,found.length?'🔔 איתותים נשלחו בנפרד.':'⏸ אין כרגע איתות שעבר את כל התנאים.'].join('\\n');
++last.close.toFixed(5)+' | מקור: '+sourceId,'איתותים שעברו סינון: '+found.length,found.length?'🔔 איתותים נשלחו בנפרד.':'⏸ אין כרגע איתות שעבר את כל התנאים.'].join(String.fromCharCode(10));
 await send(env,heartbeat);
 const statusDelivery=found.length?'signal_and_heartbeat':'heartbeat_no_signal';
 await notifyFreshNews(symbol,env,news);
