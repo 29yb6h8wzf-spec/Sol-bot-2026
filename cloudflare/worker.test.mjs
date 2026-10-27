@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 const source=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
 const {candles,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,readBinancePositions,monitorBinanceAccount,processTelegramAccess,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const now=Date.now, originalFetch=globalThis.fetch;
-const fixed=1800000000000;
+const fixed=Math.floor(Date.now()/14400000)*14400000;
 let telegramMessages=[], telegramStatus=200, newsXML='<rss><channel></channel></rss>';
 function payload(minutes=5){
  const duration=minutes*60000,end=Math.floor(fixed/duration)*duration,count=minutes===240?101:121;
