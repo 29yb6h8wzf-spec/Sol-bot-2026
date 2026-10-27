@@ -16,7 +16,7 @@ test('scheduled scans send owner-only heartbeat for all four markets without set
  const env={TELEGRAM_ACCESS_ENABLED:'0',TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}};
  try{await withData(u=>payload(Number(u.searchParams.get('interval'))),async()=>{
   async function run(){let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},env,{waitUntil:p=>work=p});await work;}
-  await run();assert.equal(telegramMessages.length,5);assert.equal(telegramMessages.filter(m=>m.text.startsWith('SignalPilot scan ')).length,4);assert.equal(telegramMessages.filter(m=>m.text.startsWith('📰 SignalPilot | עדכון חדשות שעתי')).length,1);
+  await run();assert.equal(telegramMessages.length,5);assert.equal(telegramMessages.filter(m=>m.text.startsWith('📊 SignalPilot | ')).length,4);assert.ok(telegramMessages.filter(m=>m.text.startsWith('📊 SignalPilot | ')).every(m=>m.text.includes('מגמת 4 שעות')&&m.text.includes('RSI:')&&m.text.includes('🔎 פירוט תנאים:')&&m.text.includes('kraken_spot')&&!m.text.includes('דוח תנאים בלבד | Binance')));assert.equal(telegramMessages.filter(m=>m.text.startsWith('📰 SignalPilot | עדכון חדשות שעתי')).length,1);
   const result=logs.map(a=>{try{return JSON.parse(a[0]);}catch{return {};}}).find(x=>x.event==='scan_complete');
   assert.equal(result.ok,true);assert.equal(result.results.length,4);
   assert.ok(result.results.every(x=>x.statusDelivery==='heartbeat_no_signal'&&x.candidates===0));
