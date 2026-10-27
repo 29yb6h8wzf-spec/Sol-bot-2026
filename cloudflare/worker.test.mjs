@@ -179,3 +179,31 @@ test('expired Telegram callback acknowledgement does not block owner approval',a
   assert.deepEqual(JSON.parse(kv.get('tg:approved')),[]);
  }finally{globalThis.fetch=saved;}
 });
+
+test('owner-only testsignal delivers a clearly fake example without notifying approved subscribers',async()=>{
+ const saved=globalThis.fetch,kv=new Map([['tg:approved','["200"]']]),sent=[],queue=[];
+ const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'100',SIGNAL_STATE:{get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)}};
+ globalThis.fetch=async(url,options)=>{
+  const method=String(url).split('/').at(-1),body=JSON.parse(options.body);
+  if(method==='getUpdates')return new Response(JSON.stringify({ok:true,result:queue.filter(x=>x.update_id>=body.offset)}));
+  if(method==='sendMessage'){sent.push(body);return new Response(JSON.stringify({ok:true,result:{message_id:1}}));}
+  throw Error('Unexpected Telegram method '+method);
+ };
+ const msg=(n,id,from,text)=>({update_id:n,message:{chat:{id,type:'private'},from:{id:from},text}});
+ try{
+  queue.push(msg(1,200,200,'/testsignal'));await processTelegramAccess(env);
+  assert.equal(sent.length,1);
+  assert.ok(!sent[0].text.includes('TEST SIGNAL'));
+  queue.push(msg(2,100,300,'/testsignal'));await processTelegramAccess(env);
+  assert.equal(sent.length,1);
+  queue.push(msg(3,100,100,'/testsignal'));await processTelegramAccess(env);
+  assert.equal(sent.length,2);
+  assert.equal(String(sent[1].chat_id),'100');
+  assert.match(sent[1].text,/TEST SIGNAL/);
+  assert.match(sent[1].text,/DEMO/);
+  assert.match(sent[1].text,/לא אות שוק/);
+  assert.match(sent[1].text,/אינה מאשרת שהסורק/);
+  assert.ok(!sent.some(x=>String(x.chat_id)==='200'&&x.text.includes('TEST SIGNAL')));
+  assert.deepEqual(JSON.parse(kv.get('tg:approved')),['200']);
+ }finally{globalThis.fetch=saved;}
+});
