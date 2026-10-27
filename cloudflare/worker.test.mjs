@@ -261,7 +261,7 @@ test('only owner can approve private SignalPilot subscribers',async()=>{
  try{
   queue.push(msg(1,200,'/start'));await processTelegramAccess(env);
   assert.deepEqual(JSON.parse(kv.get('tg:pending')),['200']);
-  assert.ok(sent.some(x=>x.chat_id==='100'&&x.text.includes('/approve 200')));
+  assert.ok(sent.some(x=>x.chat_id==='100'&&x.reply_markup?.inline_keyboard?.[0]?.[0]?.callback_data==='access:approve:200'));
   queue.push(msg(2,300,'/approve 200'));await processTelegramAccess(env);
   assert.equal(kv.get('tg:approved'),undefined);
   queue.push(msg(3,100,'/approve 200'));await processTelegramAccess(env);
