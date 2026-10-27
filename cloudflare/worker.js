@@ -178,7 +178,7 @@ export function tradeMessage(symbol,s,p,news){
  ].join('\n');
 }
 export function shouldSendScanStatus(found){return Array.isArray(found)&&found.length>0;}
-export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
+export function formatScanStatus(symbol,five,four,found,now=Date.now(),news,sourceId='kraken_spot',checks=[]){
  const last=five.at(-1), previous=five.slice(-13,-1), volume=last.volume/avg(previous.map(b=>b.volume));
  const closes=four.map(b=>b.close), fast=ema(closes,20), slow=ema(closes,50);
  const trend=fast>slow?'עולה 📈':fast<slow?'יורדת 📉':'ללא כיוון';
@@ -194,7 +194,7 @@ export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
   const matched=found.filter(s=>s.strategy===key);
   return (matched.length?'✅ ':'▫️ ')+label+': '+(matched.length?'עבר ('+matched.map(s=>s.direction==='LONG'?'לונג':'שורט').join(', ')+')':'לא עבר');
  });
- return ['📊 '+symbol+' | נמצאו איתותים',
+ return ['📊 SignalPilot | '+symbol+' — סריקה כל 5 דקות',
   '🕒 '+time(now)+' | נר '+time(last.time)+'–'+time(last.time+PERIOD)+' (ישראל)',
   '',
   'מחיר סגירה: $'+last.close.toFixed(5),
@@ -204,10 +204,11 @@ export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
   '',
   'בדיקות כניסה — כולל סינון סטופ:',
   ...lines,
+  ...(checks.length?['','🔎 פירוט תנאים:',...checks.slice(0,8)]:[]),
   ...(levels.length?['','📍 רמות כניסה, סטופ וטייק פרופיט (תיאורטיות):',...levels]:[]),
   '',
   found.length?'🔔 איתותים חדשים נשלחים בהודעה נפרדת.':'אין כניסה שעברה את תנאי הסורק.',
-  'ℹ️ דוח תנאים בלבד | Binance USDⓈ-M Perpetual',
+  '🏦 מקור מחירים: '+sourceId+' (Kraken Spot, לא Futures)',
   '',formatNewsContext(news,symbol)
  ].join('\n');
 }
@@ -358,7 +359,7 @@ for(const {setup,plan} of found){
  await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});
  console.log('Alert sent',key);
 }
-const heartbeat=['SignalPilot scan '+symbol,'Time '+israelTime(Date.now()),'Price '+last.close.toFixed(5)+' source '+sourceId,'Candidates '+found.length].join(String.fromCharCode(10));
+const heartbeat=formatScanStatus(symbol,five,four,found.map(x=>x.setup),Date.now(),news,sourceId,checks);
 await send(env,heartbeat);
 const statusDelivery=found.length?'signal_and_heartbeat':'heartbeat_no_signal';
 await notifyFreshNews(symbol,env,news);
