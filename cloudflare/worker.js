@@ -3,7 +3,7 @@
 const SYMBOLS = ['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'];
 const API = 'https://api.kraken.com/0/public/OHLC';
 const PAIRS = {SOLUSDT:'SOLUSDT',BTCUSDT:'XBTUSDT',ETHUSDT:'ETHUSDT',XRPUSDT:'XRPUSDT'};
-const RELEASE = 'kraken-entry-zone-v4';
+const RELEASE = 'kraken-futures-risk-v5';
 const NEWS_FEEDS=[{name:'CoinDesk',url:'https://www.coindesk.com/arc/outboundfeeds/rss/',host:'coindesk.com'},{name:'Cointelegraph',url:'https://cointelegraph.com/rss',host:'cointelegraph.com'}];
 const NEWS_TERMS={SOLUSDT:/\b(solana|sol)\b/i,BTCUSDT:/\b(bitcoin|btc)\b/i,ETHUSDT:/\b(ethereum|ether|eth)\b/i,XRPUSDT:/\b(xrp|ripple|rlusd)\b/i};
 function xmlText(value){return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/<[^>]*>/g,'').replace(/&#(x[0-9a-f]+|\d+);/gi,(_,n)=>{const c=n[0].toLowerCase()==='x'?parseInt(n.slice(1),16):Number(n);return c>0&&c<=0x10ffff?String.fromCodePoint(c):'';}).replace(/&(amp|quot|apos|lt|gt);/g,(_,n)=>({amp:'&',quot:'"',apos:"'",lt:'<',gt:'>'}[n])).replace(/[\r\n\t]+/g,' ').trim();}
@@ -100,41 +100,65 @@ add('MACD_VOLUME','LONG',macd.at(-2)<=sig.at(-2)&&macd.at(-1)>sig.at(-1)&&vr>=1.
 add('MACD_VOLUME','SHORT',macd.at(-2)>=sig.at(-2)&&macd.at(-1)<sig.at(-1)&&vr>=1.2&&momentum<50,65+Math.min(20,vr*10),'MACD bearish crossover; volume x'+vr.toFixed(2));
 return out.slice(0,3).filter(s=>{let pct=100*Math.abs(last.close-s.stop)/last.close,ok=pct>=0.25&&pct<=1.5;if(!ok)checks.push(s.strategy+' '+s.direction+': נפסל — מרחק סטופ '+pct.toFixed(2)+'% מחוץ לטווח 0.25%–1.50%');return ok;}).map(s=>({...s,entry:last.close,stopPct:100*Math.abs(last.close-s.stop)/last.close,candle:last.time}));}
 
-export function tradePlan(s,bars,now=Date.now()){
+// Hypothetical taker fees and slippage on both entry and exit.
+// These are NOT venue quotes. Funding, spread changes and liquidation are excluded.
+export const RISK_DEFAULTS=Object.freeze({riskBudget:1.5,leverage:2,feeRate:0.0005,slippageRate:0.00025,minNetR:1.25});
+export function tradePlan(s,bars,now=Date.now(),config=RISK_DEFAULTS){
  const side=s.direction==='LONG'?1:s.direction==='SHORT'?-1:0;
  const risk=side*(s.entry-s.stop),vol=atr(bars);
- if(!side||!Number.isFinite(risk)||risk<=0||!Number.isFinite(vol)||vol<=0)return null;
+ const {riskBudget,leverage,feeRate,slippageRate,minNetR}=config;
+ if(!side||!Number.isFinite(risk)||risk<=0||!Number.isFinite(s.entry)||s.entry<=0||!Number.isFinite(vol)||vol<=0||
+  ![riskBudget,leverage,feeRate,slippageRate,minNetR].every(Number.isFinite)||riskBudget<=0||leverage<1||feeRate<0||slippageRate<0||minNetR<=0)return null;
  const a=s.entry-side*Math.min(vol*.2,risk*.2);
  const b=s.entry+side*Math.min(vol*.08,risk*.08);
  const low=Math.min(a,b),high=Math.max(a,b),target=s.entry+side*2*risk;
- const expires=s.candle+4*PERIOD;
- const costs=.0015; // assumed combined round-trip fees and slippage, not live quotes
- const worstRisk=Math.max(...[low,high].map(p=>side*(p-s.stop)+p*costs));
- const worstProfit=Math.min(...[low,high].map(p=>side*(target-p)-p*costs));
- const netR=worstProfit/worstRisk;
- if(![low,high,target,worstRisk,netR].every(Number.isFinite)||low<=0||high<=0||target<=0||worstRisk<=0||netR<1.25||now>=expires)return null;
- return {low,high,target,expires,netR,riskBudget:1.5,notional:1.5/worstRisk*high};
+ const expires=s.candle+4*PERIOD; // 15 minutes after the 5m signal candle closes
+ const friction=feeRate+slippageRate;
+ const endpoints=[low,high];
+ const lossAt=p=>side*(p-s.stop)+friction*(p+s.stop);
+ const profitAt=p=>side*(target-p)-friction*(p+target);
+ const worstLoss=Math.max(...endpoints.map(lossAt));
+ const worstProfit=Math.min(...endpoints.map(profitAt));
+ const netR=worstProfit/worstLoss;
+ if(![low,high,target,worstLoss,worstProfit,netR,expires].every(Number.isFinite)||low<=0||high<=0||target<=0||
+  worstLoss<=0||worstProfit<=0||netR<minNetR||now>=expires)return null;
+ const quantity=riskBudget/worstLoss;
+ const notional=quantity*Math.max(low,high);
+ const margin=notional/leverage;
+ return {low,high,target,expires,netR,riskBudget,quantity,notional,margin,leverage,
+  worstLoss,worstProfit,feeRate,slippageRate,source:'Kraken Spot USDT'};
 }
 export function tradeMessage(symbol,s,p,news){
  const money=x=>'$'+x.toFixed(x>=1000?2:5);
- return ['🚨 SIGNALPILOT | '+symbol,
+ const units=symbol.replace('USDT','');
+ return [
+  '🚨 SIGNALPILOT | '+symbol,
   (s.direction==='LONG'?'🟢 LONG':'🔴 SHORT')+' | '+s.strategy,
-  '━━━━━━━━━━━━━━',
+  '━━━━━━━━━━━━━━━━',
   '📍 טווח כניסה: '+money(p.low)+' – '+money(p.high),
-  '📌 מחיר אות: '+money(s.entry),
-  '🛑 סטופ: '+money(s.stop),
-  '🎯 יעד: '+money(p.target),
-  '⛔ אין להיכנס מחוץ לטווח',
-  '⏳ תוקף עד '+israelTime(p.expires)+' (ישראל)',
-  '❌ ביטול לפני כניסה: תום התוקף או נגיעה בסטופ',
-  '🛡️ סיכון תיאורטי: $1.50 | חשיפה: כ־$'+p.notional.toFixed(2),
-  '📐 יחס נטו משוער בקצה הגרוע: '+p.netR.toFixed(2)+'R',
-  '💸 הנחת עלויות כוללת: 0.15% הלוך וחזור',
-  '📊 דירוג תנאים: '+s.score+'/100 (לא הסתברות)',
+  '📌 מחיר האיתות: '+money(s.entry),
+  '🛑 סטופ (SL): '+money(s.stop),
+  '🎯 יעד (TP): '+money(p.target),
+  '⛔ אין לרדוף אחרי המחיר מחוץ לטווח',
+  '⏳ תוקף: '+israelTime(p.expires)+' (ישראל)',
+  '❌ ביטול לפני כניסה: פקיעת תוקף או נגיעה בסטופ (לא מנוטר אוטומטית)',
+  '',
+  '🛡️ ניהול סיכון — הערכה בלבד',
+  '• סיכון מתוכנן: עד $'+p.riskBudget.toFixed(2)+' בתרחיש סטופ רגיל',
+  '• כמות תיאורטית: '+p.quantity.toFixed(3)+' '+units,
+  '• חשיפה: כ־$'+p.notional.toFixed(2),
+  '• ביטחונות משוערים במינוף '+p.leverage+'X: $'+p.margin.toFixed(2),
+  '• יחס רווח/סיכון נטו בקצה הגרוע: '+p.netR.toFixed(2)+'R',
+  '• עלויות משוערות לכל צד: עמלה '+(p.feeRate*100).toFixed(3)+'% + החלקה '+(p.slippageRate*100).toFixed(3)+'%',
+  '• לא כולל funding, פערי בורסות, גאפ, שינוי מרווח או ליקווידציה.',
+  '',
+  '📊 דירוג תנאים: '+s.score+'/100 (לא הסתברות הצלחה)',
   '🔎 '+s.reason,
-  '🏦 מקור: Kraken Spot USDT, לא Binance Futures',
-  '⚠️ מחקר בלבד; אין מסחר או מעקב ביטול אוטומטי',
-  '',formatNewsContext(news,symbol,1)].join('\n');
+  '🏦 מקור מחירים: '+p.source+' — לא חוזים עתידיים; חובה לאמת מחירים בבורסה שלך.',
+  '⚠️ איתות מחקרי בלבד. אין ביצוע פקודות או ניטור רציף.',
+  '',
+  formatNewsContext(news,symbol,1)
+ ].join('\n');
 }
 export function shouldSendScanStatus(found){return Array.isArray(found)&&found.length>0;}
 export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
