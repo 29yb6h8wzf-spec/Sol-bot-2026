@@ -9,7 +9,7 @@ const NEWS_TERMS={SOLUSDT:/\b(solana|sol)\b/i,BTCUSDT:/\b(bitcoin|btc)\b/i,ETHUS
 function xmlText(value){return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/<[^>]*>/g,'').replace(/&#(x[0-9a-f]+|\d+);/gi,(_,n)=>{const c=n[0].toLowerCase()==='x'?parseInt(n.slice(1),16):Number(n);return c>0&&c<=0x10ffff?String.fromCodePoint(c):'';}).replace(/&(amp|quot|apos|lt|gt);/g,(_,n)=>({amp:'&',quot:'"',apos:"'",lt:'<',gt:'>'}[n])).replace(/[\r\n\t]+/g,' ').trim();}
 export function parseNewsFeed(xml,feed,now=Date.now()){
  if(!/<rss\b/i.test(xml)||xml.length>1000000)throw Error('Invalid news RSS');
- const field=(item,tag)=>xmlText(item.match(new RegExp('<'+tag+'(?:\\s[^>]*)?>([\\s\\S]*?)<\\/'+tag+'>','i'))?.[1]||'');
+ const field=(item,tag)=>xmlText(item.match(new RegExp('<'+tag+'(?:\s[^>]*)?>([\s\\S]*?)<\\/'+tag+'>','i'))?.[1]||'');
  const out=[];
  for(const match of xml.matchAll(/<item(?:\s[^>]*)?>([\s\S]*?)<\/item>/gi)){
   const item=match[1],title=field(item,'title').slice(0,220),url=field(item,'link'),publishedAt=Date.parse(field(item,'pubDate'));
@@ -216,7 +216,7 @@ async function tgRequest(env,method,body){
  return result.result;
 }
 async function tgDirect(env,id,message){return tgRequest(env,'sendMessage',{chat_id:id,text:message.slice(0,3900)});}
-async function tgIds(env,key){const value=JSON.parse(await env.SIGNAL_STATE.get(key)||'[]');if(!Array.isArray(value)||value.length>200||!value.every(x=>typeof x==='string'&&/^\\d{1,18}$/.test(x)))throw Error('Invalid subscriber list');return value;}
+async function tgIds(env,key){const value=JSON.parse(await env.SIGNAL_STATE.get(key)||'[]');if(!Array.isArray(value)||value.length>200||!value.every(x=>typeof x==='string'&&/^\d{1,18}$/.test(x)))throw Error('Invalid subscriber list');return value;}
 async function tgSave(env,key,ids){await env.SIGNAL_STATE.put(key,JSON.stringify([...new Set(ids)]));}
 export async function processTelegramAccess(env){
  const offset=Number(await env.SIGNAL_STATE.get(OFFSET)||0);
@@ -224,13 +224,13 @@ export async function processTelegramAccess(env){
  const updates=await tgRequest(env,'getUpdates',{offset,limit:50,timeout:0,allowed_updates:['message']});
  for(const update of updates){
   const m=update.message,id=String(m?.chat?.id||''),owner=id===String(env.TELEGRAM_CHAT_ID);
-  const [cmd,arg]=String(m?.text||'').trim().split(/\\s+/,2);
-  if(m?.chat?.type==='private'&&/^\\d{1,18}$/.test(id)){
+  const [cmd,arg]=String(m?.text||'').trim().split(/\s+/,2);
+  if(m?.chat?.type==='private'&&/^\d{1,18}$/.test(id)){
    if(owner&&cmd==='/users'){
     const a=await tgIds(env,APPROVED),p=await tgIds(env,PENDING);
-    await tgDirect(env,id,'Approved: '+(a.join(', ')||'none')+'\\nPending: '+(p.join(', ')||'none')+'\\n/approve ID or /remove ID');
+    await tgDirect(env,id,'Approved: '+(a.join(', ')||'none')+'\nPending: '+(p.join(', ')||'none')+'\\n/approve ID or /remove ID');
    }else if(owner&&(cmd==='/approve'||cmd==='/remove')){
-    if(!/^\\d{1,18}$/.test(arg||'')){await tgDirect(env,id,'Usage: '+cmd+' ID');}
+    if(!/^\d{1,18}$/.test(arg||'')){await tgDirect(env,id,'Usage: '+cmd+' ID');}
     else{
      const p=await tgIds(env,PENDING),a=await tgIds(env,APPROVED);
      if(cmd==='/approve'&&!p.includes(arg)){await tgDirect(env,id,'No pending request from '+arg);}
