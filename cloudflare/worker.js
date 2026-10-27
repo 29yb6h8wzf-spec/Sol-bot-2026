@@ -116,7 +116,27 @@ export function tradePlan(s,bars,now=Date.now()){
  return {low,high,target,expires,netR,riskBudget:1.5,notional:1.5/worstRisk*high};
 }
 export function tradeMessage(symbol,s,p,news){
- const money=x=>'{return Array.isArray(found)&&found.length>0;}
+ const money=x=>'$'+x.toFixed(x>=1000?2:5);
+ return ['🚨 SIGNALPILOT | '+symbol,
+  (s.direction==='LONG'?'🟢 LONG':'🔴 SHORT')+' | '+s.strategy,
+  '━━━━━━━━━━━━━━',
+  '📍 טווח כניסה: '+money(p.low)+' – '+money(p.high),
+  '📌 מחיר אות: '+money(s.entry),
+  '🛑 סטופ: '+money(s.stop),
+  '🎯 יעד: '+money(p.target),
+  '⛔ אין להיכנס מחוץ לטווח',
+  '⏳ תוקף עד '+israelTime(p.expires)+' (ישראל)',
+  '❌ ביטול לפני כניסה: תום התוקף או נגיעה בסטופ',
+  '🛡️ סיכון תיאורטי: $1.50 | חשיפה: כ־$'+p.notional.toFixed(2),
+  '📐 יחס נטו משוער בקצה הגרוע: '+p.netR.toFixed(2)+'R',
+  '💸 הנחת עלויות כוללת: 0.15% הלוך וחזור',
+  '📊 דירוג תנאים: '+s.score+'/100 (לא הסתברות)',
+  '🔎 '+s.reason,
+  '🏦 מקור: Kraken Spot USDT, לא Binance Futures',
+  '⚠️ מחקר בלבד; אין מסחר או מעקב ביטול אוטומטי',
+  '',formatNewsContext(news,symbol,1)].join('\n');
+}
+export function shouldSendScanStatus(found){return Array.isArray(found)&&found.length>0;}
 export function formatScanStatus(symbol,five,four,found,now=Date.now(),news){
  const last=five.at(-1), previous=five.slice(-13,-1), volume=last.volume/avg(previous.map(b=>b.volume));
  const closes=four.map(b=>b.close), fast=ema(closes,20), slow=ema(closes,50);
