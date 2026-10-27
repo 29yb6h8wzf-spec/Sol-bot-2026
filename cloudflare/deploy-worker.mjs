@@ -118,7 +118,7 @@ async function main(){
  const tail=await api('/tails',{method:'POST',body:JSON.stringify({filters:[]})});
  let ws;
  try{
-  const deadline=Date.now()+16*60*1000, verified=new Map();
+  const verificationStart=Date.now(), deadline=verificationStart+26*60*1000, verified=new Map();
   await new Promise((resolve,reject)=>{
    let settled=false;
    const timer=setTimeout(()=>finish(Error('Timed out: two consecutive successful scheduled scans were not verified; GitHub scans remain enabled')),deadline-Date.now());
@@ -135,12 +135,20 @@ async function main(){
      if(trace.scriptName!==WORKER||trace.event?.cron!==CRON)return;
      for(const log of trace.logs||[]){for(const item of log.message||[]){
       let row;try{row=typeof item==='string'?JSON.parse(item):item;}catch{continue;}
-      if(row?.event!=='scan_complete'||row.release!==RELEASE)continue;
+      if(row?.release!==RELEASE)continue;
+      if(row.event==='scan_failed'){
+       // Only emit bounded, structured diagnostics. No request URLs, tokens or response bodies.
+       const market=SYMBOLS.includes(row.symbol)?row.symbol:'unknown';
+       const reason=String(row.message||'unknown').replace(/[^a-zA-Z0-9 _.:/-]/g,'?').slice(0,160);
+       report('Market scan failed: '+market+'; '+reason);
+       continue;
+      }
+      if(row.event!=='scan_complete')continue;
       const seen=new Set((row.results||[]).map(r=>r.symbol));
       const sources=(row.results||[]).map(r=>r.symbol+':'+r.source).join(',');
       const valid=trace.outcome==='ok'&&!(trace.exceptions||[]).length&&row.ok===true&&row.source==='futures_perpetual'&&row.cron===CRON&&SYMBOLS.every(s=>seen.has(s))&&seen.size===4&&row.results.every(r=>Number.isFinite(r.closedAgeMinutes)&&r.closedAgeMinutes>=0&&r.closedAgeMinutes<=7&&['binance_usdm','bybit_linear'].includes(r.source)&&Number.isInteger(r.candidates)&&r.candidates>=0&&(r.candidates===0?r.statusDelivery==='suppressed_no_signal':r.statusDelivery==='signal_only')&&['ready','partial','unavailable','stale'].includes(r.newsStatus));
       const time=Number(row.scheduledTime);
-      if(!Number.isFinite(time)||time<deadline-16*60*1000-60000)continue;
+      if(!Number.isFinite(time)||time<verificationStart-60000)continue;
       report('Scheduled '+new Date(time).toISOString()+' ['+sources+']: '+(valid?'PASS (SOL, BTC, ETH, XRP; fresh perpetual futures candles (Binance or labeled Bybit proxy); Telegram delivery checked only when signals exist; silent scans verified; news status recorded)':'FAIL (scan errors, incomplete markets or inconsistent signal delivery)'));
       if(!valid){verified.clear();continue;}
       const prior=verified.get(time-300000);
