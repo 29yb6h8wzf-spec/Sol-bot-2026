@@ -32,7 +32,7 @@ test('scheduled scans remain silent without setups, but still scan all four mark
 test('Telegram rejection for breaking news does not mark news as delivered',async()=>{
  const state=new Map(),oldLog=console.log,oldError=console.error;console.log=()=>{};console.error=()=>{};telegramStatus=403;
  newsXML='<rss><channel><item><title>Bitcoin network update</title><link>https://www.coindesk.com/news/bitcoin-update</link><pubDate>'+new Date(fixed-60000).toUTCString()+'</pubDate></item></channel></rss>';
- try{await withData(u=>payload(Number(u.searchParams.get('interval'))),async()=>{
+ try{await withData(u=>payload(u.searchParams.get('interval')==='4h'?240:5),async()=>{
   let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},{TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}},{waitUntil:p=>work=p});
   await assert.rejects(work,/market scans failed/);
   assert.equal([...state.keys()].filter(k=>k.startsWith('news:sent:')).length,0);
@@ -56,7 +56,7 @@ test('news source outages are explicit and do not claim there are no headlines',
 test('new headline notifications are coin-specific and deduplicated independently of scan reports',async()=>{
  const state=new Map(),oldLog=console.log;console.log=()=>{};telegramMessages=[];
  newsXML='<rss><channel><item><title>Bitcoin network update</title><link>https://www.coindesk.com/news/bitcoin-update</link><pubDate>'+new Date(fixed-60000).toUTCString()+'</pubDate></item></channel></rss>';
- try{await withData(u=>payload(Number(u.searchParams.get('interval'))),async()=>{
+ try{await withData(u=>payload(u.searchParams.get('interval')==='4h'?240:5),async()=>{
   const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}};
   async function run(){let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},env,{waitUntil:p=>work=p});await work;}
   await run();const alerts=telegramMessages.filter(m=>m.text.startsWith('📰 '));assert.equal(alerts.length,1);assert.ok(alerts[0].text.includes('BTCUSDT'));assert.ok(alerts[0].text.includes('https://www.coindesk.com/news/bitcoin-update'));assert.equal(telegramMessages.length,1);
