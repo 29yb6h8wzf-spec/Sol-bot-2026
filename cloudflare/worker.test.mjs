@@ -261,12 +261,51 @@ test('only owner can approve private SignalPilot subscribers',async()=>{
  try{
   queue.push(msg(1,200,'/start'));await processTelegramAccess(env);
   assert.deepEqual(JSON.parse(kv.get('tg:pending')),['200']);
-  assert.ok(sent.some(x=>x.chat_id==='100'&&x.text.includes('/approve 200')));
+  assert.ok(sent.some(x=>x.chat_id==='100'&&x.reply_markup?.inline_keyboard?.[0]?.[0]?.callback_data==='access:approve:200'));
   queue.push(msg(2,300,'/approve 200'));await processTelegramAccess(env);
   assert.equal(kv.get('tg:approved'),undefined);
   queue.push(msg(3,100,'/approve 200'));await processTelegramAccess(env);
   assert.deepEqual(JSON.parse(kv.get('tg:approved')),['200']);
   queue.push(msg(4,100,'/remove 200'));await processTelegramAccess(env);
   assert.deepEqual(JSON.parse(kv.get('tg:approved')),[]);
+ }finally{globalThis.fetch=saved;}
+});
+
+test('Hebrew access dashboard supports owner-only inline approvals, rejects and removals',async()=>{
+ const saved=globalThis.fetch,kv=new Map(),sent=[],answers=[],queue=[];
+ const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'100',SIGNAL_STATE:{get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)}};
+ globalThis.fetch=async(url,options)=>{
+  const method=String(url).split('/').at(-1),body=JSON.parse(options.body);
+  if(method==='getUpdates')return new Response(JSON.stringify({ok:true,result:queue.filter(x=>x.update_id>=body.offset)}));
+  if(method==='sendMessage'){sent.push(body);return new Response(JSON.stringify({ok:true,result:{message_id:1}}));}
+  if(method==='answerCallbackQuery'){answers.push(body);return new Response(JSON.stringify({ok:true,result:true}));}
+  throw Error('Unexpected Telegram method '+method);
+ };
+ const msg=(n,id,text)=>({update_id:n,message:{chat:{id,type:'private'},from:{id},text}});
+ const cb=(n,id,from,data)=>({update_id:n,callback_query:{id:'callback'+n,from:{id:from},message:{chat:{id,type:'private'}},data}});
+ try{
+  queue.push(msg(1,200,'/start'));await processTelegramAccess(env);
+  const request=sent.find(x=>x.chat_id==='100'&&x.text.includes('בקשת הצטרפות'));
+  assert.ok(request);
+  assert.equal(request.reply_markup.inline_keyboard[0][0].callback_data,'access:approve:200');
+  assert.equal(request.reply_markup.inline_keyboard[0][1].callback_data,'access:remove:200');
+  queue.push(cb(2,100,200,'access:approve:200'));await processTelegramAccess(env);
+  assert.equal(kv.get('tg:approved'),undefined);
+  assert.ok(answers.at(-1).show_alert);
+  queue.push(cb(3,100,100,'access:approve:200'));await processTelegramAccess(env);
+  assert.deepEqual(JSON.parse(kv.get('tg:approved')),['200']);
+  assert.ok(sent.some(x=>x.chat_id==='200'&&x.text.includes('אושרה')));
+  queue.push(msg(4,100,'/users'));await processTelegramAccess(env);
+  const dashboard=sent.filter(x=>x.chat_id==='100'&&x.text.includes('ניהול חברים')).at(-1);
+  assert.ok(dashboard.text.includes('\n'));
+  assert.ok(!dashboard.text.includes('\\n'));
+  assert.ok(dashboard.reply_markup.inline_keyboard.flat().some(x=>x.callback_data==='access:remove:200'));
+  queue.push(cb(5,100,100,'access:remove:200'));await processTelegramAccess(env);
+  assert.deepEqual(JSON.parse(kv.get('tg:approved')),[]);
+  queue.push(cb(6,100,100,'access:approve:200'));await processTelegramAccess(env);
+  assert.deepEqual(JSON.parse(kv.get('tg:approved')),[]);
+  queue.push(msg(7,300,'/start'));await processTelegramAccess(env);
+  queue.push(cb(8,100,100,'access:remove:300'));await processTelegramAccess(env);
+  assert.deepEqual(JSON.parse(kv.get('tg:pending')),[]);
  }finally{globalThis.fetch=saved;}
 });
