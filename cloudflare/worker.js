@@ -222,6 +222,7 @@ export async function processTelegramAccess(env){
  const offset=Number(await env.SIGNAL_STATE.get(OFFSET)||0);
  if(!Number.isSafeInteger(offset)||offset<0)throw Error('Invalid update offset');
  const updates=await tgRequest(env,'getUpdates',{offset,limit:50,timeout:0,allowed_updates:['message']});
+ if(!Array.isArray(updates))throw Error('Invalid Telegram updates response');
  for(const update of updates){
   const m=update.message,id=String(m?.chat?.id||''),owner=id===String(env.TELEGRAM_CHAT_ID);
   const [cmd,arg]=String(m?.text||'').trim().split(/\s+/,2);
@@ -253,6 +254,7 @@ export async function processTelegramAccess(env){
   }
   await env.SIGNAL_STATE.put(OFFSET,String(update.update_id+1));
  }
+ await env.SIGNAL_STATE.put('tg:access-health',JSON.stringify({status:'ok',checkedAt:new Date().toISOString(),updates:updates.length}));
 }
 async function sendResearch(env,msg){
  await send(env,msg);
@@ -356,7 +358,7 @@ export async function monitorBinanceAccount(env){
 }
 
 export default {
- async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}if(env.TELEGRAM_ACCESS_ENABLED!=='0')ctx.waitUntil(processTelegramAccess(env).catch(error=>console.error('Telegram access polling failed',String(error))));ctx.waitUntil((async()=>{const news=await loadNews(env);const results=[],failures=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){const message=error instanceof Error?error.message:'Scan failed';failures.push({symbol,reason:message.slice(0,180)});console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message}));}}const receipt={event:'scan_complete',release:RELEASE,source:'futures_perpetual',cron:event.cron,scheduledTime:event.scheduledTime,recordedAt:Date.now(),ok:results.length===SYMBOLS.length,results,failures};
+ async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}if(env.TELEGRAM_ACCESS_ENABLED!=='0')ctx.waitUntil(processTelegramAccess(env).catch(async error=>{const reason=String(error).replace(/bot[0-9]+:[A-Za-z0-9_-]+/g,'[REDACTED]').slice(0,180);console.error('Telegram access polling failed',reason);try{await env.SIGNAL_STATE.put('tg:access-health',JSON.stringify({status:'error',checkedAt:new Date().toISOString(),error:reason}));}catch{}}));ctx.waitUntil((async()=>{const news=await loadNews(env);const results=[],failures=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){const message=error instanceof Error?error.message:'Scan failed';failures.push({symbol,reason:message.slice(0,180)});console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message}));}}const receipt={event:'scan_complete',release:RELEASE,source:'futures_perpetual',cron:event.cron,scheduledTime:event.scheduledTime,recordedAt:Date.now(),ok:results.length===SYMBOLS.length,results,failures};
 console.log(JSON.stringify(receipt));
 await env.SIGNAL_STATE.put('health:cron:'+event.scheduledTime,JSON.stringify(receipt),{expirationTtl:86400});await monitorBinanceAccount(env);if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
  async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
