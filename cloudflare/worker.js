@@ -359,9 +359,8 @@ for(const {setup,plan} of found){
  await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});
  console.log('Alert sent',key);
 }
-const heartbeat=formatScanStatus(symbol,five,four,found.map(x=>x.setup),Date.now(),news,sourceId,checks);
-await send(env,heartbeat);
-const statusDelivery=found.length?'signal_and_heartbeat':'heartbeat_no_signal';
+// Market scans remain on the five-minute cron; never notify the owner unless a real setup passes.
+const statusDelivery=found.length?'signal_only':'suppressed_no_signal';
 await notifyFreshNews(symbol,env,news);
 return {symbol,source:sourceId,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length};}
 
