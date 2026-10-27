@@ -66,10 +66,10 @@ async function sendHourlyNewsDigest(env,news,now=Date.now()){
   lines.push('סטטוס: '+(news.status==='ready'?'מקורות נבדקו':news.status==='partial'?'מקורות חלקיים':'מידע שמור'));
   const recent=(news.items||[]).filter(x=>x.publishedAt>now-3600000&&x.publishedAt<=now).slice(0,5);
   if(!recent.length)lines.push('לא נמצאו כותרות חדשות בשעה האחרונה במקורות שנבדקו.');
-  for(const item of recent)lines.push('• '+item.title.slice(0,130)+'\\n'+item.source+' | '+item.url);
+  for(const item of recent)lines.push('• '+item.title.slice(0,130)+'\n'+item.source+' | '+item.url);
  }
  lines.push('','ℹ️ חדשות בלבד, לא איתות מסחר.');
- await send(env,lines.join('\\n'));
+ await send(env,lines.join('\n'));
  await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:7200});
  console.log(JSON.stringify({event:'hourly_news_sent',hour,status:news?.status||'unavailable'}));
 }
