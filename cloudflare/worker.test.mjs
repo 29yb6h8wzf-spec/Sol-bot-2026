@@ -140,6 +140,47 @@ test('when Binance is down, scans use only Bybit perpetual candles and label the
   assert.ok(complete.results.every(x=>x.source==='bybit_linear'));
  }finally{Date.now=now;globalThis.fetch=original;console.log=oldLog;console.warn=oldWarn;}
 });
+test('OKX USDT SWAP fallback validates closed candles, UTC 4h bars and underlying volume',async()=>{
+ const oldFetch=globalThis.fetch;Date.now=()=>fixed;
+ const seen=[];
+ globalThis.fetch=async u=>{
+  seen.push(String(u));
+  assert.equal(u.origin,'https://www.okx.com');
+  assert.match(u.searchParams.get('instId'),/^(SOL|BTC|ETH|XRP)-USDT-SWAP$/);
+  const interval=u.searchParams.get('bar'),minutes=interval==='4Hutc'?240:5;
+  assert.ok(interval==='4Hutc'||interval==='5m');
+  const rows=payload(minutes).reverse().map(x=>[String(x[0]),x[1],x[2],x[3],x[4],'4','42','4200',String(x[0]+minutes*60000<=fixed?'1':'0')]);
+  return new Response(JSON.stringify({code:'0',data:rows}));
+ };
+ try{
+  const five=await candles('ETHUSDT','5m',120,'okx');
+  assert.equal(five.length,120);assert.equal(five.at(-1).volume,42);
+  assert.equal((await candles('ETHUSDT','4h',100,'okx')).length,100);
+  assert.ok(seen.some(x=>x.includes('bar=4Hutc')));
+ }finally{globalThis.fetch=oldFetch;Date.now=now;}
+});
+test('Binance 451 and Bybit 403 fall back to isolated OKX research-only market data',async()=>{
+ const oldFetch=globalThis.fetch,oldLog=console.log,oldWarn=console.warn;Date.now=()=>fixed;const logs=[];
+ console.log=(...a)=>logs.push(a.join(' '));console.warn=()=>{};
+ globalThis.fetch=async u=>{
+  if(String(u).startsWith('https://fapi.binance.com/'))return new Response('Unavailable',{status:451});
+  if(String(u).startsWith('https://api.bybit.com/'))return new Response('Forbidden',{status:403});
+  if(String(u).startsWith('https://www.okx.com/')){
+   const minutes=u.searchParams.get('bar')==='4Hutc'?240:5;
+   return new Response(JSON.stringify({code:'0',data:payload(minutes).reverse().map(x=>[String(x[0]),x[1],x[2],x[3],x[4],'4','42','4200',String(x[0]+minutes*60000<=fixed?'1':'0')])}));
+  }
+  if(String(u).startsWith('https://api.telegram.org/'))return new Response(JSON.stringify({ok:true}));
+  return new Response(newsXML);
+ };
+ try{
+  let work;const state=new Map();
+  await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},{TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}},{waitUntil:p=>work=p});
+  await work;
+  const receipt=JSON.parse(state.get('health:cron:'+fixed));
+  assert.equal(receipt.ok,true);
+  assert.ok(receipt.results.every(x=>x.source==='okx_swap'));
+ }finally{globalThis.fetch=oldFetch;Date.now=now;console.log=oldLog;console.warn=oldWarn;}
+});
 test('Binance Futures rejects unavailable endpoint, spot fallback, malformed and future candles',async()=>{
  await withData({code:-1003,msg:'rate limit'},()=>assert.rejects(candles('BTCUSDT','5m',120),/Invalid Binance Futures/));
  const future=payload();future.forEach(x=>x[0]+=86400000);
