@@ -149,13 +149,13 @@ test('OKX USDT SWAP fallback validates closed candles, UTC 4h bars and underlyin
   assert.match(u.searchParams.get('instId'),/^(SOL|BTC|ETH|XRP)-USDT-SWAP$/);
   const interval=u.searchParams.get('bar'),minutes=interval==='4Hutc'?240:5;
   assert.ok(interval==='4Hutc'||interval==='5m');
-  const rows=payload(minutes).reverse().map(x=>[String(x[0]),x[1],x[2],x[3],x[4],'4','42','4200',String(x[0]+minutes*60000<=fixed?'1':'0')]);
+  const rows=payload(minutes).slice(-Number(u.searchParams.get('limit'))).reverse().map(x=>[String(x[0]),x[1],x[2],x[3],x[4],'4','42','4200',String(x[0]+minutes*60000<=fixed?'1':'0')]);
   return new Response(JSON.stringify({code:'0',data:rows}));
  };
  try{
   const five=await candles('ETHUSDT','5m',120,'okx');
-  assert.equal(five.length,120);assert.equal(five.at(-1).volume,42);
-  assert.equal((await candles('ETHUSDT','4h',100,'okx')).length,100);
+  assert.equal(five.length,99);assert.equal(five.at(-1).volume,42);
+  assert.equal((await candles('ETHUSDT','4h',100,'okx')).length,99);
   assert.ok(seen.some(x=>x.includes('bar=4Hutc')));
  }finally{globalThis.fetch=oldFetch;Date.now=now;}
 });
@@ -167,7 +167,7 @@ test('Binance 451 and Bybit 403 fall back to isolated OKX research-only market d
   if(String(u).startsWith('https://api.bybit.com/'))return new Response('Forbidden',{status:403});
   if(String(u).startsWith('https://www.okx.com/')){
    const minutes=u.searchParams.get('bar')==='4Hutc'?240:5;
-   return new Response(JSON.stringify({code:'0',data:payload(minutes).reverse().map(x=>[String(x[0]),x[1],x[2],x[3],x[4],'4','42','4200',String(x[0]+minutes*60000<=fixed?'1':'0')])}));
+   return new Response(JSON.stringify({code:'0',data:payload(minutes).slice(-Number(u.searchParams.get('limit'))).reverse().map(x=>[String(x[0]),x[1],x[2],x[3],x[4],'4','42','4200',String(x[0]+minutes*60000<=fixed?'1':'0')])}));
   }
   if(String(u).startsWith('https://api.telegram.org/'))return new Response(JSON.stringify({ok:true}));
   return new Response(newsXML);
@@ -196,7 +196,7 @@ test('scheduled worker persists durable KV receipt with all four futures sources
   const env={TELEGRAM_ACCESS_ENABLED:'0',TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',SIGNAL_STATE:{get:async k=>stored.get(k)||null,put:async(k,v)=>stored.set(k,v)}};
   await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},env,{waitUntil:p=>work=p});await work;
   const receipt=JSON.parse(stored.get('health:cron:'+fixed));
-  assert.equal(receipt.ok,true);assert.equal(receipt.release,'futures-source-health-v7');
+  assert.equal(receipt.ok,true);assert.equal(receipt.release,'futures-source-okx-cap-v8');
   assert.equal(receipt.results.length,4);assert.equal(receipt.failures.length,0);
   assert.ok(receipt.results.every(x=>x.source==='binance_usdm'));
  });}finally{console.log=oldLog;}
