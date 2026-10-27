@@ -144,8 +144,14 @@ async function main(){
   throw Error('Cloudflare KV key-list exceeded 50 pages; cannot verify latest cron receipts');
  }
  // Fail early with a precise actionable error if this token cannot read verification receipts.
- await listCronKeys();
- report('Cloudflare KV read access confirmed; verification paginates all cron receipts, not just the oldest 100.');
+ const initialKeys=await listCronKeys();
+ report('Cloudflare KV read access confirmed; found '+initialKeys.length+' cron receipt keys across all pages.');
+ for(const key of initialKeys.filter(k=>k.name?.startsWith(prefix)).slice(-3)){
+  try{
+   const row=await kvRequest('/values/'+encodeURIComponent(key.name),{json:false});
+   report('Recent KV receipt '+key.name.slice(prefix.length)+': release='+(row?.release||'missing')+', source='+(row?.source||'missing')+', ok='+(row?.ok===true)+', scanned='+((row?.results||[]).length)+', failures='+((row?.failures||[]).map(x=>x.symbol+':'+String(x.reason).slice(0,80)).join(';')||'none'));
+  }catch(error){report('Recent KV receipt unreadable: '+String(error).slice(0,120));}
+ }
  const verificationStart=Date.now(),deadline=verificationStart+22*60*1000,observed=new Map();
  let success=false;
  while(Date.now()<deadline&&!success){
@@ -169,7 +175,7 @@ async function main(){
   }
   if(!success)await new Promise(resolve=>setTimeout(resolve,20000));
  }
- if(!success)throw Error('Timed out: no two consecutive successful cron receipts in KV; GitHub scans remain enabled');
+ if(!success)throw Error('Timed out: no two consecutive successful cron receipts in KV (all pages inspected); inspect recent KV receipt diagnostics above; GitHub scans remain enabled');
 
 }
 try{await main();}catch(error){report('FAILED: '+error.message);process.exitCode=1;}finally{
