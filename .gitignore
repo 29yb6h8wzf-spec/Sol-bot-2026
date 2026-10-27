@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.futures.example
+paper-ledger.json
+paper-ledger.json.tmp
+__pycache__/
+.venv/
