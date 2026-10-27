@@ -127,13 +127,29 @@ async function main(){
   if(json&&data.success!==true)throw Error('Cloudflare KV API returned unsuccessful response; verify KV Storage Read permission');
   return json?data.result:data;
  }
+ async function listCronKeys(){
+  const all=[];let cursor='';const seen=new Set();
+  for(let page=0;page<50;page++){
+   const path='/keys?prefix='+encodeURIComponent(prefix)+'&limit=1000'+(cursor?'&cursor='+encodeURIComponent(cursor):'');
+   const response=await fetch(kvRoot+path,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(15000)});
+   if(!response.ok)throw Error('Cloudflare KV key-list HTTP '+response.status);
+   const body=await response.json();
+   if(body.success!==true||!Array.isArray(body.result))throw Error('Unexpected Cloudflare KV key-list response');
+   all.push(...body.result);
+   const next=body.result_info?.cursor||body.cursor||'';
+   if(!next)return all;
+   if(seen.has(next))throw Error('Cloudflare KV key-list cursor repeated');
+   seen.add(next);cursor=next;
+  }
+  throw Error('Cloudflare KV key-list exceeded 50 pages; cannot verify latest cron receipts');
+ }
  // Fail early with a precise actionable error if this token cannot read verification receipts.
- await kvRequest('/keys?prefix='+encodeURIComponent(prefix)+'&limit=100');
- report('Cloudflare KV read access confirmed; verification uses durable cron receipts, not WebSocket logs.');
+ await listCronKeys();
+ report('Cloudflare KV read access confirmed; verification paginates all cron receipts, not just the oldest 100.');
  const verificationStart=Date.now(),deadline=verificationStart+22*60*1000,observed=new Map();
  let success=false;
  while(Date.now()<deadline&&!success){
-  const keys=await kvRequest('/keys?prefix='+encodeURIComponent(prefix)+'&limit=100');
+  const keys=await listCronKeys();
   if(!Array.isArray(keys))throw Error('Unexpected KV key-list format');
   for(const key of keys.filter(k=>k.name?.startsWith(prefix)).sort((a,b)=>Number(a.name.slice(prefix.length))-Number(b.name.slice(prefix.length)))){
    const time=Number(key.name.slice(prefix.length));
