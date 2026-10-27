@@ -15,7 +15,7 @@ jobs:
   deploy-and-verify:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 22
+    timeout-minutes: 32
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,6 +23,8 @@ jobs:
           node-version: '24'
       - name: Test market-data parsing and scan accounting
         run: node --test cloudflare/worker.test.mjs
+      - name: Validate deployment verifier syntax
+        run: node --check cloudflare/deploy-worker.mjs
       - name: Deploy without changing bindings and verify actual cron runs
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
