@@ -67,22 +67,27 @@ function adx(c,n=14) {if(c.length<2*n+2)return 0;let t=[],p=[],m=[];for(let i=1;
 const smooth=a=>{let o=[a.slice(0,n).reduce((x,y)=>x+y,0)];for(let x of a.slice(n))o.push(o.at(-1)-o.at(-1)/n+x);return o;};
 let ts=smooth(t),ps=smooth(p),ms=smooth(m),dx=ts.map((v,i)=>{let a=v?100*ps[i]/v:0,b=v?100*ms[i]/v:0;return a+b?100*Math.abs(a-b)/(a+b):0;});let out=avg(dx.slice(0,n));for(let d of dx.slice(n))out=(out*(n-1)+d)/n;return out;}
 export async function candles(symbol,interval,limit,venue='binance'){
- const minutes={'5m':5,'4h':240}[interval],duration=minutes*60000,label=venue==='binance'?'Binance':'Bybit';
- if(!minutes||!SYMBOLS.includes(symbol)||!Number.isInteger(limit)||limit<55||limit>500||!['binance','bybit'].includes(venue))throw Error('Unsupported futures market request');
- const u=new URL(venue==='binance'?API:'https://api.bybit.com/v5/market/kline');
- u.searchParams.set('symbol',symbol);
- u.searchParams.set('interval',venue==='binance'?interval:String(minutes));
+ const minutes={'5m':5,'4h':240}[interval],duration=minutes*60000,label=venue==='binance'?'Binance':venue==='bybit'?'Bybit':'OKX';
+ if(!minutes||!SYMBOLS.includes(symbol)||!Number.isInteger(limit)||limit<55||limit>500||!['binance','bybit','okx'].includes(venue))throw Error('Unsupported futures market request');
+ const u=new URL(venue==='binance'?API:venue==='bybit'?'https://api.bybit.com/v5/market/kline':'https://www.okx.com/api/v5/market/candles');
+ if(venue==='okx'){
+  u.searchParams.set('instId',symbol.replace('USDT','-USDT-SWAP'));
+  u.searchParams.set('bar',interval==='4h'?'4Hutc':'5m');
+ }else{
+  u.searchParams.set('symbol',symbol);
+  u.searchParams.set('interval',venue==='binance'?interval:String(minutes));
+  if(venue==='bybit')u.searchParams.set('category','linear');
+ }
  u.searchParams.set('limit',String(limit+1));
- if(venue==='bybit')u.searchParams.set('category','linear');
  let r;
  try{r=await fetch(u,{signal:AbortSignal.timeout(12000)});}catch{throw Error(label+' Futures network error');}
  if(!r.ok)throw Error(label+' Futures HTTP '+r.status);
  let body;try{body=await r.json();}catch{throw Error(label+' Futures invalid JSON');}
- const rows=venue==='binance'?body:body?.retCode===0&&body?.result?.category==='linear'&&body?.result?.symbol===symbol?body.result.list:null;
+ const rows=venue==='binance'?body:venue==='bybit'?(body?.retCode===0&&body?.result?.category==='linear'&&body?.result?.symbol===symbol?body.result.list:null):(body?.code==='0'?body.data:null);
  if(!Array.isArray(rows)||rows.length<56||rows.length>limit+1)throw Error('Invalid '+label+' Futures klines response');
  const now=Date.now();
- const bars=rows.filter(x=>Array.isArray(x)&&x.length>=(venue==='binance'?7:6)&&Number(x[0])+duration<=now)
-  .map(x=>({time:Number(x[0]),high:Number(x[2]),low:Number(x[3]),close:Number(x[4]),volume:Number(x[5])}))
+ const bars=rows.filter(x=>Array.isArray(x)&&x.length>=(venue==='okx'?9:venue==='binance'?7:6)&&Number(x[0])+duration<=now&&(venue!=='okx'||x[8]==='1'))
+  .map(x=>({time:Number(x[0]),high:Number(x[2]),low:Number(x[3]),close:Number(x[4]),volume:Number(x[venue==='okx'?6:5])}))
   .sort((x,y)=>x.time-y.time).slice(-limit);
  if(bars.length<55)throw Error('Insufficient closed '+label+' Futures candles');
  for(let i=0;i<bars.length;i++){
@@ -158,7 +163,7 @@ export function tradeMessage(symbol,s,p,news){
   '• עלויות משוערות לכל צד: עמלה '+(p.feeRate*100).toFixed(3)+'% + החלקה '+(p.slippageRate*100).toFixed(3)+'%',
   '• לא כולל funding, גאפ, שינוי מרווח או ליקווידציה.',
   '• סטופ ב־Binance יכול להיות מופעל לפי Mark Price או Contract Price; יש לאמת הגדרת Trigger.',
-  ...(p.source.startsWith('Bybit')?['🚫 נתוני Bybit הם מדד מחקרי בלבד — אין להשתמש ברמות האלה כפקודות Binance.']:[]),
+  ...(!p.source.startsWith('Binance')?['🚫 נתוני בורסה חלופית הם למחקר בלבד — אין להשתמש ברמות האלה כפקודות Binance.']:[]),
   '',
   '📊 דירוג תנאים: '+s.score+'/100 (לא הסתברות הצלחה)',
   '🔎 '+s.reason,
@@ -211,8 +216,17 @@ async function scan(symbol,env,news){
  }catch(error){
   console.warn(JSON.stringify({event:'primary_data_unavailable',symbol,reason:error instanceof Error?error.message:'Binance unavailable'}));
   // Never mix two exchanges or mix spot/futures candles in a signal.
-  [five,four]=await Promise.all([candles(symbol,'5m',120,'bybit'),candles(symbol,'4h',100,'bybit')]);
-  source='Bybit USDT Linear Perpetual (research proxy, NOT Binance execution prices)';sourceId='bybit_linear';
+  try{
+   [five,four]=await Promise.all([candles(symbol,'5m',120,'bybit'),candles(symbol,'4h',100,'bybit')]);
+   source='Bybit USDT Linear Perpetual (research proxy, NOT Binance execution prices)';sourceId='bybit_linear';
+  }catch(bybitError){
+   console.warn(JSON.stringify({event:'secondary_data_unavailable',symbol,reason:bybitError instanceof Error?bybitError.message:'Bybit unavailable'}));
+   // OKX USDT-margined SWAP candles are a third, clearly labelled research proxy.
+   // Never combine venue candles within a single signal.
+   [five,four]=await Promise.all([candles(symbol,'5m',120,'okx'),candles(symbol,'4h',100,'okx')]);
+   source='OKX USDT Perpetual SWAP (research proxy, NOT Binance execution prices)';sourceId='okx_swap';
+  }
+ 
  }
  const last=five.at(-1),age=(Date.now()-(last.time+PERIOD))/60000;
  console.log(JSON.stringify({event:'scan',symbol,source:sourceId,candle:new Date(last.time).toISOString(),closedAgeMinutes:+age.toFixed(2)}));
