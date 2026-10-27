@@ -286,15 +286,38 @@ async function showLiveScannerStatus(env){
  const age=Date.now()-Number(receipt.recordedAt);
  const fresh=Number.isFinite(age)&&age>=0&&age<=12*60000;
  const expected=['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'];
+ const valid=row=>{
+  if(!row||row.release!==RELEASE||row.cron!=='*/5 * * * *'||row.source!=='kraken_spot'||row.ok!==true||
+     !Array.isArray(row.failures)||row.failures.length!==0||!Array.isArray(row.results)||row.results.length!==4)return false;
+  const symbols=new Set(row.results.map(r=>r.symbol));
+  return symbols.size===4&&expected.every(sym=>symbols.has(sym))&&row.results.every(r=>
+   r.source==='kraken_spot'&&Number.isFinite(Date.parse(r.candle))&&
+   Number.isFinite(r.closedAgeMinutes)&&r.closedAgeMinutes>=0&&r.closedAgeMinutes<=7&&
+   Number.isInteger(r.candidates)&&r.candidates>=0&&
+   r.statusDelivery===(r.candidates===0?'suppressed_no_signal':'signal_only'));
+ };
  const results=Array.isArray(receipt.results)?receipt.results:[];
- const passing=receipt.ok===true&&results.length===4&&expected.every(sym=>results.some(r=>r.symbol===sym&&r.source==='kraken_spot'));
+ const passing=valid(receipt);
+ const scheduled=Number(receipt.scheduledTime);
+ let consecutive=false;
+ if(fresh&&passing&&Number.isSafeInteger(scheduled)&&scheduled>300000){
+  try{
+   const previousRaw=await env.SIGNAL_STATE.get('health:cron:'+(scheduled-300000));
+   const previous=previousRaw?JSON.parse(previousRaw):null;
+   consecutive=valid(previous)&&Number(previous.scheduledTime)===scheduled-300000&&
+    receipt.results.every(r=>{
+     const p=previous.results.find(x=>x.symbol===r.symbol);
+     return p&&Date.parse(r.candle)-Date.parse(p.candle)===300000;
+    });
+  }catch{consecutive=false;}
+ }
  const lines=['📡 SignalPilot | מצב הסורק החי',
   '🕒 בדיקה אחרונה: '+(Number.isFinite(Number(receipt.recordedAt))?israelTime(Number(receipt.recordedAt)):'לא ידוע')+' (ישראל)',
   '📊 מקור: '+(receipt.source==='kraken_spot'?'Kraken Spot — מחקר בלבד':'לא אומת'),
   '🔍 מטבעות: '+results.map(r=>r.symbol).filter(sym=>expected.includes(sym)).join(', '),
   fresh&&passing?'✅ ארבעת המטבעות נסרקו בהצלחה לאחרונה':'⚠️ סריקה חלקית, כושלת או לא עדכנית',
   '📬 איתותים שזוהו: '+results.reduce((n,r)=>n+(Number.isInteger(r.candidates)&&r.candidates>0?r.candidates:0),0),
-  '❗ בדיקת מצב בודדת אינה מאשרת שני מחזורים רצופים.',
+  consecutive?'✅ שתי קבלות cron רצופות אומתו ב־KV, כולל התקדמות הנרות ב־5 דקות':'❗ שתי קבלות cron רצופות עם התקדמות נרות עדיין לא אומתו',
   '🔒 לא מוצגים נתוני חשבון Binance.'];
  return lines.join(String.fromCharCode(10));
 }
