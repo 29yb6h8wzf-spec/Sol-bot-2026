@@ -104,6 +104,23 @@ jobs:
             }
             buckets.set(hour,bucket);
           }
+          const errorSummary={},errorsBySymbol={},errorSamples=[];
+          for(const receipt of receipts)for(const fail of receipt.failures||[]){
+            const msg=String(fail.reason||'').toLowerCase();
+            const category=/stale candle|stale kraken|stale data/.test(msg)?'stale_candle':
+              /non.contiguous|invalid or non.contiguous|missing candle/.test(msg)?'non_contiguous_ohlc':
+              /kraken (http|network|timeout)|rate limit|api rejected/.test(msg)?'kraken_transport_or_api':
+              /insufficient closed candles/.test(msg)?'insufficient_history':
+              /telegram|deliveries incomplete|signal recipient/.test(msg)?'telegram_delivery':
+              /news/.test(msg)?'news_error':
+              /invalid kraken|invalid.*ohlc/.test(msg)?'invalid_ohlc':
+              'other_redacted';
+            const symbol=String(fail.symbol||'unknown').replace(/[^A-Za-z0-9]/g,'').slice(0,12);
+            errorSummary[category]=(errorSummary[category]||0)+1;
+            errorsBySymbol[symbol]=(errorsBySymbol[symbol]||0)+1;
+            if(errorSamples.length<25)errorSamples.push({time:new Date(receipt.scheduledTime).toISOString(),symbol,category});
+          }
+          console.log('AUDIT_ERRORS',JSON.stringify({byCategory:errorSummary,bySymbol:errorsBySymbol,samples:errorSamples}));
           console.log('AUDIT_TOTALS',JSON.stringify(totals));
           for(const [localHour,data] of [...buckets.entries()].sort((a,b)=>a[0].localeCompare(b[0])))
             console.log('AUDIT_HOUR',JSON.stringify({localHour,...data}));
