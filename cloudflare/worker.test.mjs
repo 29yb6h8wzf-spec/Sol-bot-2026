@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const source=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
-const {candles,fetchKrakenOHLC,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,processTelegramAccess,readBinancePositions,monitorBinanceAccount,sendResearch,rsi,testBroadcast,evaluatePaperSignal,recordResearchSignal,filterAndLimitSetups,deliverResearchCandidates,scanAuditReport,sendDailyHeartbeat,setups,fetchMarketTimeframes,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const {candles,fetchKrakenOHLC,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,processTelegramAccess,readBinancePositions,monitorBinanceAccount,sendResearch,rsi,testBroadcast,evaluatePaperSignal,recordResearchSignal,filterAndLimitSetups,deliverResearchCandidates,scanAuditReport,sendDailyHeartbeat,setups,fetchMarketTimeframes,scoreWatchProgress,watchCandidates,sendWatchDigest,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const now=Date.now, originalFetch=globalThis.fetch;
 const fixed=1800000000000;
 let telegramMessages=[], telegramStatus=200, newsXML='<rss><channel></channel></rss>';
@@ -326,7 +326,7 @@ test('owner-only testbroadcast reaches approved subscribers and saves privacy-sa
   assert.match(sent[3].text,/נכשלו: 1/);
   const report=JSON.parse(kv.get('tg:broadcast:last'));
   assert.deepEqual({approvedCount:report.approvedCount,delivered:report.delivered,failed:report.failed,kind:report.kind},{approvedCount:2,delivered:1,failed:1,kind:'demo_only'});
-  assert.doesNotMatch(JSON.stringify(report),/200|300/);
+  assert.deepEqual(Object.keys(report).sort(),['approvedCount','checkedAt','delivered','failed','kind'].sort()); // No recipient-ID fields; timestamps may legitimately contain 200/300.
   assert.deepEqual(JSON.parse(kv.get('tg:approved')),['200','300']);
  }finally{globalThis.fetch=saved;}
 });
@@ -563,4 +563,89 @@ test('Kraken EGeneral:Too many requests is transient, retried and never used as 
   assert.equal(attempts,3);
   assert.ok(body.result?.TESTPAIR);
  }finally{globalThis.fetch=saved;console.warn=oldWarn;}
+});
+
+test('watch progress uses percentage of the original binary criteria, strictly over 50',()=>{
+ assert.deepEqual(scoreWatchProgress([['trend',true],['breakout',false],['volume',true]]),
+  {score:67,passed:2,total:3,missing:['breakout']});
+ assert.equal(scoreWatchProgress([['a',true],['b',false]]).score,50);
+ assert.throws(()=>scoreWatchProgress([['a','true']]),/Invalid watch requirements/);
+});
+
+test('partial 67/100 breakout watch is visible with exact missing condition, but not a trade setup',()=>{
+ const five=Array.from({length:120},(_,i)=>({time:i*300000,high:102,low:99,close:101,volume:i===119?200:100}));
+ const four=Array.from({length:100},(_,i)=>({time:i*14400000,high:105,low:95,close:95+i*.06,volume:100}));
+ const checks=[];
+ const eligible=setups(five,four,checks);
+ assert.equal(eligible.some(s=>s.strategy==='BREAKOUT'&&s.direction==='LONG'),false);
+ const watches=watchCandidates(five,four,50);
+ const x=watches.find(x=>x.strategy==='BREAKOUT'&&x.direction==='LONG');
+ assert.ok(x);
+ assert.equal(x.score,67);
+ assert.equal(x.technicalPassed,false);
+ assert.deepEqual(x.missing,['פריצה מעל שיא 12 נרות']);
+ assert.equal(watchCandidates(five,four,67).some(x=>x.strategy==='BREAKOUT'&&x.direction==='LONG'),false);
+ assert.equal(watchCandidates(five,four,50).every(x=>x.score>50),true);
+});
+
+test('watch digest sends owner only; KV markers prevent duplicates and failed chunks can be retried',async()=>{
+ const saved=globalThis.fetch,kv=new Map([['tg:approved','["200"]']]),sent=[];
+ const env={TELEGRAM_CHAT_ID:'100',TELEGRAM_BOT_TOKEN:'test',SIGNAL_STATE:{
+  get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)
+ }};
+ const row={symbol:'BTCUSDT',strategy:'BREAKOUT',direction:'LONG',score:67,passed:2,total:3,
+  price:100,missing:['פריצה מעל שיא 12 נרות'],technicalPassed:false};
+ let shouldFail=true;
+ globalThis.fetch=async(url,options)=>{
+  assert.match(String(url),/sendMessage/);
+  const body=JSON.parse(options.body);sent.push(body);
+  return new Response(JSON.stringify({ok:!shouldFail}),{status:shouldFail?403:200});
+ };
+ try{
+  await assert.rejects(sendWatchDigest(env,[row],1800000000000),/Telegram sendMessage HTTP 403/);
+  assert.equal([...kv.keys()].filter(x=>x.startsWith('watch:owner:')).length,0);
+  shouldFail=false;
+  const result=await sendWatchDigest(env,[row],1800000000000);
+  assert.equal(result.count,1);
+  await sendWatchDigest(env,[row],1800000000000);
+  assert.equal(sent.length,2);
+  assert.ok(sent.every(x=>String(x.chat_id)==='100'));
+  assert.ok(sent[1].text.includes('67/100'));
+  assert.match(sent[1].text,/לא איתות כניסה/);
+  assert.doesNotMatch(sent[1].text,/🎯 יעד|🛑 סטופ/);
+  assert.equal(await sendWatchDigest(env,[],1800000000000).then(x=>x.status),'empty');
+ }finally{globalThis.fetch=saved;}
+});
+
+test('scheduled scanner groups watch candidates while keeping no-qualified-trade accounting',async()=>{
+ const state=new Map(),savedLog=console.log;console.log=()=>{};telegramMessages=[];
+ state.set('news:hourly:owner:'+Math.floor(fixed/3600000),'sent');
+ state.set('tg:approved','["200"]');
+ const env={TELEGRAM_ACCESS_ENABLED:'0',TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'100',
+  SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}};
+ const customPayload=minutes=>{
+  const data=payload(minutes),rows=data.result.TESTPAIR;
+  if(minutes===240)for(let i=0;i<rows.length;i++){rows[i][2]='108';rows[i][3]='93';rows[i][4]=String(95+i*.05);}
+  else rows.at(-2)[6]=200;
+  return data;
+ };
+ try{await withData(u=>customPayload(Number(u.searchParams.get('interval'))),async()=>{
+  async function run(){
+   let work;await worker.scheduled({cron:'*/5 * * * *',scheduledTime:fixed},env,{waitUntil:p=>work=p});
+   await work;
+  }
+  await run();
+  const receipt=JSON.parse(state.get('health:latest'));
+  assert.ok(receipt.ok);
+  assert.ok(receipt.results.every(x=>x.candidates===0));
+  assert.ok(receipt.results.every(x=>x.audit.watchAbove50>=1));
+  assert.equal(receipt.watchDelivery.status,'sent');
+  const messages=telegramMessages.filter(x=>x.text.startsWith('👀'));
+  assert.equal(messages.length,1);
+  assert.equal(String(messages[0].chat_id),'100');
+  assert.ok(messages[0].text.includes('BREAKOUT | 67/100'));
+  assert.equal(telegramMessages.filter(x=>String(x.chat_id)==='200').length,0);
+  await run();
+  assert.equal(telegramMessages.filter(x=>x.text.startsWith('👀')).length,1);
+ });}finally{console.log=savedLog;}
 });

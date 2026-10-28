@@ -202,6 +202,65 @@ add('MACD_VOLUME','LONG',macd.at(-2)<=sig.at(-2)&&macd.at(-1)>sig.at(-1)&&vr>=1.
 add('MACD_VOLUME','SHORT',macd.at(-2)>=sig.at(-2)&&macd.at(-1)<sig.at(-1)&&vr>=1.2&&momentum<50,65+Math.min(20,vr*10),'MACD bearish crossover; volume x'+vr.toFixed(2),{crossed:macd.at(-2)>=sig.at(-2)&&macd.at(-1)<sig.at(-1),macd:macd.at(-1).toFixed(5),signal:sig.at(-1).toFixed(5),volume:vr.toFixed(2),minVolume:1.2,rsi:momentum.toFixed(2),maxRsi:50});
 return filterAndLimitSetups(out,last,checks,audit);}
 
+// Observational progress scores: percentage of ORIGINAL strategy conditions met.
+// This score is NOT the original heuristic 65-95 trade-quality grade or a win probability.
+export function scoreWatchProgress(requirements){
+ if(!Array.isArray(requirements)||!requirements.length||!requirements.every(x=>Array.isArray(x)&&typeof x[0]==='string'&&typeof x[1]==='boolean'))throw Error('Invalid watch requirements');
+ const passed=requirements.filter(x=>x[1]).length;
+ return {score:Math.round(100*passed/requirements.length),passed,total:requirements.length,
+  missing:requirements.filter(x=>!x[1]).map(x=>x[0])};
+}
+export function watchCandidates(five,four,threshold=50){
+ if(!Array.isArray(five)||five.length<55||!Array.isArray(four)||four.length<55||!Number.isFinite(threshold)||threshold<0||threshold>100)throw Error('Invalid watch input');
+ const last=five.at(-1),cl=five.map(x=>x.close),fc=four.map(x=>x.close);
+ const e20=ema(fc,20),e50=ema(fc,50),previous=five.slice(-13,-1);
+ const high=Math.max(...previous.map(x=>x.high)),low=Math.min(...previous.map(x=>x.low));
+ const vol=avg(previous.map(x=>x.volume)),vr=vol>0?last.volume/vol:0;
+ const adxValue=adx(four),rsiValue=rsi(cl),e9=emaSeries(cl,9),e21=emaSeries(cl,21);
+ const macd12=emaSeries(cl,12),macd26=emaSeries(cl,26),macd=macd12.map((x,i)=>x-macd26[i]),signal=emaSeries(macd,9);
+ const [lo,hi]=bands(cl),[prevLo,prevHi]=bands(cl.slice(0,-1));
+ const out=[];
+ function add(strategy,direction,rules){
+  const progress=scoreWatchProgress(rules);
+  if(progress.score>threshold)out.push({strategy,direction,candle:last.time,price:last.close,...progress,technicalPassed:progress.passed===progress.total});
+ }
+ add('BREAKOUT','LONG',[
+  ['מגמת 4h עולה',e20>e50],['פריצה מעל שיא 12 נרות',last.close>high],
+  ['נפח x'+vr.toFixed(2)+' (נדרש x1.50)',vr>=1.5]]);
+ add('BREAKOUT','SHORT',[
+  ['מגמת 4h יורדת',e20<e50],['שבירה מתחת לשפל 12 נרות',last.close<low],
+  ['נפח x'+vr.toFixed(2)+' (נדרש x1.50)',vr>=1.5]]);
+ for(const side of ['LONG','SHORT']){
+  const up=side==='LONG',trend=up?e20>e50:e20<e50;
+  const reclaim=up?cl.at(-2)<=e9.at(-2)&&last.close>e9.at(-1):cl.at(-2)>=e9.at(-2)&&last.close<e9.at(-1);
+  const aligned=up?e9.at(-1)>e21.at(-1):e9.at(-1)<e21.at(-1);
+  add('EMA_ADX',side,[
+   ['מגמת 4h מתאימה',trend],['חזרה מעל/מתחת EMA9',reclaim],
+   ['EMA9 ו-EMA21 מיושרים',aligned],
+   ['ADX '+adxValue.toFixed(1)+' (נדרש 20)',adxValue>=20],
+   ['נפח x'+vr.toFixed(2)+' (נדרש x0.80)',vr>=0.8]]);
+ }
+ add('RSI_BOLL','LONG',[
+  ['ADX '+adxValue.toFixed(1)+' (נדרש מתחת 25)',adxValue<25],
+  ['נר קודם מתחת לרצועת Bollinger',cl.at(-2)<prevLo],
+  ['חזרה לתוך רצועת Bollinger',last.close>lo],
+  ['RSI '+rsiValue.toFixed(1)+' (נדרש מתחת 45)',rsiValue<45]]);
+ add('RSI_BOLL','SHORT',[
+  ['ADX '+adxValue.toFixed(1)+' (נדרש מתחת 25)',adxValue<25],
+  ['נר קודם מעל רצועת Bollinger',cl.at(-2)>prevHi],
+  ['חזרה לתוך רצועת Bollinger',last.close<hi],
+  ['RSI '+rsiValue.toFixed(1)+' (נדרש מעל 55)',rsiValue>55]]);
+ add('MACD_VOLUME','LONG',[
+  ['חציית MACD מעל קו האיתות',macd.at(-2)<=signal.at(-2)&&macd.at(-1)>signal.at(-1)],
+  ['נפח x'+vr.toFixed(2)+' (נדרש x1.20)',vr>=1.2],
+  ['RSI '+rsiValue.toFixed(1)+' (נדרש מעל 50)',rsiValue>50]]);
+ add('MACD_VOLUME','SHORT',[
+  ['חציית MACD מתחת קו האיתות',macd.at(-2)>=signal.at(-2)&&macd.at(-1)<signal.at(-1)],
+  ['נפח x'+vr.toFixed(2)+' (נדרש x1.20)',vr>=1.2],
+  ['RSI '+rsiValue.toFixed(1)+' (נדרש מתחת 50)',rsiValue<50]]);
+ return out;
+}
+
 // Hypothetical taker fees and slippage on both entry and exit.
 // These are NOT venue quotes. Funding, spread changes and liquidation are excluded.
 export const RISK_DEFAULTS=Object.freeze({riskBudget:1.5,leverage:2,feeRate:0.0005,slippageRate:0.00025,minNetR:1.25});
@@ -637,6 +696,41 @@ export async function deliverResearchCandidates(env,found,symbol,news,sourceId='
  }
  return summary;
 }
+// One grouped owner-only digest per cron slot. Never notify subscribers of
+// unapproved research setups. Per-chunk KV receipts prevent duplicates on retry.
+export async function sendWatchDigest(env,items,scheduledTime){
+ if(!Array.isArray(items)||!Number.isSafeInteger(scheduledTime)||scheduledTime<=0)throw Error('Invalid watch digest input');
+ if(!items.length)return {status:'empty',count:0};
+ const nl=String.fromCharCode(10),owner=String(env.TELEGRAM_CHAT_ID);
+ const header=[
+  '👀 SIGNALPILOT | מעקב מעל 50/100',
+  '⚠️ התקרבות לתנאים בלבד, לא איתות כניסה או הוראת מסחר.',
+  '📊 אחוז תנאים שהתקיימו — לא הסתברות הצלחה.',
+  '🕒 '+israelTime(scheduledTime)+' (ישראל)'
+ ].join(nl);
+ const blocks=items.map(row=>{
+  const missing=row.missing?.length?row.missing.join(' | '):'התנאים הטכניים עברו, אך מסנני הכניסה/סיכון חסמו את האיתות';
+  return [
+   '• '+row.symbol+' '+row.direction+' | '+row.strategy+' | '+row.score+'/100 ('+row.passed+'/'+row.total+' תנאים)',
+   'סגירת נר: $'+Number(row.price).toFixed(Number(row.price)>=1000?2:5),
+   'חסר: '+missing.slice(0,320)
+  ].join(nl);
+ });
+ const chunks=[];let current=header;
+ for(const block of blocks){
+  if((current+nl+nl+block).length>3400){chunks.push(current);current=header+nl+'(המשך)';}
+  current+=nl+nl+block;
+ }
+ chunks.push(current);
+ for(let i=0;i<chunks.length;i++){
+  const key='watch:owner:'+scheduledTime+':'+i;
+  if(await env.SIGNAL_STATE.get(key))continue;
+  await tgDirect(env,owner,chunks[i]);
+  await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});
+ }
+ return {status:'sent',count:items.length,chunks:chunks.length};
+}
+
 // Two OHLC calls for the same pair must not race each other.
 export async function fetchMarketTimeframes(symbol,delayMs=1100){
  if(!Number.isInteger(delayMs)||delayMs<0||delayMs>2000)throw Error('Invalid Kraken pair pacing');
@@ -654,12 +748,21 @@ async function scan(symbol,env,news){
 const audit={scans:1,rawSetups:0,stopRejected:0,eligibleAfterStops:0,capExcluded:0,
  planRejected:0,qualified:0,duplicates:0,delivered:0,deliveryFailed:0};
 let checks=[],raw=setups(five,four,checks,audit),found=[];
+// Partial-condition watch does not weaken the existing trade gate.
+const watchers=watchCandidates(five,four,50);
 for(const setup of raw){
  const plan=tradePlan({...setup,source},five);
  if(plan)found.push({setup,plan});
  else{audit.planRejected++;console.log(JSON.stringify({event:'plan_filtered',symbol,strategy:setup.strategy}));}
 }
 audit.qualified=found.length;
+// Validated trade candidates already receive the original full signal.
+// Report only partially matching or risk-rejected setups as OBSERVATION.
+const approved=new Set(found.map(x=>x.setup.strategy+':'+x.setup.direction));
+const pendingWatch=watchers.filter(x=>!approved.has(x.strategy+':'+x.direction))
+ .map(x=>({symbol,...x,missing:x.missing.length?x.missing:
+  ['התנאים הטכניים עברו, אך מסנן סטופ / יחס סיכון-סיכוי / תוקף לא אישר כניסה']}));
+audit.watchAbove50=pendingWatch.length;
 audit.checks=checks.slice(0,10).map(x=>x.slice(0,450));
 console.log(JSON.stringify({event:'signal_filter_diagnostics',symbol,candle:new Date(last.time).toISOString(),checks:audit.checks}));
 console.log(JSON.stringify({event:'candidates',symbol,count:found.length,rawCandidates:audit.rawSetups,
@@ -669,7 +772,7 @@ Object.assign(audit,delivery);
 // Market scans remain on the five-minute cron; never notify the owner unless a real setup passes.
 const statusDelivery=found.length?'signal_only':'suppressed_no_signal';
 await notifyFreshNews(symbol,env,news);
-return {symbol,source:sourceId,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length,audit};}
+return {symbol,source:sourceId,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length,audit,watchCandidates:pendingWatch};}
 
 // Signed GET only: read-only Binance USD-M Futures account monitoring.
 // Never log API credentials, signatures, signed URLs, balances or raw responses.
@@ -724,7 +827,11 @@ export async function monitorBinanceAccount(env){
 }
 
 export default {
- async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}if(env.TELEGRAM_ACCESS_ENABLED!=='0')ctx.waitUntil(processTelegramAccess(env).catch(async error=>{const reason=String(error).replace(/bot[0-9]+:[A-Za-z0-9_-]+/g,'[REDACTED]').slice(0,180);console.error('Telegram access polling failed',reason);try{await env.SIGNAL_STATE.put('tg:access-health',JSON.stringify({status:'error',checkedAt:new Date().toISOString(),error:reason}));}catch{}}));ctx.waitUntil((async()=>{const news=await loadNews(env);try{await sendHourlyNewsDigest(env,news);}catch(error){console.warn('Hourly news delivery failed');}const results=[],failures=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){const message=error instanceof Error?error.message:'Scan failed';failures.push({symbol,reason:message.slice(0,180)});console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message}));}}const receipt={event:'scan_complete',release:RELEASE,source:'kraken_spot',cron:event.cron,scheduledTime:event.scheduledTime,recordedAt:Date.now(),ok:results.length===SYMBOLS.length,results,failures};
+ async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}if(env.TELEGRAM_ACCESS_ENABLED!=='0')ctx.waitUntil(processTelegramAccess(env).catch(async error=>{const reason=String(error).replace(/bot[0-9]+:[A-Za-z0-9_-]+/g,'[REDACTED]').slice(0,180);console.error('Telegram access polling failed',reason);try{await env.SIGNAL_STATE.put('tg:access-health',JSON.stringify({status:'error',checkedAt:new Date().toISOString(),error:reason}));}catch{}}));ctx.waitUntil((async()=>{const news=await loadNews(env);try{await sendHourlyNewsDigest(env,news);}catch(error){console.warn('Hourly news delivery failed');}const results=[],failures=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){const message=error instanceof Error?error.message:'Scan failed';failures.push({symbol,reason:message.slice(0,180)});console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message}));}}const watchItems=results.flatMap(x=>x.watchCandidates||[]);
+let watchDelivery={status:'empty',count:0};
+try{watchDelivery=await sendWatchDigest(env,watchItems,event.scheduledTime);}
+catch{watchDelivery={status:'failed',count:watchItems.length};console.warn('Owner watch digest delivery failed (not a trade signal)');}
+const receipt={event:'scan_complete',release:RELEASE,source:'kraken_spot',cron:event.cron,scheduledTime:event.scheduledTime,recordedAt:Date.now(),ok:results.length===SYMBOLS.length,results:results.map(({watchCandidates:unused,...rest})=>rest),failures,watchDelivery};
 console.log(JSON.stringify(receipt));
 await env.SIGNAL_STATE.put('health:cron:'+event.scheduledTime,JSON.stringify(receipt),{expirationTtl:86400});await env.SIGNAL_STATE.put('health:latest',JSON.stringify(receipt),{expirationTtl:86400});try{await sendDailyHeartbeat(env,receipt);}catch{console.warn('Daily heartbeat Telegram delivery failed; will retry in the morning window');}await monitorBinanceAccount(env);if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
  async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
