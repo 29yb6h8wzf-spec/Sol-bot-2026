@@ -326,7 +326,7 @@ test('owner-only testbroadcast reaches approved subscribers and saves privacy-sa
   assert.match(sent[3].text,/נכשלו: 1/);
   const report=JSON.parse(kv.get('tg:broadcast:last'));
   assert.deepEqual({approvedCount:report.approvedCount,delivered:report.delivered,failed:report.failed,kind:report.kind},{approvedCount:2,delivered:1,failed:1,kind:'demo_only'});
-  assert.doesNotMatch(JSON.stringify(report),/200|300/);
+  assert.deepEqual(Object.keys(report).sort(),['approvedCount','checkedAt','delivered','failed','kind'].sort()); // No recipient-ID fields; timestamps may legitimately contain 200/300.
   assert.deepEqual(JSON.parse(kv.get('tg:approved')),['200','300']);
  }finally{globalThis.fetch=saved;}
 });
