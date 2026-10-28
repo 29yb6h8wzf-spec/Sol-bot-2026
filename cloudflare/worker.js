@@ -299,17 +299,25 @@ async function showLiveScannerStatus(env){
  const results=Array.isArray(receipt.results)?receipt.results:[];
  const passing=valid(receipt);
  const scheduled=Number(receipt.scheduledTime);
- let consecutive=false;
- if(fresh&&passing&&Number.isSafeInteger(scheduled)&&scheduled>300000){
+ let consecutive=false,verificationReason='לא אומתה רציפות';
+ if(!fresh)verificationReason='דוח הסריקה האחרון אינו עדכני';
+ else if(!passing)verificationReason='דוח הסריקה האחרון לא עבר את כל בדיקות התקינות';
+ else if(!Number.isSafeInteger(scheduled)||scheduled<=300000)verificationReason='חסר זמן cron תקין';
+ else{
   try{
    const previousRaw=await env.SIGNAL_STATE.get('health:cron:'+(scheduled-300000));
    const previous=previousRaw?JSON.parse(previousRaw):null;
-   consecutive=valid(previous)&&Number(previous.scheduledTime)===scheduled-300000&&
-    receipt.results.every(r=>{
+   if(!previousRaw)verificationReason='קבלת ה-cron הקודמת חסרה ב-KV';
+   else if(!valid(previous)||Number(previous.scheduledTime)!==scheduled-300000)verificationReason='קבלת ה-cron הקודמת נכשלה או אינה תקינה';
+   else{
+    const advanced=receipt.results.every(r=>{
      const p=previous.results.find(x=>x.symbol===r.symbol);
      return p&&Date.parse(r.candle)-Date.parse(p.candle)===300000;
     });
-  }catch{consecutive=false;}
+    consecutive=advanced;
+    verificationReason=advanced?'אומת':'הנרות לא התקדמו בחמש דקות בכל המטבעות';
+   }
+  }catch{verificationReason='לא ניתן לקרוא את קבלת ה-cron הקודמת';}
  }
  const lines=['📡 SignalPilot | מצב הסורק החי',
   '🕒 בדיקה אחרונה: '+(Number.isFinite(Number(receipt.recordedAt))?israelTime(Number(receipt.recordedAt)):'לא ידוע')+' (ישראל)',
@@ -317,7 +325,7 @@ async function showLiveScannerStatus(env){
   '🔍 מטבעות: '+results.map(r=>r.symbol).filter(sym=>expected.includes(sym)).join(', '),
   fresh&&passing?'✅ ארבעת המטבעות נסרקו בהצלחה לאחרונה':'⚠️ סריקה חלקית, כושלת או לא עדכנית',
   '📬 איתותים שזוהו: '+results.reduce((n,r)=>n+(Number.isInteger(r.candidates)&&r.candidates>0?r.candidates:0),0),
-  consecutive?'✅ שתי קבלות cron רצופות אומתו ב־KV, כולל התקדמות הנרות ב־5 דקות':'❗ שתי קבלות cron רצופות עם התקדמות נרות עדיין לא אומתו',
+  consecutive?'✅ שתי קבלות cron רצופות אומתו ב־KV, כולל התקדמות הנרות ב־5 דקות':'❗ שתי קבלות cron רצופות עדיין לא אומתו — '+verificationReason,
   '🔒 לא מוצגים נתוני חשבון Binance.'];
  return lines.join(String.fromCharCode(10));
 }
