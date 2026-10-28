@@ -264,12 +264,18 @@ export function watchCandidates(five,four,threshold=50){
 // Hypothetical taker fees and slippage on both entry and exit.
 // These are NOT venue quotes. Funding, spread changes and liquidation are excluded.
 export const RISK_DEFAULTS=Object.freeze({riskBudget:1.5,leverage:2,feeRate:0.0005,slippageRate:0.00025,minNetR:1.25});
-export function tradePlan(s,bars,now=Date.now(),config=RISK_DEFAULTS){
+export function tradePlan(s,bars,now=Date.now(),config=RISK_DEFAULTS,diagnostics=null){
+ // Diagnostic object is optional. The original trade gates and calculations are unchanged.
+ const reject=(reason,values={})=>{
+  if(diagnostics&&typeof diagnostics==='object')Object.assign(diagnostics,{reason,...values});
+  return null;
+ };
  const side=s.direction==='LONG'?1:s.direction==='SHORT'?-1:0;
  const risk=side*(s.entry-s.stop),vol=atr(bars);
  const {riskBudget,leverage,feeRate,slippageRate,minNetR}=config;
  if(!side||!Number.isFinite(risk)||risk<=0||!Number.isFinite(s.entry)||s.entry<=0||!Number.isFinite(vol)||vol<=0||
-  ![riskBudget,leverage,feeRate,slippageRate,minNetR].every(Number.isFinite)||riskBudget<=0||leverage<1||feeRate<0||slippageRate<0||minNetR<=0)return null;
+  ![riskBudget,leverage,feeRate,slippageRate,minNetR].every(Number.isFinite)||riskBudget<=0||leverage<1||feeRate<0||slippageRate<0||minNetR<=0)
+  return reject('invalid_input_or_stop',{entry:s.entry,stop:s.stop,risk,atr:vol});
  const a=s.entry-side*Math.min(vol*.2,risk*.2);
  const b=s.entry+side*Math.min(vol*.08,risk*.08);
  const low=Math.min(a,b),high=Math.max(a,b),target=s.entry+side*2*risk;
@@ -281,8 +287,14 @@ export function tradePlan(s,bars,now=Date.now(),config=RISK_DEFAULTS){
  const worstLoss=Math.max(...endpoints.map(lossAt));
  const worstProfit=Math.min(...endpoints.map(profitAt));
  const netR=worstProfit/worstLoss;
+ const values={netR:Number.isFinite(netR)?+netR.toFixed(4):null,minNetR,
+  worstProfit:Number.isFinite(worstProfit)?+worstProfit.toFixed(6):null,
+  worstLoss:Number.isFinite(worstLoss)?+worstLoss.toFixed(6):null,
+  feeRate,slippageRate,expires,now};
  if(![low,high,target,worstLoss,worstProfit,netR,expires].every(Number.isFinite)||low<=0||high<=0||target<=0||
-  worstLoss<=0||worstProfit<=0||netR<minNetR||now>=expires)return null;
+  worstLoss<=0||worstProfit<=0)return reject('invalid_plan_levels',values);
+ if(netR<minNetR)return reject('net_r_below_minimum',values);
+ if(now>=expires)return reject('expired',values);
  const quantity=riskBudget/worstLoss;
  const notional=quantity*Math.max(low,high);
  const margin=notional/leverage;
@@ -456,6 +468,19 @@ export async function scanAuditReport(env){
   for(const r of newest.results||[]){
    const checks=(r.audit?.checks||[]).filter(x=>x.includes('לא עמד')||x.includes('אין התאמה')||x.includes('נפסל'));
    if(checks.length)lines.push('• '+r.symbol+': '+checks[0].slice(0,240));
+  }
+ }
+ const rejected=receipts.flatMap(receipt=>(receipt?.results||[]).flatMap(r=>
+  (r.audit?.planFailures||[]).map(f=>({symbol:r.symbol,...f})))).slice(-8);
+ if(rejected.length){
+  lines.push('','🛡️ דוגמאות לפסילות תוכנית עסקה:');
+  for(const f of rejected){
+   const fmt=x=>Number.isFinite(x)?Number(x).toFixed(2):'לא תקין';
+   let reason=f.reason==='net_r_below_minimum'?'יחס רווח/סיכון נטו '+fmt(f.netR)+'R מול דרישה '+fmt(f.minNetR)+'R':
+    f.reason==='expired'?'איתות פג תוקף לפני כניסה':
+    f.reason==='invalid_input_or_stop'?'נתוני כניסה או מרחק סטופ לא תקינים':
+    'רמות תוכנית או חישוב סיכון לא תקינים';
+   lines.push('• '+f.symbol+' '+f.strategy+' '+f.direction+': '+reason);
   }
  }
  lines.push('ℹ️ מספר מועמדים אינו שיעור הצלחה או רווחיות. /status מציג את הסריקה האחרונה בלבד.');
@@ -750,10 +775,17 @@ const audit={scans:1,rawSetups:0,stopRejected:0,eligibleAfterStops:0,capExcluded
 let checks=[],raw=setups(five,four,checks,audit),found=[];
 // Partial-condition watch does not weaken the existing trade gate.
 const watchers=watchCandidates(five,four,50);
+audit.planFailures=[];
 for(const setup of raw){
- const plan=tradePlan({...setup,source},five);
+ const diagnostic={};
+ const plan=tradePlan({...setup,source},five,Date.now(),RISK_DEFAULTS,diagnostic);
  if(plan)found.push({setup,plan});
- else{audit.planRejected++;console.log(JSON.stringify({event:'plan_filtered',symbol,strategy:setup.strategy}));}
+ else{
+  audit.planRejected++;
+  const failure={strategy:setup.strategy,direction:setup.direction,...diagnostic};
+  audit.planFailures.push(failure);
+  console.log(JSON.stringify({event:'plan_filtered',symbol,...failure}));
+ }
 }
 audit.qualified=found.length;
 // Validated trade candidates already receive the original full signal.

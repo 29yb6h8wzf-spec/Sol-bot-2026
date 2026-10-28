@@ -652,3 +652,37 @@ test('scheduled scanner groups watch candidates while keeping no-qualified-trade
   assert.equal(telegramMessages.filter(x=>x.text.startsWith('👀')).length,1);
  });}finally{console.log=savedLog;}
 });
+
+test('trade plan reports exact net R, expiry, invalid stop while retaining original gates',()=>{
+ const base=Date.UTC(2026,9,28,9,0);
+ const bars=Array.from({length:120},(_,i)=>({time:base-(120-i)*300000,high:101,low:99,close:100,volume:100}));
+ const signal={strategy:'BREAKOUT',direction:'LONG',entry:100,stop:99,candle:base-300000};
+ const accepted=tradePlan(signal,bars,base);
+ assert.ok(accepted);
+ const invalid={};assert.equal(tradePlan({...signal,stop:101},bars,base,undefined,invalid),null);
+ assert.equal(invalid.reason,'invalid_input_or_stop');
+ const expensive={};
+ const expensiveConfig={riskBudget:1.5,leverage:2,feeRate:0.005,slippageRate:0.0025,minNetR:1.25};
+ assert.equal(tradePlan(signal,bars,base,expensiveConfig,expensive),null);
+ assert.equal(expensive.reason,'net_r_below_minimum');
+ assert.ok(Number.isFinite(expensive.netR));
+ assert.equal(expensive.minNetR,1.25);
+ assert.ok(expensive.netR<expensive.minNetR);
+ const expired={};
+ assert.equal(tradePlan(signal,bars,base+900000,undefined,expired),null);
+ assert.equal(expired.reason,'expired');
+ assert.equal(expired.expires,base+900000);
+ assert.equal(tradePlan(signal,bars,base)?.netR,accepted.netR);
+});
+
+test('owner audit displays calculated net R of rejected plan without private identifiers',async()=>{
+ const time=1800000000000,kv=new Map(),receipt={scheduledTime:time,release:'kraken-stable-v9',
+  results:[{symbol:'BTCUSDT',audit:{scans:1,planRejected:1,planFailures:[{
+   strategy:'EMA_ADX',direction:'LONG',reason:'net_r_below_minimum',netR:1.10,minNetR:1.25
+  }]}}],failures:[]};
+ kv.set('health:latest',JSON.stringify(receipt));kv.set('health:cron:'+time,JSON.stringify(receipt));
+ const report=await scanAuditReport({SIGNAL_STATE:{get:async k=>kv.get(k)||null}});
+ assert.match(report,/BTCUSDT EMA_ADX LONG/);
+ assert.match(report,/1\.10R מול דרישה 1\.25R/);
+ assert.doesNotMatch(report,/TELEGRAM_CHAT_ID|BINANCE_API/);
+});
