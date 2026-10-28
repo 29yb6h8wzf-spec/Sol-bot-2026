@@ -1,0 +1,114 @@
+name: Read-only Signal Gap Audit
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/signal-gap-audit.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Summarize actual Cloudflare KV market receipts since owner's last alert
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'JS'
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          if(!token)throw Error('Missing Cloudflare read token');
+          const account='d0b774cf03b175507aa1584e7e8e0117';
+          const namespace='26692b7aceb64495a3b1de123c1aa628';
+          const root='https://api.cloudflare.com/client/v4/accounts/'+account+'/storage/kv/namespaces/'+namespace;
+          const since=Date.parse('2026-10-27T18:35:00Z');
+          const until=Date.now();
+          const prefix='health:cron:';
+          const headers={Authorization:'Bearer '+token};
+          async function fetchJson(url,kind){
+            const response=await fetch(url,{headers,signal:AbortSignal.timeout(20000)});
+            if(response.status===404&&kind==='value')return null;
+            if(!response.ok)throw Error('KV '+kind+' HTTP '+response.status);
+            const data=await response.json();
+            if(kind==='list'){
+              if(!data.success||!Array.isArray(data.result))throw Error('Invalid KV key-list response');
+              return data;
+            }
+            return data;
+          }
+          let cursor,keys=[];
+          do{
+            const url=new URL(root+'/keys');
+            url.searchParams.set('prefix',prefix);
+            url.searchParams.set('limit','1000');
+            if(cursor)url.searchParams.set('cursor',cursor);
+            const page=await fetchJson(url.href,'list');
+            keys.push(...page.result.map(x=>x.name).filter(Boolean));
+            cursor=page.result_info?.cursor||null;
+          }while(cursor&&keys.length<5000);
+          const scheduled=keys.map(name=>({name,time:Number(name.slice(prefix.length))}))
+            .filter(x=>Number.isSafeInteger(x.time)&&x.time>=since&&x.time<=until)
+            .sort((a,b)=>a.time-b.time);
+          console.log('AUDIT_WINDOW',JSON.stringify({since:new Date(since).toISOString(),until:new Date(until).toISOString(),
+            expectedFiveMinuteScans:Math.floor((until-since)/300000),actualReceiptKeys:scheduled.length}));
+          const receipts=[],failedReads=[];
+          let next=0;
+          await Promise.all(Array.from({length:8},async()=>{
+            while(next<scheduled.length){
+              const current=scheduled[next++];
+              const url=root+'/values/'+encodeURIComponent(current.name);
+              try{
+                const res=await fetch(url,{headers,signal:AbortSignal.timeout(20000)});
+                if(!res.ok)throw Error('HTTP '+res.status);
+                const row=await res.json();
+                if(row.scheduledTime===current.time)receipts.push(row);
+                else failedReads.push(current.time);
+              }catch{failedReads.push(current.time);}
+            }
+          }));
+          receipts.sort((a,b)=>a.scheduledTime-b.scheduledTime);
+          const totals={actualReceipts:receipts.length,failedReads:failedReads.length,
+            fullScans:0,partialScans:0,marketScanResults:0,marketScanFailures:0,
+            eligibleCandidates:0,rawCandidates:0,stopRejected:0,planRejected:0,
+            dedup:0,deliveredAll:0,deliveryFailed:0,auditMissingMarketResults:0};
+          const buckets=new Map(),signalRows=[];
+          const localHour=t=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem',
+            year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).format(t);
+          for(const row of receipts){
+            if(row.ok)totals.fullScans++;else totals.partialScans++;
+            totals.marketScanFailures+=(row.failures||[]).length;
+            const hour=localHour(row.scheduledTime);
+            const bucket=buckets.get(hour)||{receipts:0,scanned:0,candidates:0,delivered:0,failedDelivery:0,failedMarkets:0};
+            bucket.receipts++;bucket.failedMarkets+=(row.failures||[]).length;
+            for(const r of row.results||[]){
+              totals.marketScanResults++;bucket.scanned++;
+              totals.eligibleCandidates+=Number(r.candidates||0);bucket.candidates+=Number(r.candidates||0);
+              if(r.audit){
+                totals.rawCandidates+=Number(r.audit.rawSetups||0);
+                totals.stopRejected+=Number(r.audit.stopRejected||0);
+                totals.planRejected+=Number(r.audit.planRejected||0);
+                totals.dedup+=Number(r.audit.duplicates||0);
+                totals.deliveredAll+=Number(r.audit.delivered||0);
+                totals.deliveryFailed+=Number(r.audit.deliveryFailed||0);
+                bucket.delivered+=Number(r.audit.delivered||0);
+                bucket.failedDelivery+=Number(r.audit.deliveryFailed||0);
+              }else totals.auditMissingMarketResults++;
+              if(r.candidates||r.audit?.rawSetups||r.audit?.deliveryFailed)
+                signalRows.push({time:new Date(row.scheduledTime).toISOString(),symbol:r.symbol,
+                  candidates:Number(r.candidates||0),raw:Number(r.audit?.rawSetups??-1),
+                  stops:Number(r.audit?.stopRejected??-1),plans:Number(r.audit?.planRejected??-1),
+                  delivered:Number(r.audit?.delivered??-1),failed:Number(r.audit?.deliveryFailed??-1)});
+            }
+            buckets.set(hour,bucket);
+          }
+          console.log('AUDIT_TOTALS',JSON.stringify(totals));
+          for(const [localHour,data] of [...buckets.entries()].sort((a,b)=>a[0].localeCompare(b[0])))
+            console.log('AUDIT_HOUR',JSON.stringify({localHour,...data}));
+          console.log('AUDIT_CANDIDATES',JSON.stringify(signalRows.slice(-60)));
+          if(totals.auditMissingMarketResults)
+            console.log('AUDIT_NOTE','Legacy market receipts lack delivery and rejection counters; never equate candidate counts with successful Telegram delivery.');
+          if(failedReads.length)console.log('AUDIT_NOTE','Some KV receipt reads failed; do not treat missing rows as successful or no-signal scans.');
+          JS
