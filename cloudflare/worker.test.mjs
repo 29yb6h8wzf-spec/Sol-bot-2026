@@ -379,3 +379,25 @@ test('offline paper backtest evaluates stop-first, costs, expired and per-strate
  assert.equal(report.outcomes.find(x=>x.id==='expired').netR,null);
  assert.throws(()=>analyzeBacktest({signals:[base],candles:{}}),/Missing historical candles/);
 });
+
+test('copy-trading research combines multiple real-export sources without claiming SignalPilot returns',async()=>{
+ const {analyzeCopyTradingExports}=await import('./copytrading-research.mjs');
+ const row=(tradeId,pnl)=>({tradeId,symbol:'BTCUSDT',side:'LONG',openedAt:'2026-10-01T00:00:00Z',closedAt:tradeId==='a'?'2026-10-02T00:00:00Z':'2026-10-03T00:00:00Z',netPnlUsdt:pnl});
+ const first={source:'bybit',portfolioAlias:'leader_A',evidenceType:'closed_trade_export',startingCapitalUsdt:1000,closedTrades:[row('a',100),row('b',-50)]};
+ const second={source:'okx',portfolioAlias:'leader_B',evidenceType:'closed_trade_export',startingCapitalUsdt:2000,closedTrades:[row('a',-200)]};
+ const result=analyzeCopyTradingExports([first,second]);
+ assert.equal(result.sourceCount,2);
+ assert.equal(result.verifiedSignalPilotTrackRecord,false);
+ assert.equal(result.portfolios[0].netPnlUsdt,50);
+ assert.equal(result.portfolios[0].netReturnPct,5);
+ assert.equal(result.portfolios[0].winRate,0.5);
+ assert.equal(result.portfolios[1].netReturnPct,-10);
+ assert.equal(result.portfolios[0].unverifiedCostTrades,0);
+ assert.match(result.warning,/NOT SignalPilot/);
+ assert.throws(()=>analyzeCopyTradingExports([{...first,evidenceType:'leaderboard_snapshot'}]),/closed-trade exports/);
+ assert.throws(()=>analyzeCopyTradingExports([{...first,closedTrades:[row('a',100),row('a',5)]}]),/duplicate tradeId/);
+ assert.throws(()=>analyzeCopyTradingExports([{...first,closedTrades:[{...row('a',100),grossPnlUsdt:100}]}]),/exactly one/);
+ const incomplete=analyzeCopyTradingExports([{...first,closedTrades:[{...row('a',100),netPnlUsdt:undefined,grossPnlUsdt:100}]}]);
+ assert.equal(incomplete.portfolios[0].unverifiedCostTrades,1);
+ assert.equal(incomplete.portfolios[0].warnings.length,3);
+});
