@@ -67,6 +67,8 @@ class KrakenSourceTests(unittest.TestCase):
         self.assertIn('Kraken Spot', message)
         self.assertIn('למחקר בלבד', message)
         self.assertNotIn('Binance Futures נגיש', message)
+        self.assertIn('לא לביצוע Futures', message)
+        self.assertNotIn('Binance Futures execution prices are verified', message)
 
     def test_daily_status_stale_error_identifies_kraken(self):
         from datetime import datetime, timezone
