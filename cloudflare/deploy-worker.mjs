@@ -114,7 +114,14 @@ async function main(){
  }
  const actual=scheduleList(await api('/schedules'));
  assert.ok(actual.some(s=>s.cron===CRON),'Five-minute cron not configured');
- report('Confirmed cron '+CRON+'. WARNING: GitHub scan workflows are also enabled; duplicate signal sources remain.');
+ report('Confirmed cron '+CRON+'.');
+ // Inspect the actual legacy signal workflow rather than reporting an unconditional duplicate-source warning.
+ // Other scheduled diagnostic/news workflows are not trade-signal scanners.
+ const legacyWorkflow=await fs.readFile(new URL('../.github/workflows/sol-alert.yml',import.meta.url),'utf8');
+ const legacyHasSchedule=/^  schedule:/m.test(legacyWorkflow);
+ report(legacyHasSchedule
+  ?'WARNING: legacy GitHub signal scanner is scheduled; duplicate signal sources may exist.'
+  :'Legacy GitHub signal scanner is manual-only; no scheduled duplicate source from sol-alert.yml.');
 
  // Durable verification: read receipts persisted by the scheduled Worker in KV.
  // Never depend on a Cloudflare tail WebSocket remaining connected.
@@ -175,7 +182,7 @@ async function main(){
   }
   if(!success)await new Promise(resolve=>setTimeout(resolve,20000));
  }
- if(!success)throw Error('Timed out: no two consecutive successful cron receipts in KV (all pages inspected); inspect recent KV receipt diagnostics above; GitHub scans remain enabled');
+ if(!success)throw Error('Timed out: no two consecutive successful cron receipts in KV (all pages inspected); inspect recent KV receipt diagnostics above.');
 
 }
 try{await main();}catch(error){report('FAILED: '+error.message);process.exitCode=1;}finally{
