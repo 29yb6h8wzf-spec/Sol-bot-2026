@@ -118,7 +118,7 @@ async function main(){
  // Inspect the actual legacy signal workflow rather than reporting an unconditional duplicate-source warning.
  // Other scheduled diagnostic/news workflows are not trade-signal scanners.
  const legacyWorkflow=await fs.readFile(new URL('../.github/workflows/sol-alert.yml',import.meta.url),'utf8');
- const legacyHasSchedule=/^  schedule\\s*:/m.test(legacyWorkflow);
+ const legacyHasSchedule=/^  schedule:/m.test(legacyWorkflow);
  report(legacyHasSchedule
   ?'WARNING: legacy GitHub signal scanner is scheduled; duplicate signal sources may exist.'
   :'Legacy GitHub signal scanner is manual-only; no scheduled duplicate source from sol-alert.yml.');
