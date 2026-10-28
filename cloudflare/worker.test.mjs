@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const source=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
-const {candles,fetchKrakenOHLC,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,processTelegramAccess,readBinancePositions,monitorBinanceAccount,sendResearch,rsi,testBroadcast,evaluatePaperSignal,recordResearchSignal,filterAndLimitSetups,deliverResearchCandidates,scanAuditReport,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const {candles,fetchKrakenOHLC,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,processTelegramAccess,readBinancePositions,monitorBinanceAccount,sendResearch,rsi,testBroadcast,evaluatePaperSignal,recordResearchSignal,filterAndLimitSetups,deliverResearchCandidates,scanAuditReport,sendDailyHeartbeat,setups,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const now=Date.now, originalFetch=globalThis.fetch;
 const fixed=1800000000000;
 let telegramMessages=[], telegramStatus=200, newsXML='<rss><channel></channel></rss>';
@@ -463,4 +463,62 @@ test('private audit reports rejection and delivery counts from actual KV receipt
  const text=await scanAuditReport(env);
  for(const phrase of ['2/24','סריקות מטבע עם פירוט: 2','מועמדים גולמיים: 3','נפסלו לפי מרחק סטופ: 1','נפסלו בניהול סיכון/תוקף: 1','איתותים שנמסרו לכל היעדים: 1','חסרות 22 קבלות'])assert.ok(text.includes(phrase),phrase);
  assert.doesNotMatch(text,/TELEGRAM_CHAT_ID|BINANCE_API|200/);
+});
+
+test('setup diagnostics include exact failed conditions and thresholds without modifying trade rules',()=>{
+ const five=Array.from({length:120},(_,i)=>({time:i*300000,high:100.3,low:99.7,close:100,volume:100}));
+ const four=Array.from({length:100},(_,i)=>({time:i*14400000,high:101,low:99,close:100,volume:100}));
+ const checks=[],audit={};
+ const signals=setups(five,four,checks,audit);
+ assert.deepEqual(signals,[]);
+ assert.equal(audit.rawSetups,0);
+ assert.ok(checks.some(x=>x.startsWith('BREAKOUT:')&&x.includes('close=100.00000')&&x.includes('minVolume=1.50')));
+ assert.ok(checks.some(x=>x.startsWith('EMA_ADX LONG:')&&x.includes('trend=false')&&x.includes('adx=0.00')&&x.includes('minAdx=20')));
+ assert.ok(checks.some(x=>x.startsWith('RSI_BOLL SHORT:')&&x.includes('rsi=50.00')&&x.includes('minRsi=55')));
+ assert.ok(checks.some(x=>x.startsWith('MACD_VOLUME LONG:')&&x.includes('crossed=false')&&x.includes('minVolume=1.2')));
+});
+
+test('live cron heartbeat sends one truthful owner-only daily message in Israel morning; retries after Telegram failure',async()=>{
+ const saved=globalThis.fetch,kv=new Map(),sent=[];
+ let fail=true;
+ const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'100',SIGNAL_STATE:{
+  get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)
+ }};
+ const receipt={ok:true,results:['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'].map(symbol=>({symbol,candidates:0})),failures:[]};
+ globalThis.fetch=async(url,options)=>{
+  assert.match(String(url),/sendMessage/);
+  sent.push(JSON.parse(options.body));
+  return fail?new Response(JSON.stringify({ok:false}),{status:502}):new Response(JSON.stringify({ok:true,result:{message_id:21}}));
+ };
+ const morning=Date.UTC(2026,9,28,7,0);
+ try{
+  assert.equal(await sendDailyHeartbeat(env,receipt,morning-60*60000),'not_due');
+  assert.equal(sent.length,0);
+  await assert.rejects(sendDailyHeartbeat(env,receipt,morning),/Telegram HTTP 502/);
+  assert.equal(sent.length,1);
+  assert.equal([...kv.keys()].filter(x=>x.startsWith('heartbeat:daily:')).length,0);
+  fail=false;
+  assert.equal(await sendDailyHeartbeat(env,receipt,morning+300000),'sent');
+  assert.equal(await sendDailyHeartbeat(env,receipt,morning+600000),'already_sent');
+  assert.equal(sent.length,2);
+  assert.ok(sent.every(m=>String(m.chat_id)==='100'));
+  assert.match(sent.at(-1).text,/4\/4/);
+  assert.match(sent.at(-1).text,/Kraken Spot/);
+  assert.doesNotMatch(sent.at(-1).text,/Binance Futures נגיש/);
+  assert.equal(await sendDailyHeartbeat(env,receipt,morning+2*60*60000),'not_due');
+ }finally{globalThis.fetch=saved;}
+});
+
+test('audit displays sample reasons and recorded values for the latest market scan',async()=>{
+ const time=1800000000000,kv=new Map(),latest={scheduledTime:time,release:'kraken-stable-v9',
+  results:[{symbol:'SOLUSDT',audit:{scans:1,checks:[
+   'BREAKOUT: אין התאמה בין מגמה, פריצה ונפח; close=100.00000 volume=0.45 minVolume=1.50',
+   'EMA_ADX LONG: לא עמד בכל התנאים; adx=17.00 minAdx=20'
+  ]}}],failures:[]};
+ kv.set('health:latest',JSON.stringify(latest));
+ kv.set('health:cron:'+time,JSON.stringify(latest));
+ const output=await scanAuditReport({SIGNAL_STATE:{get:async key=>kv.get(key)||null}});
+ assert.match(output,/SOLUSDT/);
+ assert.match(output,/volume=0.45/);
+ assert.match(output,/minVolume=1.50/);
 });

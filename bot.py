@@ -183,7 +183,7 @@ def main():
                  f'{SYMBOL} (נר סגור אחרון): ${last["close"]:.3f}\n'
                  f'גיל הנתונים: {max(age_min, 0):.1f} דקות\n'
                  f'מקור נתונים: {DATA_SOURCE}\n'
-                  '✅ Binance Futures נגיש והבוט מצליח לשלוח לטלגרם.\n'
+                  '✅ הנתונים נקראו מ־Kraken Spot; זוהתה גישה לטלגרם דרך בדיקה זו.\n'
                  'ℹ️ זו בדיקת תקינות נקודתית, לא אישור שכל הסריקות במהלך היום הצליחו. אין כאן איתות מסחר.')
         print('Daily status message sent')
         return

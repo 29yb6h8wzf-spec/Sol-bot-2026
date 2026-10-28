@@ -1,9 +1,9 @@
 name: SOL Daily Status
 
+# Owner's daily scheduled heartbeat is sent by the Cloudflare Worker after a real cron scan.
+# Retain manual-only legacy diagnostics to avoid four duplicate daily Telegram messages.
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 8 * * *'
 
 permissions:
   contents: read
@@ -23,7 +23,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Check Binance and send Telegram status
+      - name: Check Kraken Spot manually and send one Telegram status
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           SYMBOL: ${{ matrix.symbol }}
