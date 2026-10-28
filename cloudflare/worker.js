@@ -278,6 +278,20 @@ function testSignalMessage(){
   '🔒 ההודעה נשלחה למנהל בלבד. לא נפתחו עסקאות.'
  ].join(String.fromCharCode(10));
 }
+export async function testBroadcast(env){
+ const owner=String(env.TELEGRAM_CHAT_ID);
+ const approved=(await tgIds(env,APPROVED)).filter(id=>id!==owner);
+ // One explicit owner command, one clearly marked DEMO message per approved recipient.
+ const msg=['🧪 SIGNALPILOT | בדיקת הפצה לחברים','⚠️ TEST BROADCAST — הודעת בדיקה בלבד. זו אינה הזדמנות מסחר ואין לפעול על פיה.','🏦 אין כאן מחירי שוק או נתוני Binance.','📨 בודקים יכולת קבלה של הודעות Telegram.'].join(String.fromCharCode(10));
+ let delivered=0,failed=0;
+ for(const id of approved){
+  try{await tgDirect(env,id,msg);delivered++;}
+  catch{failed++;console.warn('Telegram demo broadcast delivery failed (recipient redacted)');}
+ }
+ const result={checkedAt:Date.now(),approvedCount:approved.length,delivered,failed,kind:'demo_only'};
+ await env.SIGNAL_STATE.put('tg:broadcast:last',JSON.stringify(result),{expirationTtl:86400});
+ return '🧪 SignalPilot | סיכום בדיקת הפצה\\n✅ נמסרו: '+delivered+'\\n❌ נכשלו: '+failed+'\\n👥 חברים מאושרים: '+approved.length+'\\n🔒 ללא מזהי משתמשים או נתוני מסחר.\\n❗ בדיקה זו אינה מאשרת מסירת איתות שוק אמיתי.';
+}
 async function showLiveScannerStatus(env){
  const raw=await env.SIGNAL_STATE.get('health:latest');
  if(!raw)return '📡 SignalPilot | מצב הסורק\\n⚠️ עדיין אין קבלת סריקה חיה ב־KV.\\n/testsignal בודק טלגרם בלבד.';
@@ -386,7 +400,7 @@ export async function processTelegramAccess(env){
   const from=String(m?.from?.id||cb?.from?.id||id);
   const privateChat=chat?.type==='private'&&/^\d{1,18}$/.test(id);
   const [cmd,arg]=String(m?.text||'').trim().split(/\s+/,2);
-  if(owner){ownerMessages++;if(['/users','/approve','/remove','/start','/testsignal','/status'].includes(cmd)||cb?.data?.startsWith('access:'))ownerCommands++;}
+  if(owner){ownerMessages++;if(['/users','/approve','/remove','/start','/testsignal','/testbroadcast','/status'].includes(cmd)||cb?.data?.startsWith('access:'))ownerCommands++;}
   if(cb){
    if(!privateChat||!owner||from!==id){
     await tgAcknowledge(env,{callback_query_id:cb.id,text:'אין לך הרשאה לפעולה זו.',show_alert:true});
@@ -403,6 +417,7 @@ export async function processTelegramAccess(env){
   }else if(privateChat){
    if(owner){
     if(cmd==='/testsignal'&&from===id)await tgDirect(env,id,testSignalMessage());
+    else if(cmd==='/testbroadcast'&&from===id)await tgDirect(env,id,await testBroadcast(env));
     else if(cmd==='/status'&&from===id)await tgDirect(env,id,await showLiveScannerStatus(env));
     else if(cmd==='/users'||cmd==='/start'||cmd==='/menu')await showAccessList(env);
     else if(cmd==='/approve'||cmd==='/remove'){
