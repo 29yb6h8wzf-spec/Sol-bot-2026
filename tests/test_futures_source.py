@@ -56,5 +56,30 @@ class KrakenSourceTests(unittest.TestCase):
 
 
 
+    def test_manual_status_does_not_claim_futures_connectivity(self):
+        from datetime import datetime, timezone
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        candle = {'time': now_ms - 600000, 'close': 100.5}
+        with mock.patch.object(bot, 'fetch', return_value=[candle]), \
+             mock.patch.object(bot, 'telegram') as send, \
+             mock.patch('sys.argv', ['bot.py', '--status']), \
+             contextlib.redirect_stdout(io.StringIO()):
+            bot.main()
+        message = send.call_args.args[0]
+        self.assertIn('Kraken Spot', message)
+        self.assertIn('למחקר', message)
+        self.assertIn('לא אומתה נגישות Futures', message)
+        self.assertNotIn('Binance Futures נגיש', message)
+
+    def test_manual_status_stale_error_names_kraken_not_binance(self):
+        from datetime import datetime, timezone
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        candle = {'time': now_ms - 7200000, 'close': 100.5}
+        with mock.patch.object(bot, 'fetch', return_value=[candle]), \
+             mock.patch('sys.argv', ['bot.py', '--status']):
+            with self.assertRaisesRegex(RuntimeError, 'Kraken Spot candle data'):
+                bot.main()
+
+
 if __name__ == '__main__':
     unittest.main()

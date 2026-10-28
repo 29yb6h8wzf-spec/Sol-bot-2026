@@ -176,14 +176,14 @@ def main():
         last = candles[-1]
         age_min = (datetime.now(timezone.utc).timestamp() * 1000 - (last['time'] + 300000)) / 60000
         if age_min > 30 or age_min < -1:
-            raise RuntimeError(f'Binance candle data is stale or inconsistent: {age_min:.1f} minutes')
+            raise RuntimeError(f'Kraken Spot candle data is stale or inconsistent: {age_min:.1f} minutes')
         timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
         telegram(f'🟢 Crypto Alert Bot — בדיקת תקינות יומית\n'
                  f'זמן בדיקה: {timestamp}\n'
                  f'{SYMBOL} (נר סגור אחרון): ${last["close"]:.3f}\n'
                  f'גיל הנתונים: {max(age_min, 0):.1f} דקות\n'
                  f'מקור נתונים: {DATA_SOURCE}\n'
-                  '✅ הנתונים נקראו מ־Kraken Spot; זוהתה גישה לטלגרם דרך בדיקה זו.\n'
+                  '✅ נרות Kraken Spot למחקר זמינים והודעת הבדיקה נשלחה לטלגרם. לא אומתה נגישות Futures או מחיר לביצוע.\n'
                  'ℹ️ זו בדיקת תקינות נקודתית, לא אישור שכל הסריקות במהלך היום הצליחו. אין כאן איתות מסחר.')
         print('Daily status message sent')
         return
