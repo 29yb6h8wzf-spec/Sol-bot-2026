@@ -695,3 +695,13 @@ test('legacy GitHub Telegram scanner is manual-only while Cloudflare owns cron',
  const worker=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
  assert.match(worker,/kraken_spot/);
 });
+
+test('deployment warning reflects legacy signal workflow schedule rather than always warning',async()=>{
+ const deploy=await fs.readFile(new URL('./deploy-worker.mjs',import.meta.url),'utf8');
+ const legacy=await fs.readFile(new URL('../.github/workflows/sol-alert.yml',import.meta.url),'utf8');
+ assert.match(deploy,/const legacyHasSchedule=/);
+ assert.match(deploy,/legacyHasSchedule\s*\?/);
+ assert.doesNotMatch(deploy,/Confirmed cron .*WARNING: GitHub scan workflows are also enabled/);
+ assert.equal(/^  schedule:/m.test(legacy),false);
+ assert.equal(/^  schedule:/m.test(legacy+'\n  schedule:\n    - cron: test'),true);
+});
