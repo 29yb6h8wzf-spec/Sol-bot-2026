@@ -132,6 +132,18 @@ export async function candles(symbol,interval,limit){
  if(now-(bars.at(-1).time+duration)>duration+2*60000)throw Error('Stale Kraken '+interval+' candles');
  return bars;
 }
+// Apply stop rules BEFORE the three-candidate notification cap, so a rejected
+// candidate never steals a slot from a later valid strategy.
+export function filterAndLimitSetups(out,last,checks=[],audit=null){
+ const eligible=out.filter(s=>{
+  const pct=100*Math.abs(last.close-s.stop)/last.close;
+  const ok=Number.isFinite(pct)&&pct>=0.25&&pct<=1.5;
+  if(!ok)checks.push(s.strategy+' '+s.direction+': נפסל — מרחק סטופ '+(Number.isFinite(pct)?pct.toFixed(2):'לא תקין')+'% מחוץ לטווח 0.25%–1.50%');
+  return ok;
+ });
+ if(audit){audit.rawSetups=out.length;audit.stopRejected=out.length-eligible.length;audit.eligibleAfterStops=eligible.length;audit.capExcluded=Math.max(0,eligible.length-3);}
+ return eligible.slice(0,3).map(s=>({...s,entry:last.close,stopPct:100*Math.abs(last.close-s.stop)/last.close,candle:last.time}));
+}
 export function setups(five,four,checks=[],audit=null) {let last=five.at(-1),cl=five.map(x=>x.close),fc=four.map(x=>x.close),e20=ema(fc,20),e50=ema(fc,50),prev=five.slice(-13,-1),high=Math.max(...prev.map(x=>x.high)),low=Math.min(...prev.map(x=>x.low)),vr=last.volume/avg(prev.map(x=>x.volume)),out=[];
 let direction=e20>e50&&last.close>high&&vr>=1.5?'LONG':e20<e50&&last.close<low&&vr>=1.5?'SHORT':null;
 if(direction){let stop=direction==='LONG'?low:high;out.push({strategy:'BREAKOUT',direction,stop,score:75,reason:'12-candle breakout; volume x'+vr.toFixed(2)});}
@@ -143,9 +155,7 @@ add('RSI_BOLL','LONG',strength<25&&cl.at(-2)<bands(cl.slice(0,-1))[0]&&last.clos
 add('RSI_BOLL','SHORT',strength<25&&cl.at(-2)>bands(cl.slice(0,-1))[1]&&last.close<hi&&momentum>55,65+Math.max(0,momentum-55)/3,'RSI '+momentum.toFixed(1)+'; upper band reclaim');
 add('MACD_VOLUME','LONG',macd.at(-2)<=sig.at(-2)&&macd.at(-1)>sig.at(-1)&&vr>=1.2&&momentum>50,65+Math.min(20,vr*10),'MACD bullish crossover; volume x'+vr.toFixed(2));
 add('MACD_VOLUME','SHORT',macd.at(-2)>=sig.at(-2)&&macd.at(-1)<sig.at(-1)&&vr>=1.2&&momentum<50,65+Math.min(20,vr*10),'MACD bearish crossover; volume x'+vr.toFixed(2));
-const eligible=out.filter(s=>{let pct=100*Math.abs(last.close-s.stop)/last.close,ok=pct>=0.25&&pct<=1.5;if(!ok)checks.push(s.strategy+' '+s.direction+': נפסל — מרחק סטופ '+pct.toFixed(2)+'% מחוץ לטווח 0.25%–1.50%');return ok;});
-if(audit){audit.rawSetups=out.length;audit.stopRejected=out.length-eligible.length;audit.eligibleAfterStops=eligible.length;audit.capExcluded=Math.max(0,eligible.length-3);}
-return eligible.slice(0,3).map(s=>({...s,entry:last.close,stopPct:100*Math.abs(last.close-s.stop)/last.close,candle:last.time}));}
+return filterAndLimitSetups(out,last,checks,audit);}
 
 // Hypothetical taker fees and slippage on both entry and exit.
 // These are NOT venue quotes. Funding, spread changes and liquidation are excluded.
