@@ -406,7 +406,7 @@ export async function testBroadcast(env){
  }
  const result={checkedAt:Date.now(),approvedCount:approved.length,delivered,failed,kind:'demo_only'};
  await env.SIGNAL_STATE.put('tg:broadcast:last',JSON.stringify(result),{expirationTtl:86400});
- return '🧪 SignalPilot | סיכום בדיקת הפצה\\n✅ נמסרו: '+delivered+'\\n❌ נכשלו: '+failed+'\\n👥 חברים מאושרים: '+approved.length+'\\n🔒 ללא מזהי משתמשים או נתוני מסחר.\\n❗ בדיקה זו אינה מאשרת מסירת איתות שוק אמיתי.';
+ return ['🧪 SignalPilot | סיכום בדיקת הפצה','✅ נמסרו: '+delivered,'❌ נכשלו: '+failed,'👥 חברים מאושרים: '+approved.length,'🔒 ללא מזהי משתמשים או נתוני מסחר.','❗ בדיקה זו אינה מאשרת מסירת איתות שוק אמיתי.'].join(String.fromCharCode(10));
 }
 // Owner-only, on-demand audit of the last 24 scheduled five-minute receipts.
 // No individual subscriber IDs or fabricated signals. Legacy receipts lack audit detail.
