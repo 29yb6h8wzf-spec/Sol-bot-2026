@@ -472,6 +472,41 @@ export async function sendResearch(env,msg,key){
  return recipients.length;
 }
 async function send(env,msg){let r=await fetch('https://api.telegram.org/bot'+env.TELEGRAM_BOT_TOKEN+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:env.TELEGRAM_CHAT_ID,text:msg,disable_web_page_preview:true}),signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('Telegram HTTP '+r.status);let j=await r.json();if(!j.ok)throw Error('Telegram API rejected message');}
+// Conservative paper outcome evaluator: closed OHLC candles only, never live orders.
+// Ambiguous simultaneous stop/target candles are counted as stop-first.
+export function evaluatePaperSignal(signal,bars){
+ const side=signal.direction==='LONG'?1:signal.direction==='SHORT'?-1:0;
+ if(!side||!Number.isFinite(signal.entry)||!Number.isFinite(signal.stop)||!Number.isFinite(signal.target)||
+  !Number.isFinite(signal.expires)||!Number.isFinite(signal.candle)||!Array.isArray(bars)||
+  side*(signal.entry-signal.stop)<=0||side*(signal.target-signal.entry)<=0)return {status:'invalid'};
+ const closed=bars.filter(b=>Number.isFinite(b.time)&&b.time>signal.candle&&
+  Number.isFinite(b.high)&&Number.isFinite(b.low)&&b.low<=b.high).sort((a,b)=>a.time-b.time);
+ let entered=false,entryTime=null;
+ for(const b of closed){
+  const low=signal.low??signal.entry,high=signal.high??signal.entry;
+  if(!entered){
+   if(b.time>=signal.expires)return {status:'expired',entryTime:null};
+   if(b.high<low||b.low>high)continue;
+   entered=true;entryTime=b.time;
+  }
+  const stopHit=side===1?b.low<=signal.stop:b.high>=signal.stop;
+  const targetHit=side===1?b.high>=signal.target:b.low<=signal.target;
+  if(stopHit)return {status:'stop',entryTime,closedTime:b.time,r:-1,ambiguous:targetHit};
+  if(targetHit)return {status:'target',entryTime,closedTime:b.time,r:(Math.abs(signal.target-signal.entry)/Math.abs(signal.entry-signal.stop)),ambiguous:false};
+ }
+ return {status:entered?'open':'pending',entryTime};
+}
+export async function recordResearchSignal(env,key,symbol,setup,plan,delivery){
+ const report={
+  schema:1,id:key,symbol,strategy:setup.strategy,direction:setup.direction,
+  source:'kraken_spot',candle:new Date(setup.candle).toISOString(),
+  entry:setup.entry,low:plan.low,high:plan.high,stop:setup.stop,target:plan.target,
+  expires:new Date(plan.expires).toISOString(),costAssumptions:{feeRate:plan.feeRate,slippageRate:plan.slippageRate},
+  status:'not_evaluated',delivery,recordedAt:Date.now()
+ };
+ await env.SIGNAL_STATE.put('journal:'+key,JSON.stringify(report),{expirationTtl:7776000});
+ return report;
+}
 async function scan(symbol,env,news){
  const [five,four]=await Promise.all([candles(symbol,'5m',120),candles(symbol,'4h',100)]);
  const source='Kraken Spot USDT (research only, NOT Binance Futures execution prices)',sourceId='kraken_spot';
@@ -488,7 +523,15 @@ console.log(JSON.stringify({event:'candidates',symbol,count:found.length,rawCand
 for(const {setup,plan} of found){
  const key='signal:'+sourceId+':'+symbol+':'+setup.candle+':'+setup.strategy+':'+setup.direction;
  if(await env.SIGNAL_STATE.get(key)){console.log('Duplicate skipped',key);continue;}
- await sendResearch(env,tradeMessage(symbol,setup,plan,news),key);
+ let delivered=false;
+ try{
+  await sendResearch(env,tradeMessage(symbol,setup,plan,news),key);
+  delivered=true;
+ }finally{
+  // Record the research candidate even if Telegram delivery is incomplete.
+  try{await recordResearchSignal(env,key,symbol,setup,plan,delivered?'delivered':'incomplete');}
+  catch{console.warn('Research journal write failed (no private data logged)');}
+ }
  await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});
  console.log('Alert sent',key);
 }
