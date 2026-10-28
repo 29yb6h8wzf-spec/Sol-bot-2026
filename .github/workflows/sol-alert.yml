@@ -8,8 +8,8 @@ on:
         required: true
         type: boolean
         default: true
-  schedule:
-    - cron: '*/5 * * * *'
+  # Legacy Python scanner is manual-only. Cloudflare Worker owns scheduled Kraken Spot scans.
+  # Do not re-enable this schedule without checking for duplicate Telegram signals.
 
 permissions:
   contents: read
