@@ -202,6 +202,65 @@ add('MACD_VOLUME','LONG',macd.at(-2)<=sig.at(-2)&&macd.at(-1)>sig.at(-1)&&vr>=1.
 add('MACD_VOLUME','SHORT',macd.at(-2)>=sig.at(-2)&&macd.at(-1)<sig.at(-1)&&vr>=1.2&&momentum<50,65+Math.min(20,vr*10),'MACD bearish crossover; volume x'+vr.toFixed(2),{crossed:macd.at(-2)>=sig.at(-2)&&macd.at(-1)<sig.at(-1),macd:macd.at(-1).toFixed(5),signal:sig.at(-1).toFixed(5),volume:vr.toFixed(2),minVolume:1.2,rsi:momentum.toFixed(2),maxRsi:50});
 return filterAndLimitSetups(out,last,checks,audit);}
 
+// Observational progress scores: percentage of ORIGINAL strategy conditions met.
+// This score is NOT the original heuristic 65-95 trade-quality grade or a win probability.
+export function scoreWatchProgress(requirements){
+ if(!Array.isArray(requirements)||!requirements.length||!requirements.every(x=>Array.isArray(x)&&typeof x[0]==='string'&&typeof x[1]==='boolean'))throw Error('Invalid watch requirements');
+ const passed=requirements.filter(x=>x[1]).length;
+ return {score:Math.round(100*passed/requirements.length),passed,total:requirements.length,
+  missing:requirements.filter(x=>!x[1]).map(x=>x[0])};
+}
+export function watchCandidates(five,four,threshold=50){
+ if(!Array.isArray(five)||five.length<55||!Array.isArray(four)||four.length<55||!Number.isFinite(threshold)||threshold<0||threshold>100)throw Error('Invalid watch input');
+ const last=five.at(-1),cl=five.map(x=>x.close),fc=four.map(x=>x.close);
+ const e20=ema(fc,20),e50=ema(fc,50),previous=five.slice(-13,-1);
+ const high=Math.max(...previous.map(x=>x.high)),low=Math.min(...previous.map(x=>x.low));
+ const vol=avg(previous.map(x=>x.volume)),vr=vol>0?last.volume/vol:0;
+ const adxValue=adx(four),rsiValue=rsi(cl),e9=emaSeries(cl,9),e21=emaSeries(cl,21);
+ const macd12=emaSeries(cl,12),macd26=emaSeries(cl,26),macd=macd12.map((x,i)=>x-macd26[i]),signal=emaSeries(macd,9);
+ const [lo,hi]=bands(cl),[prevLo,prevHi]=bands(cl.slice(0,-1));
+ const out=[];
+ function add(strategy,direction,rules){
+  const progress=scoreWatchProgress(rules);
+  if(progress.score>threshold)out.push({strategy,direction,candle:last.time,price:last.close,...progress,technicalPassed:progress.passed===progress.total});
+ }
+ add('BREAKOUT','LONG',[
+  ['מגמת 4h עולה',e20>e50],['פריצה מעל שיא 12 נרות',last.close>high],
+  ['נפח x'+vr.toFixed(2)+' (נדרש x1.50)',vr>=1.5]]);
+ add('BREAKOUT','SHORT',[
+  ['מגמת 4h יורדת',e20<e50],['שבירה מתחת לשפל 12 נרות',last.close<low],
+  ['נפח x'+vr.toFixed(2)+' (נדרש x1.50)',vr>=1.5]]);
+ for(const side of ['LONG','SHORT']){
+  const up=side==='LONG',trend=up?e20>e50:e20<e50;
+  const reclaim=up?cl.at(-2)<=e9.at(-2)&&last.close>e9.at(-1):cl.at(-2)>=e9.at(-2)&&last.close<e9.at(-1);
+  const aligned=up?e9.at(-1)>e21.at(-1):e9.at(-1)<e21.at(-1);
+  add('EMA_ADX',side,[
+   ['מגמת 4h מתאימה',trend],['חזרה מעל/מתחת EMA9',reclaim],
+   ['EMA9 ו-EMA21 מיושרים',aligned],
+   ['ADX '+adxValue.toFixed(1)+' (נדרש 20)',adxValue>=20],
+   ['נפח x'+vr.toFixed(2)+' (נדרש x0.80)',vr>=0.8]]);
+ }
+ add('RSI_BOLL','LONG',[
+  ['ADX '+adxValue.toFixed(1)+' (נדרש מתחת 25)',adxValue<25],
+  ['נר קודם מתחת לרצועת Bollinger',cl.at(-2)<prevLo],
+  ['חזרה לתוך רצועת Bollinger',last.close>lo],
+  ['RSI '+rsiValue.toFixed(1)+' (נדרש מתחת 45)',rsiValue<45]]);
+ add('RSI_BOLL','SHORT',[
+  ['ADX '+adxValue.toFixed(1)+' (נדרש מתחת 25)',adxValue<25],
+  ['נר קודם מעל רצועת Bollinger',cl.at(-2)>prevHi],
+  ['חזרה לתוך רצועת Bollinger',last.close<hi],
+  ['RSI '+rsiValue.toFixed(1)+' (נדרש מעל 55)',rsiValue>55]]);
+ add('MACD_VOLUME','LONG',[
+  ['חציית MACD מעל קו האיתות',macd.at(-2)<=signal.at(-2)&&macd.at(-1)>signal.at(-1)],
+  ['נפח x'+vr.toFixed(2)+' (נדרש x1.20)',vr>=1.2],
+  ['RSI '+rsiValue.toFixed(1)+' (נדרש מעל 50)',rsiValue>50]]);
+ add('MACD_VOLUME','SHORT',[
+  ['חציית MACD מתחת קו האיתות',macd.at(-2)>=signal.at(-2)&&macd.at(-1)<signal.at(-1)],
+  ['נפח x'+vr.toFixed(2)+' (נדרש x1.20)',vr>=1.2],
+  ['RSI '+rsiValue.toFixed(1)+' (נדרש מתחת 50)',rsiValue<50]]);
+ return out;
+}
+
 // Hypothetical taker fees and slippage on both entry and exit.
 // These are NOT venue quotes. Funding, spread changes and liquidation are excluded.
 export const RISK_DEFAULTS=Object.freeze({riskBudget:1.5,leverage:2,feeRate:0.0005,slippageRate:0.00025,minNetR:1.25});
