@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const source=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
-const {candles,fetchKrakenOHLC,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,processTelegramAccess,readBinancePositions,monitorBinanceAccount,sendResearch,rsi,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const {candles,fetchKrakenOHLC,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,processTelegramAccess,readBinancePositions,monitorBinanceAccount,sendResearch,rsi,testBroadcast,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const now=Date.now, originalFetch=globalThis.fetch;
 const fixed=1800000000000;
 let telegramMessages=[], telegramStatus=200, newsXML='<rss><channel></channel></rss>';
@@ -295,5 +295,38 @@ test('signal delivery retains per-recipient receipts; subscriber failure never c
   assert.equal(kv.get('signal:test-event:delivered:300'),'sent');
   await sendResearch(env,'DEMO ALERT','signal:test-event');
   assert.equal(calls.length,5);
+ }finally{globalThis.fetch=saved;}
+});
+
+test('owner-only testbroadcast reaches approved subscribers and saves privacy-safe result',async()=>{
+ const saved=globalThis.fetch,kv=new Map([['tg:approved','["200","300"]']]),sent=[],queue=[];
+ const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'100',SIGNAL_STATE:{get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)}};
+ globalThis.fetch=async(url,options)=>{
+  const method=String(url).split('/').at(-1),body=JSON.parse(options.body);
+  if(method==='getUpdates')return new Response(JSON.stringify({ok:true,result:queue.filter(x=>x.update_id>=body.offset)}));
+  if(method==='sendMessage'){
+   sent.push(body);
+   if(String(body.chat_id)==='300')return new Response(JSON.stringify({ok:false}),{status:403});
+   return new Response(JSON.stringify({ok:true,result:{message_id:1}}));
+  }
+  throw Error('Unexpected Telegram method '+method);
+ };
+ const msg=(n,id,from,text)=>({update_id:n,message:{chat:{id,type:'private'},from:{id:from},text}});
+ try{
+  queue.push(msg(1,200,200,'/testbroadcast'));await processTelegramAccess(env);
+  assert.equal(sent.length,1);
+  assert.ok(!sent[0].text.includes('TEST BROADCAST'));
+  queue.push(msg(2,100,300,'/testbroadcast'));await processTelegramAccess(env);
+  assert.equal(sent.length,1);
+  queue.push(msg(3,100,100,'/testbroadcast'));await processTelegramAccess(env);
+  assert.deepEqual(sent.slice(1).map(x=>String(x.chat_id)),['200','300','100']);
+  assert.match(sent[1].text,/TEST BROADCAST/);
+  assert.match(sent[2].text,/TEST BROADCAST/);
+  assert.match(sent[3].text,/נמסרו: 1/);
+  assert.match(sent[3].text,/נכשלו: 1/);
+  const report=JSON.parse(kv.get('tg:broadcast:last'));
+  assert.deepEqual({approvedCount:report.approvedCount,delivered:report.delivered,failed:report.failed,kind:report.kind},{approvedCount:2,delivered:1,failed:1,kind:'demo_only'});
+  assert.doesNotMatch(JSON.stringify(report),/200|300/);
+  assert.deepEqual(JSON.parse(kv.get('tg:approved')),['200','300']);
  }finally{globalThis.fetch=saved;}
 });
