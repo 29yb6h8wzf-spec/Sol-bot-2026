@@ -359,3 +359,23 @@ test('research journal records only paper candidate and delivery status, not Bin
   assert.doesNotMatch(JSON.stringify(x),/BINANCE_API|unrealizedPnl|account:positions/);
  }finally{Date.now=saved;}
 });
+
+test('offline paper backtest evaluates stop-first, costs, expired and per-strategy summary',async()=>{
+ const {analyzeBacktest}=await import('./offline-paper-backtest.mjs');
+ const base={symbol:'BTCUSDT',strategy:'BREAKOUT',direction:'LONG',entry:100,low:99.9,high:100.1,stop:99,target:102,candle:1000000,expires:2200000};
+ const report=analyzeBacktest({signals:[{...base,id:'win'},{...base,id:'loss',symbol:'SOLUSDT'},{...base,id:'expired',symbol:'ETHUSDT'}],
+  candles:{
+   BTCUSDT:[{time:1300000,low:99.9,high:102.1}],
+   SOLUSDT:[{time:1300000,low:98.9,high:102.1}],
+   ETHUSDT:[{time:1300000,low:100.5,high:101},{time:2200000,low:99.9,high:100.1}]
+  }});
+ assert.equal(report.mode,'offline_research_only');
+ assert.equal(report.groups.BREAKOUT.target,1);
+ assert.equal(report.groups.BREAKOUT.stop,1);
+ assert.equal(report.groups.BREAKOUT.expired,1);
+ assert.equal(report.groups.BREAKOUT.ambiguous,1);
+ assert.equal(report.groups.BREAKOUT.closed,2);
+ assert.ok(report.groups.BREAKOUT.expectancyNetR<0.5);
+ assert.equal(report.outcomes.find(x=>x.id==='expired').netR,null);
+ assert.throws(()=>analyzeBacktest({signals:[base],candles:{}}),/Missing historical candles/);
+});
