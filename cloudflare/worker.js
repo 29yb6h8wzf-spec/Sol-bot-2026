@@ -75,7 +75,7 @@ const PERIOD = 300000;
 const avg = a => a.reduce((x,y)=>x+y,0)/a.length;
 function ema(v,n) {let x=v[0], a=2/(n+1);for(const y of v.slice(1))x=a*y+(1-a)*x;return x;}
 function emaSeries(v,n) {let x=v[0],a=2/(n+1);return v.map((y,i)=>(x=i?a*y+(1-a)*x:y));}
-function rsi(v,n=14) {let d=v.slice(1).map((x,i)=>x-v[i]),g=avg(d.slice(0,n).map(x=>Math.max(x,0))),l=avg(d.slice(0,n).map(x=>Math.max(-x,0)));for(const x of d.slice(n)){g=(g*(n-1)+Math.max(x,0))/n;l=(l*(n-1)+Math.max(-x,0))/n;}return l===0?(g===0?50:100):100-100/(1+g/l);}
+export function rsi(v,n=14) {let d=v.slice(1).map((x,i)=>x-v[i]),g=avg(d.slice(0,n).map(x=>Math.max(x,0))),l=avg(d.slice(0,n).map(x=>Math.max(-x,0)));for(const x of d.slice(n)){g=(g*(n-1)+Math.max(x,0))/n;l=(l*(n-1)+Math.max(-x,0))/n;}return l===0?(g===0?50:100):100-100/(1+g/l);}
 function bands(v,n=20) {let a=v.slice(-n),m=avg(a),sd=Math.sqrt(avg(a.map(x=>(x-m)**2)));return [m-2*sd,m+2*sd];}
 function atr(c,n=14) {return avg(c.slice(1).map((x,i)=>Math.max(x.high-x.low,Math.abs(x.high-c[i].close),Math.abs(x.low-c[i].close))).slice(-n));}
 function adx(c,n=14) {if(c.length<2*n+2)return 0;let t=[],p=[],m=[];for(let i=1;i<c.length;i++){let x=c[i],y=c[i-1],up=x.high-y.high,down=y.low-x.low;p.push(up>down&&up>0?up:0);m.push(down>up&&down>0?down:0);t.push(Math.max(x.high-x.low,Math.abs(x.high-y.close),Math.abs(x.low-y.close)));}
