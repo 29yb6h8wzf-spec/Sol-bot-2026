@@ -748,12 +748,21 @@ async function scan(symbol,env,news){
 const audit={scans:1,rawSetups:0,stopRejected:0,eligibleAfterStops:0,capExcluded:0,
  planRejected:0,qualified:0,duplicates:0,delivered:0,deliveryFailed:0};
 let checks=[],raw=setups(five,four,checks,audit),found=[];
+// Partial-condition watch does not weaken the existing trade gate.
+const watchers=watchCandidates(five,four,50);
 for(const setup of raw){
  const plan=tradePlan({...setup,source},five);
  if(plan)found.push({setup,plan});
  else{audit.planRejected++;console.log(JSON.stringify({event:'plan_filtered',symbol,strategy:setup.strategy}));}
 }
 audit.qualified=found.length;
+// Validated trade candidates already receive the original full signal.
+// Report only partially matching or risk-rejected setups as OBSERVATION.
+const approved=new Set(found.map(x=>x.setup.strategy+':'+x.setup.direction));
+const pendingWatch=watchers.filter(x=>!approved.has(x.strategy+':'+x.direction))
+ .map(x=>({symbol,...x,missing:x.missing.length?x.missing:
+  ['התנאים הטכניים עברו, אך מסנן סטופ / יחס סיכון-סיכוי / תוקף לא אישר כניסה']}));
+audit.watchAbove50=pendingWatch.length;
 audit.checks=checks.slice(0,10).map(x=>x.slice(0,450));
 console.log(JSON.stringify({event:'signal_filter_diagnostics',symbol,candle:new Date(last.time).toISOString(),checks:audit.checks}));
 console.log(JSON.stringify({event:'candidates',symbol,count:found.length,rawCandidates:audit.rawSetups,
@@ -763,7 +772,7 @@ Object.assign(audit,delivery);
 // Market scans remain on the five-minute cron; never notify the owner unless a real setup passes.
 const statusDelivery=found.length?'signal_only':'suppressed_no_signal';
 await notifyFreshNews(symbol,env,news);
-return {symbol,source:sourceId,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length,audit};}
+return {symbol,source:sourceId,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length,audit,watchCandidates:pendingWatch};}
 
 // Signed GET only: read-only Binance USD-M Futures account monitoring.
 // Never log API credentials, signatures, signed URLs, balances or raw responses.
@@ -818,7 +827,11 @@ export async function monitorBinanceAccount(env){
 }
 
 export default {
- async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}if(env.TELEGRAM_ACCESS_ENABLED!=='0')ctx.waitUntil(processTelegramAccess(env).catch(async error=>{const reason=String(error).replace(/bot[0-9]+:[A-Za-z0-9_-]+/g,'[REDACTED]').slice(0,180);console.error('Telegram access polling failed',reason);try{await env.SIGNAL_STATE.put('tg:access-health',JSON.stringify({status:'error',checkedAt:new Date().toISOString(),error:reason}));}catch{}}));ctx.waitUntil((async()=>{const news=await loadNews(env);try{await sendHourlyNewsDigest(env,news);}catch(error){console.warn('Hourly news delivery failed');}const results=[],failures=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){const message=error instanceof Error?error.message:'Scan failed';failures.push({symbol,reason:message.slice(0,180)});console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message}));}}const receipt={event:'scan_complete',release:RELEASE,source:'kraken_spot',cron:event.cron,scheduledTime:event.scheduledTime,recordedAt:Date.now(),ok:results.length===SYMBOLS.length,results,failures};
+ async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}if(env.TELEGRAM_ACCESS_ENABLED!=='0')ctx.waitUntil(processTelegramAccess(env).catch(async error=>{const reason=String(error).replace(/bot[0-9]+:[A-Za-z0-9_-]+/g,'[REDACTED]').slice(0,180);console.error('Telegram access polling failed',reason);try{await env.SIGNAL_STATE.put('tg:access-health',JSON.stringify({status:'error',checkedAt:new Date().toISOString(),error:reason}));}catch{}}));ctx.waitUntil((async()=>{const news=await loadNews(env);try{await sendHourlyNewsDigest(env,news);}catch(error){console.warn('Hourly news delivery failed');}const results=[],failures=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){const message=error instanceof Error?error.message:'Scan failed';failures.push({symbol,reason:message.slice(0,180)});console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message}));}}const watchItems=results.flatMap(x=>x.watchCandidates||[]);
+let watchDelivery={status:'empty',count:0};
+try{watchDelivery=await sendWatchDigest(env,watchItems,event.scheduledTime);}
+catch{watchDelivery={status:'failed',count:watchItems.length};console.warn('Owner watch digest delivery failed (not a trade signal)');}
+const receipt={event:'scan_complete',release:RELEASE,source:'kraken_spot',cron:event.cron,scheduledTime:event.scheduledTime,recordedAt:Date.now(),ok:results.length===SYMBOLS.length,results:results.map(({watchCandidates:unused,...rest})=>rest),failures,watchDelivery};
 console.log(JSON.stringify(receipt));
 await env.SIGNAL_STATE.put('health:cron:'+event.scheduledTime,JSON.stringify(receipt),{expirationTtl:86400});await env.SIGNAL_STATE.put('health:latest',JSON.stringify(receipt),{expirationTtl:86400});try{await sendDailyHeartbeat(env,receipt);}catch{console.warn('Daily heartbeat Telegram delivery failed; will retry in the morning window');}await monitorBinanceAccount(env);if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
  async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
