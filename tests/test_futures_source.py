@@ -1,4 +1,4 @@
-"""Regression tests: GitHub research scans must never use Spot market candles."""
+"""Regression tests: GitHub research scans use Kraken Spot without Futures execution claims."""
 import contextlib
 import io
 import json
@@ -52,6 +52,30 @@ class KrakenSourceTests(unittest.TestCase):
             bot.scan_log('test')
         line = output.getvalue().split('SCAN_EVENT ', 1)[1]
         self.assertEqual(json.loads(line)['source'], bot.DATA_SOURCE)
+
+
+    def test_daily_status_never_claims_futures_connectivity(self):
+        from datetime import datetime, timezone
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        candle = {'time': now_ms - 600000, 'close': 100.5}
+        with mock.patch.object(bot, 'fetch', return_value=[candle]), \
+             mock.patch.object(bot, 'telegram') as send, \
+             mock.patch('sys.argv', ['bot.py', '--status']), \
+             contextlib.redirect_stdout(io.StringIO()):
+            bot.main()
+        message = send.call_args.args[0]
+        self.assertIn('Kraken Spot', message)
+        self.assertIn('למחקר בלבד', message)
+        self.assertNotIn('Binance Futures נגיש', message)
+
+    def test_daily_status_stale_error_identifies_kraken(self):
+        from datetime import datetime, timezone
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        candle = {'time': now_ms - 7200000, 'close': 100.5}
+        with mock.patch.object(bot, 'fetch', return_value=[candle]), \
+             mock.patch('sys.argv', ['bot.py', '--status']):
+            with self.assertRaisesRegex(RuntimeError, 'Kraken Spot candle data'):
+                bot.main()
 
 
 
