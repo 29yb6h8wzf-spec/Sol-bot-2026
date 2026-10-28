@@ -1,0 +1,26 @@
+name: News Fallback Tests
+on:
+  pull_request:
+    paths:
+      - news.py
+      - tests/test_news.py
+      - .github/workflows/news-tests.yml
+  push:
+    branches: [main]
+    paths:
+      - news.py
+      - tests/test_news.py
+      - .github/workflows/news-tests.yml
+permissions:
+  contents: read
+jobs:
+  test-news:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Offline news source fallback tests
+        run: python -m unittest discover -s tests -p 'test_news.py' -v
