@@ -686,3 +686,12 @@ test('owner audit displays calculated net R of rejected plan without private ide
  assert.match(report,/1\.10R מול דרישה 1\.25R/);
  assert.doesNotMatch(report,/TELEGRAM_CHAT_ID|BINANCE_API/);
 });
+
+test('legacy GitHub Telegram scanner is manual-only while Cloudflare owns cron',async()=>{
+ const workflow=await fs.readFile(new URL('../.github/workflows/sol-alert.yml',import.meta.url),'utf8');
+ assert.match(workflow,/workflow_dispatch:/);
+ assert.doesNotMatch(workflow,/^\s*schedule\s*:/m);
+ assert.doesNotMatch(workflow,/cron:\s*['"]?\*\/5/m);
+ const worker=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
+ assert.match(worker,/kraken_spot/);
+});

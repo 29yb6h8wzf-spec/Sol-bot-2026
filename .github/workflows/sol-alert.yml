@@ -8,8 +8,8 @@ on:
         required: true
         type: boolean
         default: true
-  schedule:
-    - cron: '*/5 * * * *'
+  # Manual-only legacy Python scanner. Cloudflare Worker is the scheduled source.
+  # Re-enabling cron here would create duplicate Telegram signal sources.
 
 permissions:
   contents: read
