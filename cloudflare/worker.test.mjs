@@ -323,6 +323,9 @@ test('owner-only testbroadcast reaches approved subscribers and saves privacy-sa
   assert.match(sent[1].text,/TEST BROADCAST/);
   assert.match(sent[2].text,/TEST BROADCAST/);
   assert.match(sent[3].text,/נמסרו: 1/);
+  assert.ok(sent[3].text.includes(String.fromCharCode(10)+'✅ נמסרו: 1'));
+  assert.equal(sent[3].text.split(String.fromCharCode(10)).length,6);
+  assert.equal(sent[3].text.includes(String.fromCharCode(92)+'n'),false);
   assert.match(sent[3].text,/נכשלו: 1/);
   const report=JSON.parse(kv.get('tg:broadcast:last'));
   assert.deepEqual({approvedCount:report.approvedCount,delivered:report.delivered,failed:report.failed,kind:report.kind},{approvedCount:2,delivered:1,failed:1,kind:'demo_only'});
