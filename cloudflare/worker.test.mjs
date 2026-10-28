@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const source=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
-const {candles,fetchKrakenOHLC,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,processTelegramAccess,readBinancePositions,monitorBinanceAccount,sendResearch,rsi,testBroadcast,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const {candles,fetchKrakenOHLC,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,processTelegramAccess,readBinancePositions,monitorBinanceAccount,sendResearch,rsi,testBroadcast,evaluatePaperSignal,recordResearchSignal,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const now=Date.now, originalFetch=globalThis.fetch;
 const fixed=1800000000000;
 let telegramMessages=[], telegramStatus=200, newsXML='<rss><channel></channel></rss>';
@@ -329,4 +329,33 @@ test('owner-only testbroadcast reaches approved subscribers and saves privacy-sa
   assert.doesNotMatch(JSON.stringify(report),/200|300/);
   assert.deepEqual(JSON.parse(kv.get('tg:approved')),['200','300']);
  }finally{globalThis.fetch=saved;}
+});
+
+test('paper evaluator is conservative: target, stop, ambiguous both, expiry and pending',()=>{
+ const base={direction:'LONG',entry:100,low:99.9,high:100.1,stop:99,target:102,candle:1000000,expires:2200000};
+ const candle=(time,low,high)=>({time,low,high});
+ assert.equal(evaluatePaperSignal(base,[candle(1300000,99.9,102.1)]).status,'target');
+ assert.equal(evaluatePaperSignal(base,[candle(1300000,98.8,102.1)]).status,'stop');
+ assert.equal(evaluatePaperSignal(base,[candle(1300000,98.8,102.1)]).ambiguous,true);
+ assert.equal(evaluatePaperSignal(base,[candle(1300000,100.5,101),candle(2200000,99.9,100.1)]).status,'expired');
+ assert.equal(evaluatePaperSignal(base,[candle(1300000,101,101.5)]).status,'pending');
+ assert.equal(evaluatePaperSignal({...base,direction:'SHORT',stop:101,target:98,low:99.9,high:100.1},[candle(1300000,97.9,100.1)]).status,'target');
+ assert.equal(evaluatePaperSignal({...base,direction:'SHORT',stop:101,target:98,low:99.9,high:100.1},[candle(1300000,97.9,101.1)]).status,'stop');
+ assert.equal(evaluatePaperSignal({...base,stop:101},[]).status,'invalid');
+});
+
+test('research journal records only paper candidate and delivery status, not Binance account data',async()=>{
+ const saved=Date.now;Date.now=()=>1800000000000;
+ const kv=new Map(),env={SIGNAL_STATE:{put:async(k,v)=>kv.set(k,v)}};
+ try{
+  const setup={strategy:'BREAKOUT',direction:'LONG',candle:1799999400000,entry:100,stop:99};
+  const plan={low:99.9,high:100.1,target:102,expires:1800000600000,feeRate:0.0005,slippageRate:0.00025};
+  const x=await recordResearchSignal(env,'signal:kraken_spot:BTCUSDT:test','BTCUSDT',setup,plan,'incomplete');
+  assert.equal(x.delivery,'incomplete');
+  assert.equal(x.status,'not_evaluated');
+  assert.equal(x.source,'kraken_spot');
+  assert.equal(x.target,102);
+  assert.ok(kv.has('journal:signal:kraken_spot:BTCUSDT:test'));
+  assert.doesNotMatch(JSON.stringify(x),/BINANCE_API|unrealizedPnl|account:positions/);
+ }finally{Date.now=saved;}
 });
