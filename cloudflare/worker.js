@@ -105,7 +105,9 @@ let ts=smooth(t),ps=smooth(p),ms=smooth(m),dx=ts.map((v,i)=>{let a=v?100*ps[i]/v
 // Retry only transient transport, rate-limit and upstream failures. Never retry invalid pairs or malformed candles.
 // No stale-cache fallback: every signal still requires newly validated, closed Kraken candles.
 export async function fetchKrakenOHLC(url,symbol,interval){
- const delays=[0,300,900];
+ // Kraken rate-limits public OHLC by source IP and currency pair.
+ // Back off long enough for the pair-level request window to recover.
+ const delays=[0,1200,2700];
  for(let attempt=0;attempt<delays.length;attempt++){
   if(delays[attempt])await new Promise(resolve=>setTimeout(resolve,delays[attempt]));
   let response;
@@ -126,9 +128,27 @@ export async function fetchKrakenOHLC(url,symbol,interval){
   if(!Array.isArray(body.error))throw Error('Invalid Kraken OHLC error field');
   if(body.error.length){
    const codes=body.error.map(String);
-   const transient=codes.some(code=>/rate limit|temporary lockout|service:unavailable|service:busy|internal error|throttl/i.test(code));
-   if(transient&&attempt<delays.length-1){console.warn(JSON.stringify({event:'kraken_retry',symbol,interval,attempt:attempt+1,reason:'api_transient'}));continue;}
-   throw Error('Kraken API rejected market data request ('+(transient?'transient exhausted':'non-retryable')+')');
+   // Kraken can return W-prefixed warnings along with usable result data.
+   // Never discard an E-prefixed error or accept missing/invalid OHLC.
+   const errors=codes.filter(code=>!/^W[A-Za-z]+:/.test(code));
+   if(!errors.length){
+    if(!body.result||typeof body.result!=='object')throw Error('Invalid Kraken warning-only OHLC response');
+    console.warn(JSON.stringify({event:'kraken_warning_only',symbol,interval,count:codes.length}));
+    return body;
+   }
+   const category=errors.some(x=>/too many requests|rate limit|throttl/i.test(x))?'rate_limit':
+    errors.some(x=>/temporary lockout/i.test(x))?'temporary_lockout':
+    errors.some(x=>/service:unavailable|service:busy|deadline elapsed/i.test(x))?'service_unavailable':
+    errors.some(x=>/internal error/i.test(x))?'internal_error':
+    errors.some(x=>/unknown asset pair|invalid argument/i.test(x))?'invalid_request':'other';
+   const transient=['rate_limit','temporary_lockout','service_unavailable','internal_error'].includes(category);
+   // Category is whitelisted, not the raw exchange error or response payload.
+   console.warn(JSON.stringify({event:'kraken_api_error',symbol,interval,attempt:attempt+1,category}));
+   if(transient&&attempt<delays.length-1){
+    console.warn(JSON.stringify({event:'kraken_retry',symbol,interval,attempt:attempt+1,reason:category}));
+    continue;
+   }
+   throw Error('Kraken API rejected market data request ('+(transient?'transient exhausted':'non-retryable')+', '+category+')');
   }
   return body;
  }
@@ -617,8 +637,16 @@ export async function deliverResearchCandidates(env,found,symbol,news,sourceId='
  }
  return summary;
 }
+// Two OHLC calls for the same pair must not race each other.
+export async function fetchMarketTimeframes(symbol,delayMs=1100){
+ if(!Number.isInteger(delayMs)||delayMs<0||delayMs>2000)throw Error('Invalid Kraken pair pacing');
+ const five=await candles(symbol,'5m',120);
+ if(delayMs)await new Promise(resolve=>setTimeout(resolve,delayMs));
+ const four=await candles(symbol,'4h',100);
+ return [five,four];
+}
 async function scan(symbol,env,news){
- const [five,four]=await Promise.all([candles(symbol,'5m',120),candles(symbol,'4h',100)]);
+ const [five,four]=await fetchMarketTimeframes(symbol);
  const source='Kraken Spot USDT (research only, NOT Binance Futures execution prices)',sourceId='kraken_spot';
  const last=five.at(-1),age=(Date.now()-(last.time+PERIOD))/60000;
  console.log(JSON.stringify({event:'scan',symbol,source:sourceId,candle:new Date(last.time).toISOString(),closedAgeMinutes:+age.toFixed(2)}));
