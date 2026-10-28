@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const source=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
-const {candles,fetchKrakenOHLC,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,processTelegramAccess,readBinancePositions,monitorBinanceAccount,sendResearch,rsi,testBroadcast,evaluatePaperSignal,recordResearchSignal,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const {candles,fetchKrakenOHLC,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,processTelegramAccess,readBinancePositions,monitorBinanceAccount,sendResearch,rsi,testBroadcast,evaluatePaperSignal,recordResearchSignal,filterAndLimitSetups,deliverResearchCandidates,scanAuditReport,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const now=Date.now, originalFetch=globalThis.fetch;
 const fixed=1800000000000;
 let telegramMessages=[], telegramStatus=200, newsXML='<rss><channel></channel></rss>';
@@ -400,4 +400,67 @@ test('copy-trading research combines multiple real-export sources without claimi
  const incomplete=analyzeCopyTradingExports([{...first,closedTrades:[{...row('a',100),netPnlUsdt:undefined,grossPnlUsdt:100}]}]);
  assert.equal(incomplete.portfolios[0].unverifiedCostTrades,1);
  assert.equal(incomplete.portfolios[0].warnings.length,3);
+});
+
+test('candidate selection filters stops BEFORE the 3-slot cap',()=>{
+ const last={time:1800000000000,close:100},audit={};
+ const setups=[
+  {strategy:'BAD_FIRST',direction:'LONG',stop:99.9},
+  {strategy:'GOOD1',direction:'LONG',stop:99.5},
+  {strategy:'GOOD2',direction:'SHORT',stop:100.5},
+  {strategy:'GOOD3',direction:'LONG',stop:99.6}
+ ];
+ const result=filterAndLimitSetups(setups,last,[],audit);
+ assert.deepEqual(result.map(s=>s.strategy),['GOOD1','GOOD2','GOOD3']);
+ assert.equal(audit.rawSetups,4);
+ assert.equal(audit.stopRejected,1);
+ assert.equal(audit.eligibleAfterStops,3);
+ assert.equal(audit.capExcluded,0);
+});
+
+test('failed subscriber delivery for one signal does NOT suppress later independent candidates',async()=>{
+ const saved=globalThis.fetch,kv=new Map([['tg:approved','["200"]']]),sent=[];
+ const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'100',
+  SIGNAL_STATE:{get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)}};
+ const base=Date.UTC(2026,9,28,8,30);
+ const bars=Array.from({length:120},(_,i)=>({time:base-(120-i)*300000,high:100.4,low:99.6,close:100,volume:100}));
+ const setup=(strategy)=>({strategy,direction:'LONG',entry:100,stop:99,candle:base-300000,score:75,reason:'fixture'});
+ const plan=tradePlan(setup('BREAKOUT'),bars,base);
+ assert.ok(plan);
+ globalThis.fetch=async(url,options)=>{
+  assert.equal(String(url).split('/').at(-1),'sendMessage');
+  const body=JSON.parse(options.body);
+  sent.push(body);
+  if(String(body.chat_id)==='200'&&body.text.includes('BREAKOUT'))return new Response(JSON.stringify({ok:false}),{status:403});
+  return new Response(JSON.stringify({ok:true,result:{message_id:7}}));
+ };
+ try{
+  const found=[{setup:setup('BREAKOUT'),plan},{setup:setup('EMA_ADX'),plan}];
+  const tally=await deliverResearchCandidates(env,found,'BTCUSDT',{status:'unavailable'});
+  assert.deepEqual(tally,{duplicates:0,delivered:1,deliveryFailed:1});
+  const owner=sent.filter(x=>String(x.chat_id)==='100');
+  assert.equal(owner.length,2); // Previously the second candidate was never processed.
+  assert.ok(owner.some(x=>x.text.includes('BREAKOUT')));
+  assert.ok(owner.some(x=>x.text.includes('EMA_ADX')));
+  const prefix='signal:kraken_spot:BTCUSDT:'+(base-300000)+':';
+  assert.equal(kv.get(prefix+'BREAKOUT:LONG'),undefined);
+  assert.equal(kv.get(prefix+'EMA_ADX:LONG'),'sent');
+  assert.equal(JSON.parse(kv.get('journal:'+prefix+'BREAKOUT:LONG')).delivery,'incomplete');
+  assert.equal(JSON.parse(kv.get('journal:'+prefix+'EMA_ADX:LONG')).delivery,'delivered');
+ }finally{globalThis.fetch=saved;}
+});
+
+test('private audit reports rejection and delivery counts from actual KV receipts without guessing the missing data',async()=>{
+ const scheduled=1800000000000,kv=new Map();
+ const report=(time,stats)=>({release:'kraken-stable-v9',scheduledTime:time,
+  results:[{symbol:'SOLUSDT',audit:stats}],failures:[]});
+ const current=report(scheduled,{scans:1,rawSetups:2,stopRejected:1,eligibleAfterStops:1,planRejected:1,qualified:0});
+ const previous=report(scheduled-300000,{scans:1,rawSetups:1,stopRejected:0,eligibleAfterStops:1,planRejected:0,qualified:1,delivered:1});
+ kv.set('health:latest',JSON.stringify(current));
+ kv.set('health:cron:'+scheduled,JSON.stringify(current));
+ kv.set('health:cron:'+(scheduled-300000),JSON.stringify(previous));
+ const env={SIGNAL_STATE:{get:async key=>kv.get(key)||null}};
+ const text=await scanAuditReport(env);
+ for(const phrase of ['2/24','סריקות מטבע עם פירוט: 2','מועמדים גולמיים: 3','נפסלו לפי מרחק סטופ: 1','נפסלו בניהול סיכון/תוקף: 1','איתותים שנמסרו לכל היעדים: 1','חסרות 22 קבלות'])assert.ok(text.includes(phrase),phrase);
+ assert.doesNotMatch(text,/TELEGRAM_CHAT_ID|BINANCE_API|200/);
 });
