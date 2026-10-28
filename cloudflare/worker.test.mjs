@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const source=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
-const {candles,fetchKrakenOHLC,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,processTelegramAccess,readBinancePositions,monitorBinanceAccount,sendResearch,rsi,testBroadcast,evaluatePaperSignal,recordResearchSignal,filterAndLimitSetups,deliverResearchCandidates,scanAuditReport,sendDailyHeartbeat,setups,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const {candles,fetchKrakenOHLC,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,processTelegramAccess,readBinancePositions,monitorBinanceAccount,sendResearch,rsi,testBroadcast,evaluatePaperSignal,recordResearchSignal,filterAndLimitSetups,deliverResearchCandidates,scanAuditReport,sendDailyHeartbeat,setups,fetchMarketTimeframes,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const now=Date.now, originalFetch=globalThis.fetch;
 const fixed=1800000000000;
 let telegramMessages=[], telegramStatus=200, newsXML='<rss><channel></channel></rss>';
@@ -521,4 +521,46 @@ test('audit displays sample reasons and recorded values for the latest market sc
  assert.match(output,/SOLUSDT/);
  assert.match(output,/volume=0.45/);
  assert.match(output,/minVolume=1.50/);
+});
+
+test('Kraken warning-only responses with real candles are accepted, while hard errors still reject',async()=>{
+ const nonfatal=payload();nonfatal.error=['WGeneral:Information only'];
+ await withData(nonfatal,async()=>{
+  const bars=await candles('SOLUSDT','5m',120);
+  assert.equal(bars.length,119);
+  assert.equal(bars.at(-1).close,101);
+ });
+ await withData({error:['WGeneral:Information only']},
+  ()=>assert.rejects(candles('SOLUSDT','5m',120),/Invalid Kraken warning-only OHLC response/));
+});
+
+test('Kraken pair-level concurrency is avoided: 5m and 4h requests are sequential and paced',async()=>{
+ const calls=[],started=process.hrtime.bigint();
+ await withData(u=>{
+  calls.push({interval:u.searchParams.get('interval'),elapsedMs:Number(process.hrtime.bigint()-started)/1e6});
+  return payload(Number(u.searchParams.get('interval')));
+ },async()=>{
+  const [five,four]=await fetchMarketTimeframes('SOLUSDT',30);
+  assert.equal(five.length,119);
+  assert.equal(four.length,99);
+ });
+ assert.deepEqual(calls.map(x=>x.interval),['5','240']);
+ assert.ok(calls[1].elapsedMs-calls[0].elapsedMs>=25);
+ await assert.rejects(fetchMarketTimeframes('SOLUSDT',-1),/Invalid Kraken pair pacing/);
+});
+
+test('Kraken EGeneral:Too many requests is transient, retried and never used as stale fallback',async()=>{
+ const saved=globalThis.fetch,oldWarn=console.warn;
+ let attempts=0;
+ console.warn=()=>{};
+ globalThis.fetch=async()=>{
+  attempts++;
+  return new Response(JSON.stringify(attempts<=2?{error:['EGeneral:Too many requests']}:
+   payload()));
+ };
+ try{
+  const body=await fetchKrakenOHLC(new URL('https://api.kraken.com/0/public/OHLC'),'BTCUSDT','5m');
+  assert.equal(attempts,3);
+  assert.ok(body.result?.TESTPAIR);
+ }finally{globalThis.fetch=saved;console.warn=oldWarn;}
 });
