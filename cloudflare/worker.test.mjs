@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const source=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
-const {candles,fetchKrakenOHLC,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,processTelegramAccess,readBinancePositions,monitorBinanceAccount,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const {candles,fetchKrakenOHLC,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,processTelegramAccess,readBinancePositions,monitorBinanceAccount,sendResearch,rsi,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const now=Date.now, originalFetch=globalThis.fetch;
 const fixed=1800000000000;
 let telegramMessages=[], telegramStatus=200, newsXML='<rss><channel></channel></rss>';
@@ -264,4 +264,36 @@ test('owner /status reflects actual KV receipt, denies subscriber access and nev
   assert.match(sent.at(-1).text,/סריקה חלקית, כושלת או לא עדכנית/);
   assert.doesNotMatch(sent.at(-1).text,/secret/);
  }finally{globalThis.fetch=saved;Date.now=nowBefore;}
+});
+
+test('RSI reports neutral 50 on flat candles and 100 on uninterrupted gains',()=>{
+ assert.equal(rsi(Array(30).fill(100)),50);
+ assert.equal(rsi(Array.from({length:30},(_,i)=>100+i)),100);
+ assert.ok(rsi(Array.from({length:30},(_,i)=>100-i))<=1);
+});
+
+test('signal delivery retains per-recipient receipts; subscriber failure never completes the whole signal',async()=>{
+ const saved=globalThis.fetch, kv=new Map([['tg:approved','["200","300"]']]),calls=[],failed=new Set(['300']);
+ const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'100',SIGNAL_STATE:{get:async key=>kv.get(key)||null,put:async(key,value)=>kv.set(key,value)}};
+ globalThis.fetch=async(url,options)=>{
+  const action=String(url).split('/').at(-1);
+  assert.equal(action,'sendMessage');
+  const body=JSON.parse(options.body);
+  calls.push(String(body.chat_id));
+  if(failed.has(String(body.chat_id)))return new Response(JSON.stringify({ok:false,description:'temporary test'}),{status:429});
+  return new Response(JSON.stringify({ok:true,result:{message_id:5}}));
+ };
+ try{
+  await assert.rejects(sendResearch(env,'DEMO ALERT','signal:test-event'),/deliveries incomplete/);
+  assert.deepEqual(calls,['100','200','300','300']);
+  assert.equal(kv.get('signal:test-event:delivered:100'),'sent');
+  assert.equal(kv.get('signal:test-event:delivered:200'),'sent');
+  assert.equal(kv.has('signal:test-event:delivered:300'),false);
+  failed.clear();
+  await sendResearch(env,'DEMO ALERT','signal:test-event');
+  assert.deepEqual(calls,['100','200','300','300','300']);
+  assert.equal(kv.get('signal:test-event:delivered:300'),'sent');
+  await sendResearch(env,'DEMO ALERT','signal:test-event');
+  assert.equal(calls.length,5);
+ }finally{globalThis.fetch=saved;}
 });
