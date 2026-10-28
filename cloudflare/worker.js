@@ -696,6 +696,133 @@ export async function deliverResearchCandidates(env,found,symbol,news,sourceId='
  }
  return summary;
 }
+// One grouped owner-only digest per cron slot. Never notify subscribers of
+// unapproved research setups. Per-chunk KV receipts prevent duplicates on retry.
+export async function sendWatchDigest(env,items,scheduledTime){
+ if(!Array.isArray(items)||!Number.isSafeInteger(scheduledTime)||scheduledTime<=0)throw Error('Invalid watch digest input');
+ if(!items.length)return {status:'empty',count:0};
+ const nl=String.fromCharCode(10),owner=String(env.TELEGRAM_CHAT_ID);
+ const header=[
+  '👀 SIGNALPILOT | מעקב מעל 50/100',
+  '⚠️ התקרבות לתנאים בלבד, לא איתות כניסה או הוראת מסחר.',
+  '📊 אחוז תנאים שהתקיימו — לא הסתברות הצלחה.',
+  '🕒 '+israelTime(scheduledTime)+' (ישראל)'
+ ].join(nl);
+ const blocks=items.map(row=>{
+  const missing=row.missing?.length?row.missing.join(' | '):'התנאים הטכניים עברו, אך מסנני הכניסה/סיכון חסמו את האיתות';
+  return [
+   '• '+row.symbol+' '+row.direction+' | '+row.strategy+' | '+row.score+'/100 ('+row.passed+'/'+row.total+' תנאים)',
+   'סגירת נר: 
+export async function fetchMarketTimeframes(symbol,delayMs=1100){
+ if(!Number.isInteger(delayMs)||delayMs<0||delayMs>2000)throw Error('Invalid Kraken pair pacing');
+ const five=await candles(symbol,'5m',120);
+ if(delayMs)await new Promise(resolve=>setTimeout(resolve,delayMs));
+ const four=await candles(symbol,'4h',100);
+ return [five,four];
+}
+async function scan(symbol,env,news){
+ const [five,four]=await fetchMarketTimeframes(symbol);
+ const source='Kraken Spot USDT (research only, NOT Binance Futures execution prices)',sourceId='kraken_spot';
+ const last=five.at(-1),age=(Date.now()-(last.time+PERIOD))/60000;
+ console.log(JSON.stringify({event:'scan',symbol,source:sourceId,candle:new Date(last.time).toISOString(),closedAgeMinutes:+age.toFixed(2)}));
+ if(age<0||age>7){console.warn('Skipping stale candle',symbol,age);return;}
+const audit={scans:1,rawSetups:0,stopRejected:0,eligibleAfterStops:0,capExcluded:0,
+ planRejected:0,qualified:0,duplicates:0,delivered:0,deliveryFailed:0};
+let checks=[],raw=setups(five,four,checks,audit),found=[];
+for(const setup of raw){
+ const plan=tradePlan({...setup,source},five);
+ if(plan)found.push({setup,plan});
+ else{audit.planRejected++;console.log(JSON.stringify({event:'plan_filtered',symbol,strategy:setup.strategy}));}
+}
+audit.qualified=found.length;
+audit.checks=checks.slice(0,10).map(x=>x.slice(0,450));
+console.log(JSON.stringify({event:'signal_filter_diagnostics',symbol,candle:new Date(last.time).toISOString(),checks:audit.checks}));
+console.log(JSON.stringify({event:'candidates',symbol,count:found.length,rawCandidates:audit.rawSetups,
+  stopRejected:audit.stopRejected,planRejected:audit.planRejected,strategies:found.map(x=>x.setup.strategy)}));
+const delivery=await deliverResearchCandidates(env,found,symbol,news,sourceId);
+Object.assign(audit,delivery);
+// Market scans remain on the five-minute cron; never notify the owner unless a real setup passes.
+const statusDelivery=found.length?'signal_only':'suppressed_no_signal';
+await notifyFreshNews(symbol,env,news);
+return {symbol,source:sourceId,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length,audit};}
+
+// Signed GET only: read-only Binance USD-M Futures account monitoring.
+// Never log API credentials, signatures, signed URLs, balances or raw responses.
+export async function readBinancePositions(env){
+ if(!env.BINANCE_API_KEY||!env.BINANCE_API_SECRET)throw Error('missing_credentials');
+ const query='timestamp='+Date.now()+'&recvWindow=5000';
+ const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(env.BINANCE_API_SECRET),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+ const signed=await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(query));
+ const signature=Array.from(new Uint8Array(signed),b=>b.toString(16).padStart(2,'0')).join('');
+ let response;
+ try{response=await fetch('https://fapi.binance.com/fapi/v2/positionRisk?'+query+'&signature='+signature,{
+  method:'GET',headers:{'X-MBX-APIKEY':env.BINANCE_API_KEY},signal:AbortSignal.timeout(10000)
+ });}catch{throw Error('network_unavailable');}
+ if(!response.ok)throw Error('binance_http_'+response.status);
+ let body;try{body=await response.json();}catch{throw Error('invalid_json');}
+ if(!Array.isArray(body))throw Error('invalid_positions_response');
+ return body.filter(p=>SYMBOLS.includes(p.symbol)&&Number.isFinite(Number(p.positionAmt))&&Number(p.positionAmt)!==0)
+ .map(p=>({
+  symbol:p.symbol,side:Number(p.positionAmt)<0?'SHORT':'LONG',
+  quantity:Math.abs(Number(p.positionAmt)),entry:Number(p.entryPrice),mark:Number(p.markPrice),
+  unrealizedPnl:Number(p.unRealizedProfit),leverage:Number(p.leverage),
+  isolated:p.marginType==='isolated'
+ })).filter(p=>[p.quantity,p.entry,p.mark,p.unrealizedPnl,p.leverage].every(Number.isFinite)&&p.entry>0&&p.mark>0);
+}
+export async function monitorBinanceAccount(env){
+ if(!env.BINANCE_API_KEY||!env.BINANCE_API_SECRET)return 'not_configured';
+ try{
+  const positions=await readBinancePositions(env);
+  const old=JSON.parse(await env.SIGNAL_STATE.get('account:positions')||'[]');
+  const snapshot=positions.map(p=>({symbol:p.symbol,side:p.side,quantity:p.quantity,entry:p.entry,mark:p.mark,unrealizedPnl:p.unrealizedPnl,leverage:p.leverage,isolated:p.isolated}));
+  const stateKey=p=>p.symbol+':'+p.side+':'+p.quantity+':'+p.entry;
+  const before=new Set(old.map(stateKey)),after=new Set(snapshot.map(stateKey));
+  const changed=snapshot.filter(p=>!before.has(stateKey(p)));
+  const closed=old.filter(p=>!after.has(stateKey(p)));
+  // Store state before sending to avoid repeating alerts after transient Telegram failures.
+  await env.SIGNAL_STATE.put('account:positions',JSON.stringify(snapshot));
+  await env.SIGNAL_STATE.put('account:health',JSON.stringify({status:'connected',checkedAt:Date.now(),openPositions:snapshot.length}),{expirationTtl:86400});
+  if(changed.length||closed.length){
+   const lines=['🔐 Binance Futures — עדכון פוזיציות (קריאה בלבד)'];
+   for(const p of changed)lines.push('🟢 '+p.symbol+' '+p.side+' | כמות '+p.quantity+' | כניסה '+p.entry+' | PNL לא ממומש '+p.unrealizedPnl.toFixed(3)+' USDT');
+   for(const p of closed)lines.push('⚪ '+p.symbol+' '+p.side+' | הפוזיציה כבר לא מופיעה ב-API; יש לבדוק היסטוריית עסקאות לתוצאה נטו');
+   await send(env,lines.join('\n'));
+  }
+  return 'connected';
+ }catch(error){
+  const reason=error instanceof Error?error.message:'unknown';
+  const safe=/^(missing_credentials|network_unavailable|invalid_json|invalid_positions_response|binance_http_\d{3})$/.test(reason)?reason:'monitor_failed';
+  await env.SIGNAL_STATE.put('account:health',JSON.stringify({status:'error',reason:safe,checkedAt:Date.now()}),{expirationTtl:86400});
+  console.warn(JSON.stringify({event:'binance_account_monitor',status:'error',reason:safe}));
+  return 'error';
+ }
+}
+
+export default {
+ async scheduled(event,env,ctx){if(!env.TELEGRAM_BOT_TOKEN||!env.TELEGRAM_CHAT_ID||!env.SIGNAL_STATE){console.error('Missing TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID or SIGNAL_STATE KV; scans disabled');throw Error('Scanner configuration incomplete');}if(env.TELEGRAM_ACCESS_ENABLED!=='0')ctx.waitUntil(processTelegramAccess(env).catch(async error=>{const reason=String(error).replace(/bot[0-9]+:[A-Za-z0-9_-]+/g,'[REDACTED]').slice(0,180);console.error('Telegram access polling failed',reason);try{await env.SIGNAL_STATE.put('tg:access-health',JSON.stringify({status:'error',checkedAt:new Date().toISOString(),error:reason}));}catch{}}));ctx.waitUntil((async()=>{const news=await loadNews(env);try{await sendHourlyNewsDigest(env,news);}catch(error){console.warn('Hourly news delivery failed');}const results=[],failures=[];for(const symbol of SYMBOLS){try{const result=await scan(symbol,env,news);if(!result)throw Error('Stale candle skipped');results.push(result);}catch(error){const message=error instanceof Error?error.message:'Scan failed';failures.push({symbol,reason:message.slice(0,180)});console.error(JSON.stringify({event:'scan_failed',release:RELEASE,symbol,message}));}}const receipt={event:'scan_complete',release:RELEASE,source:'kraken_spot',cron:event.cron,scheduledTime:event.scheduledTime,recordedAt:Date.now(),ok:results.length===SYMBOLS.length,results,failures};
+console.log(JSON.stringify(receipt));
+await env.SIGNAL_STATE.put('health:cron:'+event.scheduledTime,JSON.stringify(receipt),{expirationTtl:86400});await env.SIGNAL_STATE.put('health:latest',JSON.stringify(receipt),{expirationTtl:86400});try{await sendDailyHeartbeat(env,receipt);}catch{console.warn('Daily heartbeat Telegram delivery failed; will retry in the morning window');}await monitorBinanceAccount(env);if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
+ async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
+};
++Number(row.price).toFixed(Number(row.price)>=1000?2:5),
+   'חסר: '+missing.slice(0,320)
+  ].join(nl);
+ });
+ const chunks=[];let current=header;
+ for(const block of blocks){
+  if((current+nl+nl+block).length>3400){chunks.push(current);current=header+nl+'(המשך)';}
+  current+=nl+nl+block;
+ }
+ chunks.push(current);
+ for(let i=0;i<chunks.length;i++){
+  const key='watch:owner:'+scheduledTime+':'+i;
+  if(await env.SIGNAL_STATE.get(key))continue;
+  await tgDirect(env,owner,chunks[i]);
+  await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});
+ }
+ return {status:'sent',count:items.length,chunks:chunks.length};
+}
+
 // Two OHLC calls for the same pair must not race each other.
 export async function fetchMarketTimeframes(symbol,delayMs=1100){
  if(!Number.isInteger(delayMs)||delayMs<0||delayMs>2000)throw Error('Invalid Kraken pair pacing');
