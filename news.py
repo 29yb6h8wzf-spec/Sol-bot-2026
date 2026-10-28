@@ -4,6 +4,7 @@ import os
 import re
 import urllib.parse
 import urllib.request
+import urllib.error
 from datetime import datetime, timezone
 
 QUERIES = {
@@ -31,12 +32,25 @@ def get_json(url):
     with urllib.request.urlopen(req, timeout=25) as r:
         return json.load(r)
 
+def _source_error(exc):
+    # Do not print request URLs: optional providers may embed API keys in queries.
+    return f'HTTP {exc.code}' if isinstance(exc, urllib.error.HTTPError) else type(exc).__name__
+
 def articles(symbol):
     q = urllib.parse.urlencode({'query':QUERIES[symbol], 'mode':'artlist','format':'json',
                                'timespan':'24h','maxrecords':10,'sort':'datedesc'})
-    result = get_json('https://api.gdeltproject.org/api/v2/doc/doc?' + q)
-    items = [{'title':x.get('title',''),'url':x.get('url',''),'domain':x.get('domain',''),
-              'source':'GDELT'} for x in result.get('articles',[])]
+    items = []
+    sources_ok = 0
+    try:
+        result = get_json('https://api.gdeltproject.org/api/v2/doc/doc?' + q)
+        if not isinstance(result, dict) or not isinstance(result.get('articles', []), list):
+            raise ValueError('Malformed GDELT response')
+        items.extend({'title':x.get('title',''),'url':x.get('url',''),'domain':x.get('domain',''),
+                      'source':'GDELT'} for x in result.get('articles',[]) if isinstance(x,dict))
+        sources_ok += 1
+    except Exception as exc:
+        print('GDELT source unavailable:', _source_error(exc))
+
     token = os.environ.get('CRYPTOPANIC_API_KEY','').strip()
     plan = os.environ.get('CRYPTOPANIC_PLAN','developer').strip()
     if token and plan in ('developer','growth','enterprise'):
@@ -45,11 +59,16 @@ def articles(symbol):
                                        'kind':'news','regions':'en'}))
         try:
             cp = get_json(url)
+            if not isinstance(cp, dict) or not isinstance(cp.get('results', []), list):
+                raise ValueError('Malformed CryptoPanic response')
             items.extend({'title':x.get('title',''),'url':x.get('url',''),
                           'domain':'CryptoPanic','source':'CryptoPanic'}
-                         for x in cp.get('results',[]))
+                         for x in cp.get('results',[]) if isinstance(x,dict))
+            sources_ok += 1
         except Exception as exc:
-            print('CryptoPanic optional source unavailable:',exc)
+            print('CryptoPanic optional source unavailable:', _source_error(exc))
+    if sources_ok == 0:
+        raise RuntimeError('No news provider available')
     unique, seen = [], set()
     for x in items:
         if not x['title'] or not x['url'] or x['url'] in seen or not relevant(symbol, x):
