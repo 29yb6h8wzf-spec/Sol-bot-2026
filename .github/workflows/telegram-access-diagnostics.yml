@@ -24,3 +24,24 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: node cloudflare/check-telegram-access.mjs
+      - name: Read requested membership status without exposing IDs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          node --input-type=module <<'JS'
+          import {createHash} from 'node:crypto';
+          const targetHash='57bd0d609ebdee9b19e3f30d6022cff15d2b301b18e339dc67282d5b3132256f';
+          const token=process.env.CLOUDFLARE_API_TOKEN;
+          if(!token)throw Error('Missing Cloudflare token');
+          const root='https://api.cloudflare.com/client/v4/accounts/d0b774cf03b175507aa1584e7e8e0117/storage/kv/namespaces/26692b7aceb64495a3b1de123c1aa628/values/';
+          const result={checkedAt:new Date().toISOString()};
+          for(const [label,key] of [['approved','tg:approved'],['pending','tg:pending']]){
+           const response=await fetch(root+encodeURIComponent(key),{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(15000)});
+           if(response.status===404){result[label]=false;continue;}
+           if(!response.ok)throw Error('Membership read failed HTTP '+response.status);
+           const ids=await response.json();
+           if(!Array.isArray(ids)||!ids.every(id=>/^[0-9]+$/.test(String(id))))throw Error('Invalid membership list');
+           result[label]=ids.some(id=>createHash('sha256').update(String(id)).digest('hex')===targetHash);
+          }
+          console.log('MEMBERSHIP_CHECK '+JSON.stringify(result));
+          JS
