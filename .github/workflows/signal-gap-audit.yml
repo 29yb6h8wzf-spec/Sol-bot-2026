@@ -109,7 +109,12 @@ jobs:
             const msg=String(fail.reason||'').toLowerCase();
             const category=/stale candle|stale kraken|stale data/.test(msg)?'stale_candle':
               /non.contiguous|invalid or non.contiguous|missing candle/.test(msg)?'non_contiguous_ohlc':
-              /kraken (http|network|timeout)|rate limit|api rejected/.test(msg)?'kraken_transport_or_api':
+              /kraken http [0-9]{3}/.test(msg)?'kraken_http_'+(msg.match(/kraken http ([0-9]{3})/)||[])[1]:
+              /kraken timeout/.test(msg)?'kraken_timeout':
+              /kraken network/.test(msg)?'kraken_network':
+              /kraken api rejected.*transient/.test(msg)?'kraken_api_transient_exhausted':
+              /kraken api rejected/.test(msg)?'kraken_api_rejected':
+              /rate limit/.test(msg)?'rate_limit_other':
               /insufficient closed candles/.test(msg)?'insufficient_history':
               /telegram|deliveries incomplete|signal recipient/.test(msg)?'telegram_delivery':
               /news/.test(msg)?'news_error':
