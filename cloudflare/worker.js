@@ -132,7 +132,7 @@ export async function candles(symbol,interval,limit){
  if(now-(bars.at(-1).time+duration)>duration+2*60000)throw Error('Stale Kraken '+interval+' candles');
  return bars;
 }
-function setups(five,four,checks=[]) {let last=five.at(-1),cl=five.map(x=>x.close),fc=four.map(x=>x.close),e20=ema(fc,20),e50=ema(fc,50),prev=five.slice(-13,-1),high=Math.max(...prev.map(x=>x.high)),low=Math.min(...prev.map(x=>x.low)),vr=last.volume/avg(prev.map(x=>x.volume)),out=[];
+export function setups(five,four,checks=[],audit=null) {let last=five.at(-1),cl=five.map(x=>x.close),fc=four.map(x=>x.close),e20=ema(fc,20),e50=ema(fc,50),prev=five.slice(-13,-1),high=Math.max(...prev.map(x=>x.high)),low=Math.min(...prev.map(x=>x.low)),vr=last.volume/avg(prev.map(x=>x.volume)),out=[];
 let direction=e20>e50&&last.close>high&&vr>=1.5?'LONG':e20<e50&&last.close<low&&vr>=1.5?'SHORT':null;
 if(direction){let stop=direction==='LONG'?low:high;out.push({strategy:'BREAKOUT',direction,stop,score:75,reason:'12-candle breakout; volume x'+vr.toFixed(2)});}
 checks.push('BREAKOUT: '+(direction?'תנאים עברו '+direction:'אין התאמה בין מגמה, פריצה ונפח')+'; מגמת 4h: '+(e20>e50?'עולה':e20<e50?'יורדת':'ללא כיוון')+'; טווח 12 נרות: '+low.toFixed(5)+'–'+high.toFixed(5)+'; נפח x'+vr.toFixed(2)+' (נדרש 1.50)');
@@ -143,7 +143,9 @@ add('RSI_BOLL','LONG',strength<25&&cl.at(-2)<bands(cl.slice(0,-1))[0]&&last.clos
 add('RSI_BOLL','SHORT',strength<25&&cl.at(-2)>bands(cl.slice(0,-1))[1]&&last.close<hi&&momentum>55,65+Math.max(0,momentum-55)/3,'RSI '+momentum.toFixed(1)+'; upper band reclaim');
 add('MACD_VOLUME','LONG',macd.at(-2)<=sig.at(-2)&&macd.at(-1)>sig.at(-1)&&vr>=1.2&&momentum>50,65+Math.min(20,vr*10),'MACD bullish crossover; volume x'+vr.toFixed(2));
 add('MACD_VOLUME','SHORT',macd.at(-2)>=sig.at(-2)&&macd.at(-1)<sig.at(-1)&&vr>=1.2&&momentum<50,65+Math.min(20,vr*10),'MACD bearish crossover; volume x'+vr.toFixed(2));
-return out.slice(0,3).filter(s=>{let pct=100*Math.abs(last.close-s.stop)/last.close,ok=pct>=0.25&&pct<=1.5;if(!ok)checks.push(s.strategy+' '+s.direction+': נפסל — מרחק סטופ '+pct.toFixed(2)+'% מחוץ לטווח 0.25%–1.50%');return ok;}).map(s=>({...s,entry:last.close,stopPct:100*Math.abs(last.close-s.stop)/last.close,candle:last.time}));}
+const eligible=out.filter(s=>{let pct=100*Math.abs(last.close-s.stop)/last.close,ok=pct>=0.25&&pct<=1.5;if(!ok)checks.push(s.strategy+' '+s.direction+': נפסל — מרחק סטופ '+pct.toFixed(2)+'% מחוץ לטווח 0.25%–1.50%');return ok;});
+if(audit){audit.rawSetups=out.length;audit.stopRejected=out.length-eligible.length;audit.eligibleAfterStops=eligible.length;audit.capExcluded=Math.max(0,eligible.length-3);}
+return eligible.slice(0,3).map(s=>({...s,entry:last.close,stopPct:100*Math.abs(last.close-s.stop)/last.close,candle:last.time}));}
 
 // Hypothetical taker fees and slippage on both entry and exit.
 // These are NOT venue quotes. Funding, spread changes and liquidation are excluded.
@@ -292,6 +294,51 @@ export async function testBroadcast(env){
  await env.SIGNAL_STATE.put('tg:broadcast:last',JSON.stringify(result),{expirationTtl:86400});
  return '🧪 SignalPilot | סיכום בדיקת הפצה\\n✅ נמסרו: '+delivered+'\\n❌ נכשלו: '+failed+'\\n👥 חברים מאושרים: '+approved.length+'\\n🔒 ללא מזהי משתמשים או נתוני מסחר.\\n❗ בדיקה זו אינה מאשרת מסירת איתות שוק אמיתי.';
 }
+// Owner-only, on-demand audit of the last 24 scheduled five-minute receipts.
+// No individual subscriber IDs or fabricated signals. Legacy receipts lack audit detail.
+export async function scanAuditReport(env){
+ let latest;
+ try{latest=JSON.parse(await env.SIGNAL_STATE.get('health:latest')||'null');}
+ catch{return '⚠️ קבלת הסריקה האחרונה אינה תקינה.';}
+ const scheduled=Number(latest?.scheduledTime);
+ if(!Number.isSafeInteger(scheduled)||scheduled<23*PERIOD)return '⚠️ עדיין אין זמן cron תקין לבדיקת סריקות.';
+ const slots=Array.from({length:24},(_,i)=>scheduled-i*PERIOD);
+ const receipts=await Promise.all(slots.map(async t=>{
+  try{
+   const raw=await env.SIGNAL_STATE.get('health:cron:'+t);
+   const row=raw?JSON.parse(raw):null;
+   return row?.scheduledTime===t&&row?.release===RELEASE?row:null;
+  }catch{return null;}
+ }));
+ const counters={scans:0,rawSetups:0,stopRejected:0,eligibleAfterStops:0,capExcluded:0,
+  planRejected:0,qualified:0,duplicates:0,delivered:0,deliveryFailed:0};
+ let present=0,failed=0,legacy=0;
+ for(const receipt of receipts){
+  if(!receipt)continue;
+  present++;failed+=(receipt.failures||[]).length;
+  for(const result of receipt.results||[]){
+   if(!result.audit){legacy++;continue;}
+   for(const key of Object.keys(counters))counters[key]+=Number(result.audit[key]||0);
+  }
+ }
+ const lines=['🔎 SignalPilot | ביקורת סריקות (למנהל בלבד)',
+  '🕒 קבלות שנבדקו: '+present+'/24 בחלון של עד שעתיים',
+  '🔍 סריקות מטבע עם פירוט: '+counters.scans,
+  '⚠️ כשלי סריקת מטבע: '+failed,
+  '🧩 מועמדים גולמיים: '+counters.rawSetups,
+  '🛑 נפסלו לפי מרחק סטופ: '+counters.stopRejected,
+  '📐 עברו סינון סטופ: '+counters.eligibleAfterStops,
+  '🔒 נפסלו בניהול סיכון/תוקף: '+counters.planRejected,
+  '✅ עברו את כל בדיקות התוכנית: '+counters.qualified,
+  '♻️ כפילויות שלא נשלחו שוב: '+counters.duplicates,
+  '📨 איתותים שנמסרו לכל היעדים: '+counters.delivered,
+  '❌ מועמדים עם כשל מסירה: '+counters.deliveryFailed];
+ if(counters.capExcluded)lines.push('⚠️ מועמדים שלא נבחרו בגלל מגבלת 3: '+counters.capExcluded);
+ if(legacy)lines.push('ℹ️ '+legacy+' סריקות מגרסה קודמת ללא פירוט סיבות.');
+ if(present<24)lines.push('⚠️ חסרות '+(24-present)+' קבלות בחלון; אין להניח שהסריקה הייתה רצופה.');
+ lines.push('ℹ️ מספר מועמדים אינו שיעור הצלחה או רווחיות. /status מציג את הסריקה האחרונה בלבד.');
+ return lines.join(String.fromCharCode(10));
+}
 async function showLiveScannerStatus(env){
  const raw=await env.SIGNAL_STATE.get('health:latest');
  if(!raw)return '📡 SignalPilot | מצב הסורק\\n⚠️ עדיין אין קבלת סריקה חיה ב־KV.\\n/testsignal בודק טלגרם בלבד.';
@@ -400,7 +447,7 @@ export async function processTelegramAccess(env){
   const from=String(m?.from?.id||cb?.from?.id||id);
   const privateChat=chat?.type==='private'&&/^\d{1,18}$/.test(id);
   const [cmd,arg]=String(m?.text||'').trim().split(/\s+/,2);
-  if(owner){ownerMessages++;if(['/users','/approve','/remove','/start','/testsignal','/testbroadcast','/status'].includes(cmd)||cb?.data?.startsWith('access:'))ownerCommands++;}
+  if(owner){ownerMessages++;if(['/users','/approve','/remove','/start','/testsignal','/testbroadcast','/status','/audit'].includes(cmd)||cb?.data?.startsWith('access:'))ownerCommands++;}
   if(cb){
    if(!privateChat||!owner||from!==id){
     await tgAcknowledge(env,{callback_query_id:cb.id,text:'אין לך הרשאה לפעולה זו.',show_alert:true});
@@ -419,6 +466,7 @@ export async function processTelegramAccess(env){
     if(cmd==='/testsignal'&&from===id)await tgDirect(env,id,testSignalMessage());
     else if(cmd==='/testbroadcast'&&from===id)await tgDirect(env,id,await testBroadcast(env));
     else if(cmd==='/status'&&from===id)await tgDirect(env,id,await showLiveScannerStatus(env));
+    else if(cmd==='/audit'&&from===id)await tgDirect(env,id,await scanAuditReport(env));
     else if(cmd==='/users'||cmd==='/start'||cmd==='/menu')await showAccessList(env);
     else if(cmd==='/approve'||cmd==='/remove'){
      await tgDirect(env,id,await changeAccess(env,cmd.slice(1),arg));
@@ -507,38 +555,48 @@ export async function recordResearchSignal(env,key,symbol,setup,plan,delivery){
  await env.SIGNAL_STATE.put('journal:'+key,JSON.stringify(report),{expirationTtl:7776000});
  return report;
 }
+// A Telegram error for one recipient or one candidate must not prevent other
+// independent research candidates from being delivered in the same scan.
+export async function deliverResearchCandidates(env,found,symbol,news,sourceId='kraken_spot'){
+ const summary={duplicates:0,delivered:0,deliveryFailed:0};
+ for(const {setup,plan} of found){
+  const key='signal:'+sourceId+':'+symbol+':'+setup.candle+':'+setup.strategy+':'+setup.direction;
+  if(await env.SIGNAL_STATE.get(key)){summary.duplicates++;continue;}
+  let delivered=false;
+  try{await sendResearch(env,tradeMessage(symbol,setup,plan,news),key);delivered=true;}
+  catch{summary.deliveryFailed++;console.warn('Signal recipient delivery incomplete (candidate redacted)');}
+  try{await recordResearchSignal(env,key,symbol,setup,plan,delivered?'delivered':'incomplete');}
+  catch{console.warn('Research journal write failed (no private data logged)');}
+  if(!delivered)continue; // Do not mark a partially delivered candidate as complete.
+  await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});
+  summary.delivered++;
+  console.log('Alert sent',key);
+ }
+ return summary;
+}
 async function scan(symbol,env,news){
  const [five,four]=await Promise.all([candles(symbol,'5m',120),candles(symbol,'4h',100)]);
  const source='Kraken Spot USDT (research only, NOT Binance Futures execution prices)',sourceId='kraken_spot';
  const last=five.at(-1),age=(Date.now()-(last.time+PERIOD))/60000;
  console.log(JSON.stringify({event:'scan',symbol,source:sourceId,candle:new Date(last.time).toISOString(),closedAgeMinutes:+age.toFixed(2)}));
  if(age<0||age>7){console.warn('Skipping stale candle',symbol,age);return;}
-let checks=[],raw=setups(five,four,checks),found=[];
+const audit={scans:1,rawSetups:0,stopRejected:0,eligibleAfterStops:0,capExcluded:0,
+ planRejected:0,qualified:0,duplicates:0,delivered:0,deliveryFailed:0};
+let checks=[],raw=setups(five,four,checks,audit),found=[];
 for(const setup of raw){
  const plan=tradePlan({...setup,source},five);
  if(plan)found.push({setup,plan});
- else console.log(JSON.stringify({event:'plan_filtered',symbol,strategy:setup.strategy}));
+ else{audit.planRejected++;console.log(JSON.stringify({event:'plan_filtered',symbol,strategy:setup.strategy}));}
 }
-console.log(JSON.stringify({event:'candidates',symbol,count:found.length,rawCandidates:raw.length,strategies:found.map(x=>x.setup.strategy)}));
-for(const {setup,plan} of found){
- const key='signal:'+sourceId+':'+symbol+':'+setup.candle+':'+setup.strategy+':'+setup.direction;
- if(await env.SIGNAL_STATE.get(key)){console.log('Duplicate skipped',key);continue;}
- let delivered=false;
- try{
-  await sendResearch(env,tradeMessage(symbol,setup,plan,news),key);
-  delivered=true;
- }finally{
-  // Record the research candidate even if Telegram delivery is incomplete.
-  try{await recordResearchSignal(env,key,symbol,setup,plan,delivered?'delivered':'incomplete');}
-  catch{console.warn('Research journal write failed (no private data logged)');}
- }
- await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});
- console.log('Alert sent',key);
-}
+audit.qualified=found.length;
+console.log(JSON.stringify({event:'candidates',symbol,count:found.length,rawCandidates:audit.rawSetups,
+  stopRejected:audit.stopRejected,planRejected:audit.planRejected,strategies:found.map(x=>x.setup.strategy)}));
+const delivery=await deliverResearchCandidates(env,found,symbol,news,sourceId);
+Object.assign(audit,delivery);
 // Market scans remain on the five-minute cron; never notify the owner unless a real setup passes.
 const statusDelivery=found.length?'signal_only':'suppressed_no_signal';
 await notifyFreshNews(symbol,env,news);
-return {symbol,source:sourceId,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length};}
+return {symbol,source:sourceId,candle:new Date(last.time).toISOString(),candidates:found.length,closedAgeMinutes:+age.toFixed(2),statusDelivery,newsStatus:news?.status||'unavailable',newsCount:newsForSymbol(news,symbol).length,audit};}
 
 // Signed GET only: read-only Binance USD-M Futures account monitoring.
 // Never log API credentials, signatures, signed URLs, balances or raw responses.
