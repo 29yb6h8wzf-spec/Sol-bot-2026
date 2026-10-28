@@ -625,7 +625,7 @@ test('scheduled scanner groups watch candidates while keeping no-qualified-trade
   SIGNAL_STATE:{get:async k=>state.get(k)||null,put:async(k,v)=>state.set(k,v)}};
  const customPayload=minutes=>{
   const data=payload(minutes),rows=data.result.TESTPAIR;
-  if(minutes===240)for(let i=0;i<rows.length;i++)rows[i][4]=String(95+i*.05);
+  if(minutes===240)for(let i=0;i<rows.length;i++){rows[i][2]='108';rows[i][3]='93';rows[i][4]=String(95+i*.05);}
   else rows.at(-2)[6]=200;
   return data;
  };
