@@ -75,7 +75,7 @@ const PERIOD = 300000;
 const avg = a => a.reduce((x,y)=>x+y,0)/a.length;
 function ema(v,n) {let x=v[0], a=2/(n+1);for(const y of v.slice(1))x=a*y+(1-a)*x;return x;}
 function emaSeries(v,n) {let x=v[0],a=2/(n+1);return v.map((y,i)=>(x=i?a*y+(1-a)*x:y));}
-function rsi(v,n=14) {let d=v.slice(1).map((x,i)=>x-v[i]),g=avg(d.slice(0,n).map(x=>Math.max(x,0))),l=avg(d.slice(0,n).map(x=>Math.max(-x,0)));for(const x of d.slice(n)){g=(g*(n-1)+Math.max(x,0))/n;l=(l*(n-1)+Math.max(-x,0))/n;}return l===0?100:100-100/(1+g/l);}
+function rsi(v,n=14) {let d=v.slice(1).map((x,i)=>x-v[i]),g=avg(d.slice(0,n).map(x=>Math.max(x,0))),l=avg(d.slice(0,n).map(x=>Math.max(-x,0)));for(const x of d.slice(n)){g=(g*(n-1)+Math.max(x,0))/n;l=(l*(n-1)+Math.max(-x,0))/n;}return l===0?(g===0?50:100):100-100/(1+g/l);}
 function bands(v,n=20) {let a=v.slice(-n),m=avg(a),sd=Math.sqrt(avg(a.map(x=>(x-m)**2)));return [m-2*sd,m+2*sd];}
 function atr(c,n=14) {return avg(c.slice(1).map((x,i)=>Math.max(x.high-x.low,Math.abs(x.high-c[i].close),Math.abs(x.low-c[i].close))).slice(-n));}
 function adx(c,n=14) {if(c.length<2*n+2)return 0;let t=[],p=[],m=[];for(let i=1;i<c.length;i++){let x=c[i],y=c[i-1],up=x.high-y.high,down=y.low-x.low;p.push(up>down&&up>0?up:0);m.push(down>up&&down>0?down:0);t.push(Math.max(x.high-x.low,Math.abs(x.high-y.close),Math.abs(x.low-y.close)));}
@@ -423,12 +423,30 @@ export async function processTelegramAccess(env){
  }
  await env.SIGNAL_STATE.put('tg:access-health',JSON.stringify({status:'ok',checkedAt:new Date().toISOString(),updates:updates.length,ownerMessages,ownerCommands}));
 }
-async function sendResearch(env,msg){
- await send(env,msg);
- for(const id of await tgIds(env,APPROVED)){
-  if(id===String(env.TELEGRAM_CHAT_ID))continue;
-  try{await tgDirect(env,id,msg);}catch(error){console.warn('Subscriber delivery failed',String(error));}
+export async function sendResearch(env,msg,key){
+ // A delivery is complete only when Telegram acknowledges every current recipient.
+ // Per-recipient KV markers avoid resending to users who already received the signal.
+ // Never print subscriber IDs, tokens, or Telegram message payloads.
+ const owner=String(env.TELEGRAM_CHAT_ID);
+ const recipients=[owner,...(await tgIds(env,APPROVED)).filter(id=>id!==owner)];
+ let failures=0;
+ for(const id of recipients){
+  const receipt=key+':delivered:'+id;
+  if(await env.SIGNAL_STATE.get(receipt))continue;
+  let delivered=false;
+  for(let attempt=0;attempt<2&&!delivered;attempt++){
+   try{
+    await tgDirect(env,id,msg);
+    await env.SIGNAL_STATE.put(receipt,'sent',{expirationTtl:86400});
+    delivered=true;
+   }catch{
+    if(attempt===0)await new Promise(resolve=>setTimeout(resolve,300));
+   }
+  }
+  if(!delivered){failures++;console.warn('Signal Telegram recipient delivery failed (identifier redacted)');}
  }
+ if(failures)throw Error('Signal Telegram deliveries incomplete: '+failures);
+ return recipients.length;
 }
 async function send(env,msg){let r=await fetch('https://api.telegram.org/bot'+env.TELEGRAM_BOT_TOKEN+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:env.TELEGRAM_CHAT_ID,text:msg,disable_web_page_preview:true}),signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('Telegram HTTP '+r.status);let j=await r.json();if(!j.ok)throw Error('Telegram API rejected message');}
 async function scan(symbol,env,news){
@@ -447,7 +465,7 @@ console.log(JSON.stringify({event:'candidates',symbol,count:found.length,rawCand
 for(const {setup,plan} of found){
  const key='signal:'+sourceId+':'+symbol+':'+setup.candle+':'+setup.strategy+':'+setup.direction;
  if(await env.SIGNAL_STATE.get(key)){console.log('Duplicate skipped',key);continue;}
- await sendResearch(env,tradeMessage(symbol,setup,plan,news));
+ await sendResearch(env,tradeMessage(symbol,setup,plan,news),key);
  await env.SIGNAL_STATE.put(key,'sent',{expirationTtl:86400});
  console.log('Alert sent',key);
 }
