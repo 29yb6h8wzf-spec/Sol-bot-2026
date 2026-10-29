@@ -742,3 +742,20 @@ test('owner menu commands and callback buttons route correctly and reject outsid
   assert.doesNotMatch(sent.at(-1).text,/תפריט ראשי/);
  }finally{globalThis.fetch=saved;}
 });
+
+test('BTC theoretical quantity text matches the displayed notional instead of rounding to 0.001 BTC',()=>{
+ const high=81080.04,notional=116.56;
+ const plan={
+  low:81038.82,high,target:79231.8,expires:fixed+600000,netR:1.62,
+  riskBudget:1.5,quantity:notional/high,notional,margin:notional/2,leverage:2,
+  feeRate:0.0005,slippageRate:0.00025,source:'Kraken Spot USDT (research only)'
+ };
+ const signal={direction:'SHORT',strategy:'BREAKOUT',entry:81050.6,stop:81960,score:75,reason:'12-candle breakout; volume x2.04'};
+ const message=tradeMessage('BTCUSDT',signal,plan,{status:'unavailable'});
+ const match=message.match(/כמות תיאורטית: ([0-9.eE+-]+) BTC/);
+ assert.ok(match,'The research message must include a numeric BTC quantity');
+ const displayedQuantity=Number(match[1]);
+ assert.ok(Number.isFinite(displayedQuantity)&&displayedQuantity>0);
+ assert.ok(Math.abs(displayedQuantity*high-notional)<0.10,'Displayed quantity must agree with the approximate exposure to within ten cents');
+ assert.match(message,/Kraken Spot/);
+});
