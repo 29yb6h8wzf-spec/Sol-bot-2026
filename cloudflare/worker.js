@@ -318,7 +318,7 @@ export function tradeMessage(symbol,s,p,news){
   '',
   '🛡️ ניהול סיכון — הערכה בלבד',
   '• סיכון מתוכנן: עד $'+p.riskBudget.toFixed(2)+' בתרחיש סטופ רגיל',
-  '• כמות תיאורטית: '+p.quantity.toFixed(3)+' '+units,
+  '• כמות תיאורטית: '+Number(p.quantity.toPrecision(7)).toString()+' '+units,
   '• חשיפה: כ־$'+p.notional.toFixed(2),
   '• ביטחונות משוערים במינוף '+p.leverage+'X: $'+p.margin.toFixed(2),
   '• יחס רווח/סיכון נטו בקצה הגרוע: '+p.netR.toFixed(2)+'R',
