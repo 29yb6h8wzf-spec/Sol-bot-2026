@@ -705,3 +705,37 @@ test('deployment warning reflects legacy signal workflow schedule rather than al
  assert.equal(/^  schedule:/m.test(legacy),false);
  assert.equal(/^  schedule:/m.test(legacy+'\n  schedule:\n    - cron: test'),true);
 });
+
+test('owner menu commands and callback buttons route correctly and reject outsiders',async()=>{
+ const kv=new Map(),queue=[],sent=[],acks=[];
+ const env={TELEGRAM_CHAT_ID:'100',TELEGRAM_BOT_TOKEN:'test',SIGNAL_STATE:{
+  get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)}};
+ const saved=globalThis.fetch;
+ globalThis.fetch=async(url,options)=>{
+  const method=String(url).split('/').pop(),body=JSON.parse(options.body);
+  if(method==='getUpdates')return new Response(JSON.stringify({ok:true,result:queue.splice(0)}));
+  if(method==='sendMessage')sent.push(body);
+  if(method==='answerCallbackQuery')acks.push(body);
+  return new Response(JSON.stringify({ok:true,result:true}));
+ };
+ const msg=(n,id,cmd)=>({update_id:n,message:{chat:{id,type:'private'},from:{id},text:cmd}});
+ const cb=(n,id,data)=>({update_id:n,callback_query:{id:'cb'+n,from:{id},message:{chat:{id:100,type:'private'}},data}});
+ const run=async update=>{queue.push(update);await processTelegramAccess(env);};
+ try{
+  await run(msg(1,100,'/menu'));
+  assert.match(sent.at(-1).text,/תפריט ראשי/);
+  for(const action of ['menu:status','menu:audit','menu:news','access:list'])assert.ok(JSON.stringify(sent.at(-1).reply_markup).includes(action));
+  await run(msg(2,100,'/users'));assert.match(sent.at(-1).text,/ניהול חברים/);
+  assert.ok(JSON.stringify(sent.at(-1).reply_markup).includes('menu:home'));
+  await run(msg(3,100,'/start'));assert.match(sent.at(-1).text,/תפריט ראשי/);
+  kv.set('news:cache:v1',JSON.stringify({status:'ready',fetchedAt:Date.now(),sources:['CoinDesk']}));
+  for(const [n,action,expected] of [[4,'menu:status','מצב הסורק'],[5,'menu:audit','ביקורת סריקות'],[6,'menu:news','מצב חדשות'],[7,'access:list','ניהול חברים'],[8,'menu:home','תפריט ראשי']]){
+   await run(cb(n,100,action));assert.match(sent.at(-1).text,new RegExp(expected));
+   if(action!=='menu:home')assert.ok(JSON.stringify(sent.at(-1).reply_markup).includes('menu:home'));
+  }
+  const count=sent.length;
+  await run(cb(9,200,'menu:home'));assert.equal(sent.length,count);assert.equal(acks.at(-1).show_alert,true);
+  await run(cb(10,100,'menu:invalid'));assert.equal(sent.length,count);
+  await run(msg(11,200,'/menu'));assert.doesNotMatch(sent.at(-1).text,/תפריט ראשי/);
+ }finally{globalThis.fetch=saved;}
+});
