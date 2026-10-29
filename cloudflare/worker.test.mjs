@@ -728,6 +728,7 @@ test('owner menu commands and callback buttons route correctly and reject outsid
   await run(msg(2,100,'/users'));assert.match(sent.at(-1).text,/ניהול חברים/);
   assert.ok(JSON.stringify(sent.at(-1).reply_markup).includes('menu:home'));
   await run(msg(3,100,'/start'));assert.match(sent.at(-1).text,/תפריט ראשי/);
+  kv.set('health:latest',JSON.stringify({scheduledTime:1800000000000,release:'kraken-stable-v9',results:[],failures:[]}));
   kv.set('news:cache:v1',JSON.stringify({status:'ready',fetchedAt:Date.now(),sources:['CoinDesk']}));
   for(const [n,action,expected] of [[4,'menu:status','מצב הסורק'],[5,'menu:audit','ביקורת סריקות'],[6,'menu:news','מצב חדשות'],[7,'access:list','ניהול חברים'],[8,'menu:home','תפריט ראשי']]){
    await run(cb(n,100,action));assert.match(sent.at(-1).text,new RegExp(expected));
@@ -736,6 +737,6 @@ test('owner menu commands and callback buttons route correctly and reject outsid
   const count=sent.length;
   await run(cb(9,200,'menu:home'));assert.equal(sent.length,count);assert.equal(acks.at(-1).show_alert,true);
   await run(cb(10,100,'menu:invalid'));assert.equal(sent.length,count);
-  await run(msg(11,200,'/menu'));assert.doesNotMatch(sent.at(-1).text,/תפריט ראשי/);
+  await run(msg(11,200,'/menu'));assert.equal(sent.length,count);
  }finally{globalThis.fetch=saved;}
 });
