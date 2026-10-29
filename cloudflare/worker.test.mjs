@@ -737,6 +737,8 @@ test('owner menu commands and callback buttons route correctly and reject outsid
   const count=sent.length;
   await run(cb(9,200,'menu:home'));assert.equal(sent.length,count);assert.equal(acks.at(-1).show_alert,true);
   await run(cb(10,100,'menu:invalid'));assert.equal(sent.length,count);
-  await run(msg(11,200,'/menu'));assert.equal(sent.length,count);
+  await run(msg(11,200,'/menu'));assert.equal(sent.length,count+1);
+  assert.match(sent.at(-1).text,/כדי לבקש גישה/);
+  assert.doesNotMatch(sent.at(-1).text,/תפריט ראשי/);
  }finally{globalThis.fetch=saved;}
 });
