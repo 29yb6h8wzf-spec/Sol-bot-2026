@@ -537,7 +537,24 @@ async function showLiveScannerStatus(env){
   '🔒 לא מוצגים נתוני חשבון Binance.'];
  return lines.join(String.fromCharCode(10));
 }
-function ownerMenu(){return [[{text:'👥 ניהול חברים',callback_data:'access:list'}]];}
+function ownerMenu(){return [
+ [{text:'📡 מצב הסורק',callback_data:'menu:status'},{text:'🔎 ביקורת סריקות',callback_data:'menu:audit'}],
+ [{text:'📰 מצב החדשות',callback_data:'menu:news'},{text:'👥 ניהול חברים',callback_data:'access:list'}]
+];}
+function backToMenu(){return [[{text:'🏠 חזרה לתפריט',callback_data:'menu:home'}]];}
+async function showMainMenu(env){
+ await tgDirect(env,env.TELEGRAM_CHAT_ID,'🏠 SignalPilot | תפריט ראשי\nבחר פעולה:',ownerMenu());
+}
+async function showNewsStatus(env){
+ let data=null;
+ try{const raw=await env.SIGNAL_STATE.get('news:cache:v1');data=raw?JSON.parse(raw):null;}catch{}
+ const status=['ready','partial','stale','unavailable'].includes(data?.status)?data.status:'לא ידוע';
+ const age=Number.isFinite(data?.fetchedAt)?Math.round((Date.now()-data.fetchedAt)/60000):null;
+ return '📰 SignalPilot | מצב חדשות\nסטטוס אחרון: '+status+
+  '\nגיל הנתונים: '+(age!==null&&age>=0?age+' דקות':'לא ידוע')+
+  '\nמקורות: '+(Array.isArray(data?.sources)?data.sources.join(', ')||'לא זמינים':'לא ידועים')+
+  '\nℹ️ זהו מצב המטמון, לא בדיקת רשת חיה.';
+}
 async function showAccessList(env){
  const approved=await tgIds(env,APPROVED),pending=await tgIds(env,PENDING);
  const lines=['👥 SignalPilot | ניהול חברים','','⏳ ממתינים לאישור: '+pending.length];
@@ -555,6 +572,7 @@ async function showAccessList(env){
  ]);
  for(const id of approved.slice(0,20))buttons.push([{text:'🚫 הסר '+id,callback_data:'access:remove:'+id}]);
  buttons.push([{text:'🔄 רענון רשימה',callback_data:'access:list'}]);
+ buttons.push(...backToMenu());
  await tgDirect(env,env.TELEGRAM_CHAT_ID,lines.join('\n'),buttons);
 }
 async function changeAccess(env,action,id){
@@ -594,11 +612,21 @@ export async function processTelegramAccess(env){
   const from=String(m?.from?.id||cb?.from?.id||id);
   const privateChat=chat?.type==='private'&&/^\d{1,18}$/.test(id);
   const [cmd,arg]=String(m?.text||'').trim().split(/\s+/,2);
-  if(owner){ownerMessages++;if(['/users','/approve','/remove','/start','/testsignal','/testbroadcast','/status','/audit'].includes(cmd)||cb?.data?.startsWith('access:'))ownerCommands++;}
+  if(owner){ownerMessages++;if(['/users','/menu','/approve','/remove','/start','/testsignal','/testbroadcast','/status','/audit'].includes(cmd)||(cb?.data?.startsWith('access:')||cb?.data?.startsWith('menu:')))ownerCommands++;}
   if(cb){
    if(!privateChat||!owner||from!==id){
     await tgAcknowledge(env,{callback_query_id:cb.id,text:'אין לך הרשאה לפעולה זו.',show_alert:true});
    }else{
+    const menuAction=/^menu:(home|status|audit|news)$/.exec(String(cb.data||''));
+    if(menuAction){
+     await tgAcknowledge(env,{callback_query_id:cb.id});
+     if(menuAction[1]==='home')await showMainMenu(env);
+     else{
+      const report=menuAction[1]==='status'?await showLiveScannerStatus(env):
+       menuAction[1]==='audit'?await scanAuditReport(env):await showNewsStatus(env);
+      await tgDirect(env,id,report,backToMenu());
+     }
+    }else{
     const match=/^access:(list|approve|remove)(?::(\d{1,18}))?$/.exec(String(cb.data||''));
     if(!match||((match[1]==='list')!==!match[2])){
      await tgAcknowledge(env,{callback_query_id:cb.id,text:'פעולה לא תקינה'});
@@ -607,6 +635,7 @@ export async function processTelegramAccess(env){
      if(match[1]==='list')await showAccessList(env);
      else{const result=await changeAccess(env,match[1],match[2]);await tgDirect(env,id,result);await showAccessList(env);}
     }
+    }
    }
   }else if(privateChat){
    if(owner){
@@ -614,7 +643,8 @@ export async function processTelegramAccess(env){
     else if(cmd==='/testbroadcast'&&from===id)await tgDirect(env,id,await testBroadcast(env));
     else if(cmd==='/status'&&from===id)await tgDirect(env,id,await showLiveScannerStatus(env));
     else if(cmd==='/audit'&&from===id)await tgDirect(env,id,await scanAuditReport(env));
-    else if(cmd==='/users'||cmd==='/start'||cmd==='/menu')await showAccessList(env);
+    else if(cmd==='/users')await showAccessList(env);
+    else if((cmd==='/start'||cmd==='/menu')&&from===id)await showMainMenu(env);
     else if(cmd==='/approve'||cmd==='/remove'){
      await tgDirect(env,id,await changeAccess(env,cmd.slice(1),arg));
      await showAccessList(env);
