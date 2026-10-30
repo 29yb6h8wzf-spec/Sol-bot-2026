@@ -70,3 +70,23 @@ def summarize_paper_ledger(state):
         'day_start_equity_usdt': str(day_start),
         'unrealized_pnl_included': False,
     }
+
+
+def main(argv=None):
+    """Print a JSON report from an existing paper ledger without running a scan."""
+    import argparse
+    import json
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(description='Read-only SignalPilot paper ledger report')
+    parser.add_argument('ledger', nargs='?', default='paper-ledger.json',
+                        help='Path to an existing paper ledger JSON file')
+    args = parser.parse_args(argv)
+    with Path(args.ledger).open(encoding='utf-8') as stream:
+        state = json.load(stream)
+    report = summarize_paper_ledger(state)
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+
+
+if __name__ == '__main__':
+    main()
