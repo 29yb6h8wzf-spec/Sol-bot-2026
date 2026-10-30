@@ -7,6 +7,7 @@ from futures_engine.report import summarize_paper_ledger
 def ledger(pnls=(), costs=(), equity='150', position=None):
     return {
         'equity': equity,
+        'initial_equity': '150',
         'day_start_equity': '150',
         'position': position,
         'history': [
@@ -23,6 +24,7 @@ class PaperReportTests(unittest.TestCase):
         self.assertIsNone(report['win_rate_pct'])
         self.assertIsNone(report['profit_factor'])
         self.assertEqual(report['mode'], 'paper_only')
+        self.assertTrue(report['equity_reconciled'])
 
     def test_closed_trades_include_costs_and_drawdown(self):
         report = summarize_paper_ledger(ledger(
@@ -46,6 +48,13 @@ class PaperReportTests(unittest.TestCase):
     def test_invalid_equity_reconciliation_rejected(self):
         with self.assertRaises(ValueError):
             summarize_paper_ledger(ledger(pnls=('3',), costs=('0',), equity='150'))
+
+    def test_legacy_ledger_is_explicitly_unverified(self):
+        state = ledger(pnls=('3',), costs=('0',), equity='153')
+        del state['initial_equity']
+        report = summarize_paper_ledger(state)
+        self.assertFalse(report['equity_reconciled'])
+        self.assertEqual(report['net_realized_pnl_usdt'], '3')
 
     def test_nonfinite_values_rejected(self):
         with self.assertRaises(ValueError):
