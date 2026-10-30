@@ -46,3 +46,14 @@ Offline tests cover long/short stop gaps, ambiguous stop/target candles, UTC rol
 The production paper scanner now bootstraps EMA50/200 and Wilder RSI14 from at least 1,000 closed candles (requests 1,001 to allow one open candle). It persists versioned decimal indicator state in the locked paper ledger, then processes only new contiguous candles. Rolling fetch windows no longer reseed EMA or RSI. Saved state retains the last signal so a repeated scan is idempotent. Missing history, a revised last processed close, incompatible state or backwards time fails closed. Historical corrections earlier than the last processed candle are not automatically detected; a verified full replay is required for dataset revisions.
 
 Warmup reduces seed sensitivity; it does not establish a unique infinite-history EMA. Exact replay parity requires the same recorded origin and input history. Existing market-bound ledgers without indicator state bootstrap on their next successful scan; this does not reconstruct prior signals. Offline tests compare 100 moving-window incremental updates and JSON restarts against full-history EMA, RSI and crossover decisions, plus actual CLI restart persistence. Live trading remains unavailable.
+
+## Read-only performance report (paper ledger only)
+
+After running the paper scanner and creating a ledger, inspect its realized results with:
+
+`python -m futures_engine.report paper-ledger.json`
+
+This command reads the existing JSON ledger, prints a JSON report to stdout, and does **not** fetch market data, change the ledger, send Telegram messages, authenticate to an exchange, or place orders. The report counts only **closed** paper trades, with modeled costs already included in net PnL; unrealized PnL and live fills are excluded. For older ledgers without a persisted initial equity, `equity_reconciled=false` marks performance as **unverified**. The command fails on inconsistent balances when the starting equity is known. An empty ledger produces a valid zero-trade report, not evidence of profitable performance.
+
+The CLI and its offline tests are not an end-to-end live-market paper run. Validate a sustained paper simulation and inspect real generated ledger outputs before treating performance as measured.
+
