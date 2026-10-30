@@ -1,5 +1,10 @@
 """Offline regression tests for paper-only performance reporting."""
 import unittest
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
 
 from futures_engine.report import summarize_paper_ledger
 
@@ -61,6 +66,34 @@ class PaperReportTests(unittest.TestCase):
             summarize_paper_ledger(ledger(pnls=('NaN',), costs=('0',)))
         with self.assertRaises(ValueError):
             summarize_paper_ledger(ledger(pnls=('-1',), costs=('-1',), equity='149'))
+
+
+    def test_cli_reads_existing_ledger_without_exchange_access(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'paper-ledger.json'
+            state = ledger(pnls=('2',), costs=('0.1',), equity='152')
+            path.write_text(json.dumps(state), encoding='utf-8')
+            before = path.read_bytes()
+            result = subprocess.run(
+                [sys.executable, '-m', 'futures_engine.report', str(path)],
+                check=True, capture_output=True, text=True,
+            )
+            report = json.loads(result.stdout)
+            self.assertEqual(report['net_realized_pnl_usdt'], '2')
+            self.assertEqual(report['mode'], 'paper_only')
+            self.assertTrue(report['equity_reconciled'])
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_cli_rejects_invalid_equity_reconciliation(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'paper-ledger.json'
+            path.write_text(json.dumps(ledger(pnls=('2',), costs=('0.1',), equity='150')), encoding='utf-8')
+            result = subprocess.run(
+                [sys.executable, '-m', 'futures_engine.report', str(path)],
+                capture_output=True, text=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, '')
 
 
 if __name__ == '__main__':
