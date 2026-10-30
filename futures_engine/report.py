@@ -26,7 +26,9 @@ def summarize_paper_ledger(state):
     if any(cost < 0 for cost in costs):
         raise ValueError('invalid paper costs')
     realized = sum(pnl_values, D(0))
-    initial = equity - realized
+    # Older ledgers did not record the original balance; their totals are estimates.
+    verified = 'initial_equity' in state
+    initial = _money(state['initial_equity']) if verified else equity - realized
     if initial <= 0:
         raise ValueError('invalid initial paper equity')
     wins = sum(p > 0 for p in pnl_values)
@@ -46,11 +48,12 @@ def summarize_paper_ledger(state):
             max_drawdown = max(max_drawdown, (peak - balance) / peak * 100)
         consecutive_losses = consecutive_losses + 1 if pnl < 0 else 0
         max_consecutive_losses = max(max_consecutive_losses, consecutive_losses)
-    # Prevent reporting an inconsistent or tampered ledger as a valid result.
-    if balance != equity:
+    # Reconciliation is meaningful only when the initial balance was persisted.
+    if verified and balance != equity:
         raise ValueError('paper ledger equity does not reconcile with exits')
     return {
         'mode': 'paper_only',
+        'equity_reconciled': verified,
         'closed_trades': len(exits),
         'wins': wins,
         'losses': losses,
