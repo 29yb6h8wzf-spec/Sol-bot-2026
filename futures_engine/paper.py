@@ -43,7 +43,8 @@ class PaperLedger:
                 if key not in self.state:
                     raise ValueError('incomplete paper ledger')
         else:
-            self.state = {'equity':str(initial_equity),'day':None,'day_start_equity':str(initial_equity),
+            self.state = {'equity':str(initial_equity),'initial_equity':str(initial_equity),
+                          'day':None,'day_start_equity':str(initial_equity),
                           'position':None,'last_signal_candle':None,'history':[]}
 
     def bind(self, symbol, timeframe, duration):
