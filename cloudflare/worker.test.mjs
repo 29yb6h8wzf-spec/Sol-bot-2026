@@ -776,6 +776,6 @@ test('research Telegram delivery accepts original strategy scores 85+ only',asyn
   assert.equal(sent.length,2);
   assert.ok(sent.every(x=>/85\/100|100\/100/.test(x.text)));
   assert.ok(sent.every(x=>!x.text.includes('84/100')));
-  assert.equal([...kv.keys()].filter(x=>x.startsWith('signal:')).length,2);
+  assert.equal([...kv.keys()].filter(x=>x.startsWith('signal:')&&!x.includes(':delivered:')).length,2);
  }finally{globalThis.fetch=saved;}
 });
