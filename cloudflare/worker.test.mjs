@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 const source=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
-const {candles,fetchKrakenOHLC,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,processTelegramAccess,readBinancePositions,monitorBinanceAccount,sendResearch,rsi,testBroadcast,evaluatePaperSignal,recordResearchSignal,filterAndLimitSetups,deliverResearchCandidates,scanAuditReport,sendDailyHeartbeat,setups,fetchMarketTimeframes,scoreWatchProgress,watchCandidates,sendWatchDigest,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const {candles,fetchKrakenOHLC,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,processTelegramAccess,readBinancePositions,monitorBinanceAccount,sendResearch,rsi,testBroadcast,evaluatePaperSignal,recordResearchSignal,filterAndLimitSetups,deliverResearchCandidates,scanAuditReport,sendDailyHeartbeat,setups,fetchMarketTimeframes,scoreWatchProgress,watchCandidates,sendWatchDigest,MIN_SIGNAL_SCORE,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const now=Date.now, originalFetch=globalThis.fetch;
 const fixed=1800000000000;
 let telegramMessages=[], telegramStatus=200, newsXML='<rss><channel></channel></rss>';
@@ -427,7 +427,7 @@ test('failed subscriber delivery for one signal does NOT suppress later independ
   SIGNAL_STATE:{get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)}};
  const base=Date.UTC(2026,9,28,8,30);
  const bars=Array.from({length:120},(_,i)=>({time:base-(120-i)*300000,high:100.4,low:99.6,close:100,volume:100}));
- const setup=(strategy)=>({strategy,direction:'LONG',entry:100,stop:99,candle:base-300000,score:75,reason:'fixture'});
+ const setup=(strategy)=>({strategy,direction:'LONG',entry:100,stop:99,candle:base-300000,score:85,reason:'fixture'});
  const plan=tradePlan(setup('BREAKOUT'),bars,base);
  assert.ok(plan);
  globalThis.fetch=async(url,options)=>{
@@ -620,7 +620,7 @@ test('watch digest sends owner only; KV markers prevent duplicates and failed ch
  }finally{globalThis.fetch=saved;}
 });
 
-test('scheduled scanner groups watch candidates while keeping no-qualified-trade accounting',async()=>{
+test('scheduled scanner records watch candidates privately without sending Telegram watch digests',async()=>{
  const state=new Map(),savedLog=console.log;console.log=()=>{};telegramMessages=[];
  state.set('news:hourly:owner:'+Math.floor(fixed/3600000),'sent');
  state.set('tg:approved','["200"]');
@@ -642,14 +642,13 @@ test('scheduled scanner groups watch candidates while keeping no-qualified-trade
   assert.ok(receipt.ok);
   assert.ok(receipt.results.every(x=>x.candidates===0));
   assert.ok(receipt.results.every(x=>x.audit.watchAbove50>=1));
-  assert.equal(receipt.watchDelivery.status,'sent');
-  const messages=telegramMessages.filter(x=>x.text.startsWith('👀'));
-  assert.equal(messages.length,1);
-  assert.equal(String(messages[0].chat_id),'100');
-  assert.ok(messages[0].text.includes('BREAKOUT | 67/100'));
+  assert.equal(receipt.watchDelivery.status,'disabled');
+  assert.equal(receipt.watchDelivery.count,0);
+  assert.equal(telegramMessages.filter(x=>x.text.startsWith('👀')).length,0);
   assert.equal(telegramMessages.filter(x=>String(x.chat_id)==='200').length,0);
+  assert.equal([...state.keys()].filter(k=>k.startsWith('watch:owner:')).length,0);
   await run();
-  assert.equal(telegramMessages.filter(x=>x.text.startsWith('👀')).length,1);
+  assert.equal(telegramMessages.filter(x=>x.text.startsWith('👀')).length,0);
  });}finally{console.log=savedLog;}
 });
 
@@ -758,4 +757,25 @@ test('BTC theoretical quantity text matches the displayed notional instead of ro
  assert.ok(Number.isFinite(displayedQuantity)&&displayedQuantity>0);
  assert.ok(Math.abs(displayedQuantity*high-notional)<0.10,'Displayed quantity must agree with the approximate exposure to within ten cents');
  assert.match(message,/Kraken Spot/);
+});
+
+test('research Telegram delivery accepts original strategy scores 85+ only',async()=>{
+ assert.equal(MIN_SIGNAL_SCORE,85);
+ const saved=globalThis.fetch,kv=new Map(),sent=[];
+ const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'100',SIGNAL_STATE:{get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)}};
+ const base=Date.UTC(2026,9,28,8,30);
+ const bars=Array.from({length:120},(_,i)=>({time:base-(120-i)*300000,high:100.4,low:99.6,close:100,volume:100}));
+ const setup=(strategy,score)=>({strategy,direction:'LONG',entry:100,stop:99,candle:base-300000,score,reason:'threshold fixture'});
+ const plan=tradePlan(setup('BREAKOUT',85),bars,base);
+ assert.ok(plan);
+ globalThis.fetch=async(url,options)=>{assert.match(String(url),/sendMessage/);sent.push(JSON.parse(options.body));return new Response(JSON.stringify({ok:true,result:{message_id:1}}));};
+ try{
+  const found=[{setup:setup('BREAKOUT',84),plan},{setup:setup('EMA_ADX',85),plan},{setup:setup('MACD_VOLUME',100),plan},{setup:setup('RSI_BOLL',NaN),plan}];
+  const result=await deliverResearchCandidates(env,found,'BTCUSDT',{status:'unavailable'});
+  assert.deepEqual(result,{duplicates:0,delivered:2,deliveryFailed:0});
+  assert.equal(sent.length,2);
+  assert.ok(sent.every(x=>/85\/100|100\/100/.test(x.text)));
+  assert.ok(sent.every(x=>!x.text.includes('84/100')));
+  assert.equal([...kv.keys()].filter(x=>x.startsWith('signal:')&&!x.includes(':delivered:')).length,2);
+ }finally{globalThis.fetch=saved;}
 });
