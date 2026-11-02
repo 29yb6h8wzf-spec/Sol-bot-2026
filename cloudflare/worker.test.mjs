@@ -505,7 +505,7 @@ test('live cron heartbeat sends one truthful owner-only daily message in Israel 
   assert.equal(await sendDailyHeartbeat(env,receipt,morning+600000),'already_sent');
   assert.equal(sent.length,2);
   assert.ok(sent.every(m=>String(m.chat_id)==='100'));
-  assert.match(sent.at(-1).text,/4\/4/);
+  assert.match(sent.at(-1).text,/5\/5/);
   assert.match(sent.at(-1).text,/Kraken Spot/);
   assert.doesNotMatch(sent.at(-1).text,/Binance Futures נגיש/);
   assert.equal(await sendDailyHeartbeat(env,receipt,morning+2*60*60000),'not_due');
