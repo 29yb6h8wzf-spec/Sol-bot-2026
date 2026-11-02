@@ -99,20 +99,70 @@ def check_exchange_state(exchange, intent):
 
 
 def execute_protected_entry(exchange, intent, *, journal, account):
-    """Never place unprotected market entries.
+    """Execute with exchange-native protective orders or emergency flatten.
 
-    Caller supplies durable journal with claim(signal_id) -> bool and
-    mark(signal_id, state) methods. Native conditional orders are exchange
-    version/position-mode dependent: fail closed until separately certified.
+    IMPORTANT: This is NOT atomic. Exchange-specific conditional order API,
+    position mode, partial fills and recovery must pass real testnet certification.
+    A failure can exceed the planned loss. Keep disabled until certified.
     """
     require_live_arming()
+    if os.getenv("BINANCE_BRACKET_CERTIFIED") != "YES_TESTNET_VERIFIED":
+        raise LiveSafetyError("native Binance conditional orders not testnet certified")
     if not journal.claim(intent.signal_id):
         raise LiveSafetyError("duplicate signal")
+    entry_order = None
+    entry_side = "buy" if intent.direction == "long" else "sell"
+    exit_side = "sell" if entry_side == "buy" else "buy"
     try:
         validate_intent(intent, **account)
         check_exchange_state(exchange, intent)
-        journal.mark(intent.signal_id, "BLOCKED_PENDING_NATIVE_BRACKET_CERTIFICATION")
-        raise LiveSafetyError("native stop/target atomic lifecycle not certified; no live order sent")
-    except Exception:
-        journal.mark(intent.signal_id, "REQUIRES_REVIEW")
-        raise
+        # One-way position mode required for reduceOnly; reject hedge mode.
+        mode = exchange.fetch_position_mode(intent.symbol)
+        if mode.get("hedged") is not False:
+            raise LiveSafetyError("one-way mode required")
+        exchange.set_leverage(2, intent.symbol)
+        journal.mark(intent.signal_id, "ENTRY_SUBMITTING")
+        entry_order = exchange.create_order(
+            intent.symbol, "market", entry_side, float(intent.quantity),
+            None, {"newClientOrderId": intent.signal_id})
+        journal.mark(intent.signal_id, "ENTRY_ACKNOWLEDGED")
+        # Reconcile actual filled quantity, not requested quantity.
+        positions = exchange.fetch_positions([intent.symbol])
+        filled = sum((D(str(p.get("contracts") or 0)) for p in positions
+                      if p.get("symbol") == intent.symbol), D("0"))
+        if filled <= 0 or filled > intent.quantity:
+            raise LiveSafetyError("unexpected filled position; emergency reconciliation")
+        journal.mark(intent.signal_id, "PROTECTIVE_ORDERS_SUBMITTING")
+        # Conditional orders may require Binance Algo endpoint depending on ccxt version.
+        # closePosition=True prevents quantity mismatch after partial fills.
+        stop_order = exchange.create_order(intent.symbol, "STOP_MARKET", exit_side,
+            None, None, {"stopPrice": float(intent.stop), "closePosition": True,
+                         "workingType": "MARK_PRICE", "newClientOrderId": intent.signal_id + "-SL"})
+        target_order = exchange.create_order(intent.symbol, "TAKE_PROFIT_MARKET", exit_side,
+            None, None, {"stopPrice": float(intent.target), "closePosition": True,
+                         "workingType": "MARK_PRICE", "newClientOrderId": intent.signal_id + "-TP"})
+        journal.mark(intent.signal_id, "BRACKET_ACKNOWLEDGED")
+        # Verify both protection orders are exchange-active before declaring success.
+        open_orders = exchange.fetch_open_orders(intent.symbol)
+        ids = {str(o.get("id")) for o in open_orders}
+        if str(stop_order.get("id")) not in ids or str(target_order.get("id")) not in ids:
+            raise LiveSafetyError("protective order not verified active")
+        journal.mark(intent.signal_id, "PROTECTED")
+        return {"entry": entry_order, "stop": stop_order, "target": target_order}
+    except Exception as exc:
+        journal.mark(intent.signal_id, "EMERGENCY_FLATTEN_REQUIRED")
+        if entry_order is not None:
+            try:
+                # Cancel protective orders and reduce only the actual open exposure.
+                exchange.cancel_all_orders(intent.symbol)
+                positions = exchange.fetch_positions([intent.symbol])
+                amount = sum((D(str(p.get("contracts") or 0)) for p in positions
+                              if p.get("symbol") == intent.symbol), D("0"))
+                if amount > 0:
+                    exchange.create_order(intent.symbol, "market", exit_side,
+                                          float(amount), None, {"reduceOnly": True})
+                journal.mark(intent.signal_id, "EMERGENCY_FLATTEN_SUBMITTED_VERIFY_MANUALLY")
+            except Exception as flatten_exc:
+                journal.mark(intent.signal_id, "CRITICAL_UNPROTECTED_POSITION_MANUAL_INTERVENTION")
+                raise LiveSafetyError("emergency flatten failed; manual intervention required") from flatten_exc
+        raise LiveSafetyError("entry/bracket lifecycle failed; inspect exchange state") from exc
