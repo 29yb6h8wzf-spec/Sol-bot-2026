@@ -50,7 +50,7 @@ def test_no_order_even_when_armed(monkeypatch):
     class Journal:
         def claim(self, key): return True
         def mark(self, key, state): pass
-    with pytest.raises(LiveSafetyError, match="not certified"):
+    with pytest.raises(LiveSafetyError, match="not testnet certified"):
         execute_protected_entry(Exchange(), GOOD, journal=Journal(), account=ACCOUNT)
 
 
