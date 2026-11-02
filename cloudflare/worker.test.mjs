@@ -33,7 +33,7 @@ test('five-minute scans stay silent without setups and send only one hourly news
   await run();assert.equal(telegramMessages.length,1);
   assert.equal(telegramMessages.filter(m=>m.text.startsWith('📰 SignalPilot | עדכון חדשות שעתי')).length,1);
   const result=logs.map(a=>{try{return JSON.parse(a[0]);}catch{return {};}}).find(x=>x.event==='scan_complete');
-  assert.equal(result.ok,true);assert.equal(result.results.length,4);
+  assert.equal(result.ok,true);assert.equal(result.results.length,5);
   assert.ok(result.results.every(x=>x.statusDelivery==='suppressed_no_signal'&&x.candidates===0));
   await run();assert.equal(telegramMessages.length,1);
  });}finally{console.log=oldLog;}
@@ -241,11 +241,11 @@ test('owner /status reflects actual KV receipt, denies subscriber access and nev
   queue.push(msg(2,100,'/status'));await processTelegramAccess(env);
   assert.match(sent.at(-1).text,/אין קבלת סריקה חיה/);
   const latestTime=nowTime-300000;
-  const receipt=(scheduledTime,candle)=>({release:'kraken-stable-v9',cron:'*/5 * * * *',ok:true,recordedAt:nowTime,scheduledTime,source:'kraken_spot',results:['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'].map(symbol=>({symbol,source:'kraken_spot',candle:new Date(candle).toISOString(),closedAgeMinutes:5,candidates:0,statusDelivery:'suppressed_no_signal'})),failures:[]});
+  const receipt=(scheduledTime,candle)=>({release:'kraken-stable-v10',cron:'*/5 * * * *',ok:true,recordedAt:nowTime,scheduledTime,source:'kraken_spot',results:['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT','BNBUSDT'].map(symbol=>({symbol,source:'kraken_spot',candle:new Date(candle).toISOString(),closedAgeMinutes:5,candidates:0,statusDelivery:'suppressed_no_signal'})),failures:[]});
   const current=receipt(latestTime,nowTime-600000),previous=receipt(latestTime-300000,nowTime-900000);
   kv.set('health:latest',JSON.stringify(current));
   queue.push(msg(3,100,'/status'));await processTelegramAccess(env);
-  assert.match(sent.at(-1).text,/ארבעת המטבעות נסרקו בהצלחה/);
+  assert.match(sent.at(-1).text,/חמשת המטבעות נסרקו בהצלחה/);
   assert.match(sent.at(-1).text,/Kraken Spot/);
   assert.match(sent.at(-1).text,/קבלת ה-cron הקודמת חסרה/);
   kv.set('health:cron:'+(latestTime-300000),JSON.stringify(previous));
@@ -455,7 +455,7 @@ test('failed subscriber delivery for one signal does NOT suppress later independ
 
 test('private audit reports rejection and delivery counts from actual KV receipts without guessing the missing data',async()=>{
  const scheduled=1800000000000,kv=new Map();
- const report=(time,stats)=>({release:'kraken-stable-v9',scheduledTime:time,
+ const report=(time,stats)=>({release:'kraken-stable-v10',scheduledTime:time,
   results:[{symbol:'SOLUSDT',audit:stats}],failures:[]});
  const current=report(scheduled,{scans:1,rawSetups:2,stopRejected:1,eligibleAfterStops:1,planRejected:1,qualified:0});
  const previous=report(scheduled-300000,{scans:1,rawSetups:1,stopRejected:0,eligibleAfterStops:1,planRejected:0,qualified:1,delivered:1});
@@ -487,7 +487,7 @@ test('live cron heartbeat sends one truthful owner-only daily message in Israel 
  const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'100',SIGNAL_STATE:{
   get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)
  }};
- const receipt={ok:true,results:['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'].map(symbol=>({symbol,candidates:0})),failures:[]};
+ const receipt={ok:true,results:['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT','BNBUSDT'].map(symbol=>({symbol,candidates:0})),failures:[]};
  globalThis.fetch=async(url,options)=>{
   assert.match(String(url),/sendMessage/);
   sent.push(JSON.parse(options.body));
@@ -505,7 +505,7 @@ test('live cron heartbeat sends one truthful owner-only daily message in Israel 
   assert.equal(await sendDailyHeartbeat(env,receipt,morning+600000),'already_sent');
   assert.equal(sent.length,2);
   assert.ok(sent.every(m=>String(m.chat_id)==='100'));
-  assert.match(sent.at(-1).text,/4\/4/);
+  assert.match(sent.at(-1).text,/5\/5/);
   assert.match(sent.at(-1).text,/Kraken Spot/);
   assert.doesNotMatch(sent.at(-1).text,/Binance Futures נגיש/);
   assert.equal(await sendDailyHeartbeat(env,receipt,morning+2*60*60000),'not_due');
@@ -513,7 +513,7 @@ test('live cron heartbeat sends one truthful owner-only daily message in Israel 
 });
 
 test('audit displays sample reasons and recorded values for the latest market scan',async()=>{
- const time=1800000000000,kv=new Map(),latest={scheduledTime:time,release:'kraken-stable-v9',
+ const time=1800000000000,kv=new Map(),latest={scheduledTime:time,release:'kraken-stable-v10',
   results:[{symbol:'SOLUSDT',audit:{scans:1,checks:[
    'BREAKOUT: אין התאמה בין מגמה, פריצה ונפח; close=100.00000 volume=0.45 minVolume=1.50',
    'EMA_ADX LONG: לא עמד בכל התנאים; adx=17.00 minAdx=20'
@@ -675,7 +675,7 @@ test('trade plan reports exact net R, expiry, invalid stop while retaining origi
 });
 
 test('owner audit displays calculated net R of rejected plan without private identifiers',async()=>{
- const time=1800000000000,kv=new Map(),receipt={scheduledTime:time,release:'kraken-stable-v9',
+ const time=1800000000000,kv=new Map(),receipt={scheduledTime:time,release:'kraken-stable-v10',
   results:[{symbol:'BTCUSDT',audit:{scans:1,planRejected:1,planFailures:[{
    strategy:'EMA_ADX',direction:'LONG',reason:'net_r_below_minimum',netR:1.10,minNetR:1.25
   }]}}],failures:[]};
@@ -727,7 +727,7 @@ test('owner menu commands and callback buttons route correctly and reject outsid
   await run(msg(2,100,'/users'));assert.match(sent.at(-1).text,/ניהול חברים/);
   assert.ok(JSON.stringify(sent.at(-1).reply_markup).includes('menu:home'));
   await run(msg(3,100,'/start'));assert.match(sent.at(-1).text,/תפריט ראשי/);
-  kv.set('health:latest',JSON.stringify({scheduledTime:1800000000000,release:'kraken-stable-v9',results:[],failures:[]}));
+  kv.set('health:latest',JSON.stringify({scheduledTime:1800000000000,release:'kraken-stable-v10',results:[],failures:[]}));
   kv.set('news:cache:v1',JSON.stringify({status:'ready',fetchedAt:Date.now(),sources:['CoinDesk']}));
   for(const [n,action,expected] of [[4,'menu:status','מצב הסורק'],[5,'menu:audit','ביקורת סריקות'],[6,'menu:news','מצב חדשות'],[7,'access:list','ניהול חברים'],[8,'menu:home','תפריט ראשי']]){
    await run(cb(n,100,action));assert.match(sent.at(-1).text,new RegExp(expected));
@@ -778,4 +778,16 @@ test('research Telegram delivery accepts original strategy scores 85+ only',asyn
   assert.ok(sent.every(x=>!x.text.includes('49/100')));
   assert.equal([...kv.keys()].filter(x=>x.startsWith('signal:')&&!x.includes(':delivered:')).length,2);
  }finally{globalThis.fetch=saved;}
+});
+
+// BNB research market must resolve to Kraken Spot BNBUSDT, never a Futures endpoint.
+test('BNBUSDT Kraken Spot mapping, 5m and 4h candles and coin-specific news',async()=>{
+ const seen=[];
+ await withData(u=>{seen.push({pair:u.searchParams.get('pair'),interval:u.searchParams.get('interval')});return payload(Number(u.searchParams.get('interval')));},async()=>{
+  const five=await candles('BNBUSDT','5m',120),four=await candles('BNBUSDT','4h',100);
+  assert.equal(five.length,119);assert.equal(four.length,99);
+ });
+ assert.deepEqual(seen,[{pair:'BNBUSDT',interval:'5'},{pair:'BNBUSDT',interval:'240'}]);
+ const news={items:[{title:'BNB Chain network update',publishedAt:fixed-60000},{title:'Bitcoin network update',publishedAt:fixed-60000}]};
+ assert.equal(newsForSymbol(news,'BNBUSDT',fixed).length,1);
 });

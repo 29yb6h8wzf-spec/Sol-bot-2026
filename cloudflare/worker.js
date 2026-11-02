@@ -1,11 +1,11 @@
 // SignalPilot Cloudflare Worker: scheduled market research, no trade execution.
 // Alerts are disabled until both Telegram secrets and SIGNAL_STATE KV are configured.
-const SYMBOLS = ['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'];
+const SYMBOLS = ['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT','BNBUSDT'];
 const API = 'https://api.kraken.com/0/public/OHLC';
-const PAIRS = {SOLUSDT:'SOLUSDT',BTCUSDT:'XBTUSDT',ETHUSDT:'ETHUSDT',XRPUSDT:'XRPUSDT'};
-const RELEASE = 'kraken-stable-v9';
+const PAIRS = {SOLUSDT:'SOLUSDT',BTCUSDT:'XBTUSDT',ETHUSDT:'ETHUSDT',XRPUSDT:'XRPUSDT',BNBUSDT:'BNBUSDT'};
+const RELEASE = 'kraken-stable-v10';
 const NEWS_FEEDS=[{name:'CoinDesk',url:'https://www.coindesk.com/arc/outboundfeeds/rss/',host:'coindesk.com'},{name:'Cointelegraph',url:'https://cointelegraph.com/rss',host:'cointelegraph.com'}];
-const NEWS_TERMS={SOLUSDT:/\b(solana|sol)\b/i,BTCUSDT:/\b(bitcoin|btc)\b/i,ETHUSDT:/\b(ethereum|ether|eth)\b/i,XRPUSDT:/\b(xrp|ripple|rlusd)\b/i};
+const NEWS_TERMS={SOLUSDT:/\b(solana|sol)\b/i,BTCUSDT:/\b(bitcoin|btc)\b/i,ETHUSDT:/\b(ethereum|ether|eth)\b/i,XRPUSDT:/\b(xrp|ripple|rlusd)\b/i,BNBUSDT:/\b(bnb|binance coin|bnb chain)\b/i};
 function xmlText(value){return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/<[^>]*>/g,'').replace(/&#(x[0-9a-f]+|\d+);/gi,(_,n)=>{const c=n[0].toLowerCase()==='x'?parseInt(n.slice(1),16):Number(n);return c>0&&c<=0x10ffff?String.fromCodePoint(c):'';}).replace(/&(amp|quot|apos|lt|gt);/g,(_,n)=>({amp:'&',quot:'"',apos:"'",lt:'<',gt:'>'}[n])).replace(/[\r\n\t]+/g,' ').trim();}
 export function parseNewsFeed(xml,feed,now=Date.now()){
  if(!/<rss\b/i.test(xml)||xml.length>1000000)throw Error('Invalid news RSS');
@@ -495,12 +495,12 @@ async function showLiveScannerStatus(env){
  try{receipt=JSON.parse(raw);}catch{return '📡 SignalPilot | מצב הסורק\\n⚠️ קבלת הסריקה האחרונה אינה תקינה.';}
  const age=Date.now()-Number(receipt.recordedAt);
  const fresh=Number.isFinite(age)&&age>=0&&age<=12*60000;
- const expected=['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'];
+ const expected=['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT','BNBUSDT'];
  const valid=row=>{
   if(!row||row.release!==RELEASE||row.cron!=='*/5 * * * *'||row.source!=='kraken_spot'||row.ok!==true||
-     !Array.isArray(row.failures)||row.failures.length!==0||!Array.isArray(row.results)||row.results.length!==4)return false;
+     !Array.isArray(row.failures)||row.failures.length!==0||!Array.isArray(row.results)||row.results.length!==expected.length)return false;
   const symbols=new Set(row.results.map(r=>r.symbol));
-  return symbols.size===4&&expected.every(sym=>symbols.has(sym))&&row.results.every(r=>
+  return symbols.size===expected.length&&expected.every(sym=>symbols.has(sym))&&row.results.every(r=>
    r.source==='kraken_spot'&&Number.isFinite(Date.parse(r.candle))&&
    Number.isFinite(r.closedAgeMinutes)&&r.closedAgeMinutes>=0&&r.closedAgeMinutes<=7&&
    Number.isInteger(r.candidates)&&r.candidates>=0&&
@@ -533,7 +533,7 @@ async function showLiveScannerStatus(env){
   '🕒 בדיקה אחרונה: '+(Number.isFinite(Number(receipt.recordedAt))?israelTime(Number(receipt.recordedAt)):'לא ידוע')+' (ישראל)',
   '📊 מקור: '+(receipt.source==='kraken_spot'?'Kraken Spot — מחקר בלבד':'לא אומת'),
   '🔍 מטבעות: '+results.map(r=>r.symbol).filter(sym=>expected.includes(sym)).join(', '),
-  fresh&&passing?'✅ ארבעת המטבעות נסרקו בהצלחה לאחרונה':'⚠️ סריקה חלקית, כושלת או לא עדכנית',
+  fresh&&passing?'✅ חמשת המטבעות נסרקו בהצלחה לאחרונה':'⚠️ סריקה חלקית, כושלת או לא עדכנית',
   '📬 איתותים שזוהו: '+results.reduce((n,r)=>n+(Number.isInteger(r.candidates)&&r.candidates>0?r.candidates:0),0),
   consecutive?'✅ שתי קבלות cron רצופות אומתו ב־KV, כולל התקדמות הנרות ב־5 דקות':'❗ שתי קבלות cron רצופות עדיין לא אומתו — '+verificationReason,
   '🔒 לא מוצגים נתוני חשבון Binance.'];
