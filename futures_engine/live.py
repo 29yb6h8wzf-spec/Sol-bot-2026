@@ -86,7 +86,9 @@ def check_exchange_state(exchange, intent):
         raise LiveSafetyError("existing position: reconcile manually")
     if exchange.fetch_open_orders(intent.symbol):
         raise LiveSafetyError("existing open orders: reconcile manually")
-    if exchange.fapiPrivateGetOpenAlgoOrders({"symbol": exchange.market_id(intent.symbol)}).get("orders"):
+    existing_algos = exchange.fapiPrivateGetOpenAlgoOrders({"symbol": exchange.market_id(intent.symbol)})
+    existing_rows = existing_algos.get("orders", []) if isinstance(existing_algos, dict) else existing_algos
+    if existing_rows:
         raise LiveSafetyError("existing conditional algo orders: reconcile manually")
     market = exchange.market(intent.symbol)
     if not market.get("linear") or not market.get("swap") or market.get("active") is False:
