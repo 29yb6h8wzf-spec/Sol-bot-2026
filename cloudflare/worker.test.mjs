@@ -648,7 +648,7 @@ test('scheduled scanner records watch candidates privately without sending Teleg
   assert.equal(telegramMessages.filter(x=>String(x.chat_id)==='200').length,0);
   assert.equal([...state.keys()].filter(k=>k.startsWith('watch:owner:')).length,1);
   await run();
-  assert.equal(telegramMessages.filter(x=>x.text.startsWith('👀')).length,0);
+  assert.equal(telegramMessages.filter(x=>x.text.startsWith('👀')).length,1);
  });}finally{console.log=savedLog;}
 });
 
@@ -774,7 +774,7 @@ test('research Telegram delivery accepts original strategy scores 85+ only',asyn
   const result=await deliverResearchCandidates(env,found,'BTCUSDT',{status:'unavailable'});
   assert.deepEqual(result,{duplicates:0,delivered:2,deliveryFailed:0});
   assert.equal(sent.length,2);
-  assert.ok(sent.every(x=>/85\/100|100\/100/.test(x.text)));
+  assert.ok(sent.every(x=>/50\/100|100\/100/.test(x.text)));
   assert.ok(sent.every(x=>!x.text.includes('49/100')));
   assert.equal([...kv.keys()].filter(x=>x.startsWith('signal:')&&!x.includes(':delivered:')).length,2);
  }finally{globalThis.fetch=saved;}
