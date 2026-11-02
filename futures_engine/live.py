@@ -37,7 +37,7 @@ def validate_intent(intent, *, equity, day_start_equity, existing_risk=D("0"),
         raise LiveSafetyError("invalid direction")
     if intent.source != "verified_85_score_engine" or not isinstance(intent.score, int) or intent.score < 85 or intent.score > 100:
         raise LiveSafetyError("unverified signal quality")
-    if not intent.signal_id or len(intent.signal_id) > 64 or not all(c.isalnum() or c in "-_" for c in intent.signal_id):
+    if not intent.signal_id or len(intent.signal_id) > 32 or not all(c.isalnum() or c in "-_" for c in intent.signal_id):
         raise LiveSafetyError("invalid idempotency key")
     entry, stop, target, qty = map(D, (intent.entry, intent.stop, intent.target, intent.quantity))
     equity, day_start_equity, existing_risk, used_margin = map(D, (equity, day_start_equity, existing_risk, used_margin))
