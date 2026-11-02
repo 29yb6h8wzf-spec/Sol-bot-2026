@@ -2,8 +2,8 @@
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
 
-const WORKER='sol-bot-2026', RELEASE='kraken-stable-v9', CRON='*/5 * * * *';
-const SYMBOLS=['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT'];
+const WORKER='sol-bot-2026', RELEASE='kraken-stable-v10', CRON='*/5 * * * *';
+const SYMBOLS=['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT','BNBUSDT'];
 let account=(process.env.CLOUDFLARE_ACCOUNT_ID||'').trim();
 // Account confirmed by the owner via the production dashboard URL; this is not a credential.
 const confirmedAccount='d0b774cf03b175507aa1584e7e8e0117';
@@ -99,6 +99,17 @@ async function main(){
  const metadata={main_module:'worker.js',keep_bindings:[...new Set(shape.map(b=>b.type))],compatibility_date:before.compatibility_date||'2026-10-01',keep_assets:true};
  if(restoredKV)metadata.bindings=[restoredKV];
  for(const field of ['compatibility_flags','limits','logpush','observability','tail_consumers','placement'])if(before[field]!=null)metadata[field]=before[field];
+ // Check the fifth spot market before touching the live Worker; never use a Futures price source.
+ for(const interval of [5,240]){
+  const url='https://api.kraken.com/0/public/OHLC?pair=BNBUSDT&interval='+interval;
+  let response,body;
+  try{response=await fetch(url,{signal:AbortSignal.timeout(15000)});body=await response.json();}
+  catch{throw Error('BNBUSDT Kraken Spot '+interval+'m preflight unavailable; deployment blocked');}
+  const rows=Object.entries(body?.result||{}).filter(([key])=>key!=='last');
+  if(!response.ok||body?.error?.length||rows.length!==1||!Array.isArray(rows[0][1])||rows[0][1].length<56)
+   throw Error('BNBUSDT Kraken Spot '+interval+'m pair/candle preflight failed; deployment blocked');
+  report('BNBUSDT Kraken Spot '+interval+'m public OHLC pair and candle count verified before deployment.');
+ }
  const code=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
  const form=new FormData();form.append('metadata',new Blob([JSON.stringify(metadata)],{type:'application/json'}),'metadata.json');form.append('worker.js',new Blob([code],{type:'application/javascript+module'}),'worker.js');
  const deployed=await api('',{method:'PUT',body:form});
@@ -170,13 +181,13 @@ async function main(){
    const row=await kvRequest('/values/'+encodeURIComponent(key.name),{json:false});
    if(!row||row.release!==RELEASE||row.scheduledTime!==time||row.cron!==CRON)continue;
    const seen=new Set((row.results||[]).map(r=>r.symbol));
-   const valid=row.ok===true&&Array.isArray(row.failures)&&row.failures.length===0&&row.source==='kraken_spot'&&seen.size===4&&SYMBOLS.every(s=>seen.has(s))&&row.results.every(r=>Number.isFinite(r.closedAgeMinutes)&&r.closedAgeMinutes>=0&&r.closedAgeMinutes<=7&&r.source==='kraken_spot'&&Number.isInteger(r.candidates)&&r.candidates>=0&&(r.candidates===0?r.statusDelivery==='suppressed_no_signal':r.statusDelivery==='signal_only')&&['ready','partial','unavailable','stale'].includes(r.newsStatus));
+   const valid=row.ok===true&&Array.isArray(row.failures)&&row.failures.length===0&&row.source==='kraken_spot'&&seen.size===SYMBOLS.length&&SYMBOLS.every(s=>seen.has(s))&&row.results.every(r=>Number.isFinite(r.closedAgeMinutes)&&r.closedAgeMinutes>=0&&r.closedAgeMinutes<=7&&r.source==='kraken_spot'&&Number.isInteger(r.candidates)&&r.candidates>=0&&(r.candidates===0?r.statusDelivery==='suppressed_no_signal':r.statusDelivery==='signal_only')&&['ready','partial','unavailable','stale'].includes(r.newsStatus));
    observed.set(time,{row,valid});
    report('KV scheduled '+new Date(time).toISOString()+' ['+(row.results||[]).map(r=>r.symbol+':'+r.source).join(',')+']: '+(valid?'PASS':'FAIL')+(row.failures?.length?' failures='+row.failures.map(f=>f.symbol+':'+String(f.reason).replace(/[^a-zA-Z0-9 _.: -]/g,'?').slice(0,110)).join('; '):''));
    if(!valid)continue;
    const prior=observed.get(time-300000);
    if(prior?.valid&&row.results.every(r=>{const p=prior.row.results.find(x=>x.symbol===r.symbol);return p&&Date.parse(r.candle)-Date.parse(p.candle)===300000;})){
-    report('VERIFIED: two consecutive successful actual scheduled scans, five minutes apart, all four configured market scans advanced, with durable KV receipts.');
+    report('VERIFIED: two consecutive successful actual scheduled scans, five minutes apart, all five configured market scans advanced, with durable KV receipts.');
     success=true;break;
    }
   }
