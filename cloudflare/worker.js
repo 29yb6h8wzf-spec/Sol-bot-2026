@@ -498,9 +498,9 @@ async function showLiveScannerStatus(env){
  const expected=['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT','BNBUSDT'];
  const valid=row=>{
   if(!row||row.release!==RELEASE||row.cron!=='*/5 * * * *'||row.source!=='kraken_spot'||row.ok!==true||
-     !Array.isArray(row.failures)||row.failures.length!==0||!Array.isArray(row.results)||row.results.length!==4)return false;
+     !Array.isArray(row.failures)||row.failures.length!==0||!Array.isArray(row.results)||row.results.length!==expected.length)return false;
   const symbols=new Set(row.results.map(r=>r.symbol));
-  return symbols.size===4&&expected.every(sym=>symbols.has(sym))&&row.results.every(r=>
+  return symbols.size===expected.length&&expected.every(sym=>symbols.has(sym))&&row.results.every(r=>
    r.source==='kraken_spot'&&Number.isFinite(Date.parse(r.candle))&&
    Number.isFinite(r.closedAgeMinutes)&&r.closedAgeMinutes>=0&&r.closedAgeMinutes<=7&&
    Number.isInteger(r.candidates)&&r.candidates>=0&&
