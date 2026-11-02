@@ -86,6 +86,8 @@ def check_exchange_state(exchange, intent):
         raise LiveSafetyError("existing position: reconcile manually")
     if exchange.fetch_open_orders(intent.symbol):
         raise LiveSafetyError("existing open orders: reconcile manually")
+    if exchange.fapiPrivateGetOpenAlgoOrders({"symbol": exchange.market_id(intent.symbol)}).get("orders"):
+        raise LiveSafetyError("existing conditional algo orders: reconcile manually")
     market = exchange.market(intent.symbol)
     if not market.get("linear") or not market.get("swap") or market.get("active") is False:
         raise LiveSafetyError("market not active USDT-M perpetual")
@@ -133,20 +135,26 @@ def execute_protected_entry(exchange, intent, *, journal, account):
         if filled <= 0 or filled > intent.quantity:
             raise LiveSafetyError("unexpected filled position; emergency reconciliation")
         journal.mark(intent.signal_id, "PROTECTIVE_ORDERS_SUBMITTING")
-        # Conditional orders may require Binance Algo endpoint depending on ccxt version.
-        # closePosition=True prevents quantity mismatch after partial fills.
-        stop_order = exchange.create_order(intent.symbol, "STOP_MARKET", exit_side,
-            None, None, {"stopPrice": float(intent.stop), "closePosition": True,
-                         "workingType": "MARK_PRICE", "newClientOrderId": intent.signal_id + "-SL"})
-        target_order = exchange.create_order(intent.symbol, "TAKE_PROFIT_MARKET", exit_side,
-            None, None, {"stopPrice": float(intent.target), "closePosition": True,
-                         "workingType": "MARK_PRICE", "newClientOrderId": intent.signal_id + "-TP"})
+        # Binance USD-M conditional orders use /fapi/v1/algoOrder.
+        # Do not use legacy create_order STOP_MARKET here.
+        symbol_id = exchange.market_id(intent.symbol)
+        def submit_algo(kind, trigger, suffix):
+            return exchange.fapiPrivatePostAlgoOrder({
+                "algoType": "CONDITIONAL", "symbol": symbol_id,
+                "side": exit_side.upper(), "type": kind,
+                "triggerPrice": exchange.price_to_precision(intent.symbol, str(trigger)),
+                "closePosition": "true", "workingType": "MARK_PRICE",
+                "clientAlgoId": intent.signal_id + suffix,
+            })
+        stop_order = submit_algo("STOP_MARKET", intent.stop, "-SL")
+        target_order = submit_algo("TAKE_PROFIT_MARKET", intent.target, "-TP")
         journal.mark(intent.signal_id, "BRACKET_ACKNOWLEDGED")
-        # Verify both protection orders are exchange-active before declaring success.
-        open_orders = exchange.fetch_open_orders(intent.symbol)
-        ids = {str(o.get("id")) for o in open_orders}
-        if str(stop_order.get("id")) not in ids or str(target_order.get("id")) not in ids:
-            raise LiveSafetyError("protective order not verified active")
+        # Algo orders are separate from ordinary open orders.
+        open_algos = exchange.fapiPrivateGetOpenAlgoOrders({"symbol": symbol_id})
+        rows = open_algos.get("orders", []) if isinstance(open_algos, dict) else open_algos
+        ids = {str(o.get("algoId")) for o in rows}
+        if str(stop_order.get("algoId")) not in ids or str(target_order.get("algoId")) not in ids:
+            raise LiveSafetyError("protective algo orders not verified active")
         journal.mark(intent.signal_id, "PROTECTED")
         return {"entry": entry_order, "stop": stop_order, "target": target_order}
     except Exception as exc:
@@ -154,6 +162,7 @@ def execute_protected_entry(exchange, intent, *, journal, account):
         if entry_order is not None:
             try:
                 # Cancel protective orders and reduce only the actual open exposure.
+                exchange.fapiPrivateDeleteAlgoOpenOrders({"symbol": exchange.market_id(intent.symbol)})
                 exchange.cancel_all_orders(intent.symbol)
                 positions = exchange.fetch_positions([intent.symbol])
                 amount = sum((D(str(p.get("contracts") or 0)) for p in positions
