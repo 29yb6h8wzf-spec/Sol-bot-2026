@@ -44,6 +44,8 @@ def test_no_order_even_when_armed(monkeypatch):
         def check_required_credentials(self): return True
         def fetch_positions(self, symbols): return []
         def fetch_open_orders(self, symbol): return []
+        def market_id(self, symbol): return "SOLUSDT"
+        def fapiPrivateGetOpenAlgoOrders(self, params): return {"orders": []}
         def market(self, symbol): return {"linear": True, "swap": True, "active": True, "limits": {}}
         def amount_to_precision(self, symbol, amount): return amount
         def create_order(self, *args, **kwargs): raise AssertionError("MUST NOT PLACE ORDER")
@@ -64,7 +66,14 @@ def test_mock_live_bracket_lifecycle(monkeypatch):
             self.position = D("0")
         def check_required_credentials(self): return True
         def fetch_positions(self, symbols): return [{"symbol": GOOD.symbol, "contracts": str(self.position)}]
-        def fetch_open_orders(self, symbol): return self.orders
+        def fetch_open_orders(self, symbol): return []
+        def market_id(self, symbol): return "SOLUSDT"
+        def price_to_precision(self, symbol, value): return value
+        def fapiPrivateGetOpenAlgoOrders(self, params): return {"orders": self.orders}
+        def fapiPrivatePostAlgoOrder(self, params):
+            order = {"algoId": len(self.orders) + 1, "type": params["type"]}
+            self.orders.append(order)
+            return order
         def market(self, symbol): return {"linear": True, "swap": True, "active": True, "limits": {}}
         def amount_to_precision(self, symbol, amount): return amount
         def fetch_position_mode(self, symbol): return {"hedged": False}
@@ -73,7 +82,7 @@ def test_mock_live_bracket_lifecycle(monkeypatch):
             if kind == "market":
                 self.position = D(str(amount))
             order = {"id": str(len(self.orders) + 1), "type": kind}
-            if kind != "market": self.orders.append(order)
+            assert kind == "market"
             return order
     class Journal:
         def __init__(self): self.claimed = set(); self.states = []
