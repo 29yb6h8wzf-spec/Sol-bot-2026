@@ -13,5 +13,11 @@
       "binding": "SIGNAL_STATE",
       "id": "26692b7aceb64495a3b1de123c1aa628"
     }
-  ]
+  ],
+  "previews": {
+    "vars": {
+      "SIGNALPILOT_PREVIEW_NO_TRADING": "1"
+    },
+    "kv_namespaces": []
+  }
 }
