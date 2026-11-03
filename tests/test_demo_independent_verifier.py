@@ -44,6 +44,31 @@ class IndependentVerifierTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "independent_candidate_mismatch"):
             verify(payload(), scan=weak, now=NOW)
 
+    def test_compact_legacy_signal_recomputed(self):
+        p = {"signal_id": "s-1", "symbol": "XRPUSDT",
+             "direction": "long", "timestamp": 950, "score": 100}
+        result = verify(p, scan=scanner, now=NOW)
+        self.assertEqual(result["score"], 85)
+        self.assertEqual(result["symbol"], "XRP/USDT:USDT")
+
+    def test_compact_wrong_candle_time_rejected(self):
+        p = {"signal_id": "s-1", "symbol": "XRPUSDT",
+             "direction": "long", "timestamp": 800}
+        with self.assertRaisesRegex(ValueError, "compact_signal_not_at_candle_close"):
+            verify(p, scan=scanner, now=NOW)
+
+    def test_compact_ambiguous_candidate_rejected(self):
+        p = {"signal_id": "s-1", "symbol": "XRPUSDT",
+             "direction": "long", "timestamp": 950}
+        def ambiguous(symbol, *, now_ms):
+            result = scanner(symbol, now_ms=now_ms)
+            result["candidates_85_plus"].append({
+                "strategy": "BREAKOUT", "direction": "long",
+                "score": 90, "verification": {"checked": True}})
+            return result
+        with self.assertRaisesRegex(ValueError, "independent_candidate_mismatch"):
+            verify(p, scan=ambiguous, now=NOW)
+
     def test_stale_candle_fails(self):
         with self.assertRaisesRegex(ValueError, "stale_candle"):
             verify(payload(), scan=scanner, now=2000)
