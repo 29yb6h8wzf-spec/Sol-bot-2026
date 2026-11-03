@@ -8,6 +8,7 @@ from futures_engine.market import closed_futures_bars
 from futures_engine.verified_candidate_audit import SYMBOLS, audit_candidate
 from strategies import candidates
 from futures_engine.research_history import record
+from futures_engine.candidate_verifier import verify_candidate, VerificationError
 
 
 def to_strategy_candles(bars):
@@ -39,17 +40,35 @@ def evaluate(symbol, *, loader=closed_futures_bars, now_ms=None):
             if hasattr(exchange, "close"):
                 exchange.close()
     setups, indicators = candidates(datasets["5m"], datasets["4h"])
-    eligible = [
-        {"strategy": s["strategy"], "direction": s["direction"],
-         "score": s["score"], "reason": s["reason"]}
-        for s in setups if isinstance(s.get("score"), int)
-        and 85 <= s["score"] <= 100
-    ]
+    eligible = []
+    rejected = []
+    for setup in setups:
+        score = setup.get("score")
+        if type(score) is not int or score < 85:
+            continue
+        candidate = {
+            "strategy": setup["strategy"],
+            "direction": setup["direction"],
+            "score": score,
+            "reason": setup.get("reason", ""),
+        }
+        try:
+            verification = verify_candidate(
+                candidate, symbol=symbol,
+                five=datasets["5m"], four=datasets["4h"])
+            eligible.append({**candidate, "verification": verification})
+        except VerificationError as exc:
+            rejected.append({
+                "strategy": candidate["strategy"],
+                "direction": candidate["direction"],
+                "reason": str(exc),
+            })
     return {
         "symbol": symbol,
         "closed_5m_candle_ms": datasets["5m"][-1]["time"],
         "closed_4h_candle_ms": datasets["4h"][-1]["time"],
         "candidates_85_plus": eligible,
+        "rejected_candidates": rejected,
         "status": "RESEARCH_ONLY",
         "score_verified_independently": False,
         "sqs_sent": False,
