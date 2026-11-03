@@ -6,7 +6,8 @@ import unittest
 from pathlib import Path
 
 from demo_execution_registry import client_order_id, record_confirmed_order
-from demo_trade_attribution import registry_orders
+from demo_trade_attribution import registry_orders, audit
+from datetime import datetime, timezone
 
 
 class Exchange:
@@ -73,6 +74,30 @@ class ReceiptRegistryTests(unittest.TestCase):
             self.assertEqual(path.stat().st_mode & 0o077, 0)
             self.assertEqual(json.loads(path.read_text())["orders"][0]["signal_id"],
                              "signal-1")
+
+    @unittest.skipUnless(os.geteuid() == 0, "root-owned registry required")
+    def test_recorded_receipt_is_attributed_only_after_exchange_readback(self):
+        now_ms = int(datetime(2026, 11, 3, 15, tzinfo=timezone.utc).timestamp() * 1000)
+        start_ms = int(datetime(2026, 11, 3, tzinfo=timezone.utc).timestamp() * 1000)
+        class TradeExchange(Exchange):
+            def fetch_my_trades(self, symbol, since, limit):
+                if symbol != "XRP/USDT:USDT":
+                    return []
+                return [{"symbol": symbol, "id": "9001", "order": "123",
+                         "timestamp": start_ms + 2000,
+                         "fee": {"currency": "USDT", "cost": "0.01"},
+                         "info": {"realizedPnl": "0.50"}}]
+        ex = TradeExchange(expected=client_order_id("signal-1"))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "registry.json"
+            record_confirmed_order(ex, signal_id="signal-1", leg="entry",
+                                   symbol="XRP/USDT:USDT", order_id="123",
+                                   registry_path=path)
+            result = audit(ex, registry_path=path, now_ms=now_ms)
+            self.assertEqual(result["signalpilot_fills"], 1)
+            self.assertEqual(result["unattributed_fills"], 0)
+            self.assertEqual(result["signalpilot_net_before_funding_usdt"], "0.49")
+            self.assertFalse(result["execution_authorized"])
 
     @unittest.skipUnless(os.geteuid() == 0, "root-owned registry required")
     def test_conflicting_receipt_rejected(self):
