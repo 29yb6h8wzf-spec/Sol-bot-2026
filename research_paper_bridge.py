@@ -4,6 +4,7 @@ No authenticated exchange clients, order placement, or execution permissions.
 A plan is NOT a fill. Stale signals are rejected, never replayed as trades.
 """
 import json
+from decimal import Decimal, InvalidOperation
 import sqlite3
 import time
 from pathlib import Path
@@ -33,6 +34,47 @@ def normalized_signal(record, *, now):
         "timestamp": compact["timestamp"],
         "source": compact["source"],
     }
+
+
+
+def validate_indicative_plan(result, normalized):
+    """Fail closed on incomplete, malformed, or mislabeled planner output."""
+    if not isinstance(result, dict):
+        raise ValueError("unsafe_plan_result")
+    if result.get("orders_sent") is not False or result.get("execution_authorized") is not False:
+        raise ValueError("execution_must_be_disabled")
+    if result.get("risk_snapshot_approved") is not False:
+        raise ValueError("risk_snapshot_must_be_unapproved")
+    if result.get("status") != "INDICATIVE_PLAN_ONLY_NOT_EXECUTABLE":
+        raise ValueError("unexpected_plan_status")
+    if result.get("signal_id") != normalized["signal_id"]:
+        raise ValueError("plan_signal_mismatch")
+    if result.get("symbol") != normalized["symbol"]:
+        raise ValueError("plan_symbol_mismatch")
+    if result.get("side") != normalized["direction"]:
+        raise ValueError("plan_direction_mismatch")
+    if result.get("closed_5m_candle_ms") != normalized["closed_5m_candle_ms"]:
+        raise ValueError("plan_candle_mismatch")
+    try:
+        entry, stop, target, qty, risk, notional = (
+            Decimal(str(result[key])) for key in
+            ("entry", "stop", "target", "quantity",
+             "estimated_loss_including_buffer", "estimated_notional")
+        )
+    except (KeyError, ValueError, TypeError, InvalidOperation) as exc:
+        raise ValueError("invalid_plan_numbers") from exc
+    if not all(v.is_finite() and v > 0 for v in
+               (entry, stop, target, qty, risk, notional)):
+        raise ValueError("nonpositive_or_nonfinite_plan")
+    if normalized["direction"] == "long" and not stop < entry < target:
+        raise ValueError("invalid_long_brackets")
+    if normalized["direction"] == "short" and not target < entry < stop:
+        raise ValueError("invalid_short_brackets")
+    if risk > Decimal("1.50") or notional > Decimal("300"):
+        raise ValueError("plan_risk_cap_exceeded")
+    if abs(qty * entry - notional) > Decimal("0.000001"):
+        raise ValueError("plan_notional_mismatch")
+    return result
 
 
 def run(source=SOURCE, journal=JOURNAL, *, now=None, planner=build_plan):
@@ -70,12 +112,7 @@ def run(source=SOURCE, journal=JOURNAL, *, now=None, planner=build_plan):
                 # build_plan independently recomputes the 5m/4h setup from
                 # Binance Futures, checks filters, and caps buffered risk.
                 result = planner(normalized, now_ms=now * 1000)
-                if not isinstance(result, dict) or result.get("orders_sent") is not False:
-                    raise ValueError("unsafe_plan_result")
-                if result.get("execution_authorized") is not False:
-                    raise ValueError("execution_must_be_disabled")
-                if result.get("signal_id") != sid:
-                    raise ValueError("plan_signal_mismatch")
+                validate_indicative_plan(result, normalized)
                 status, reason = "INDICATIVE_PLAN_ONLY", "no_order_submitted"
                 stats["planned"] += 1
             except Exception as exc:
