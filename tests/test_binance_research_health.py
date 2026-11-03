@@ -92,6 +92,14 @@ class ResearchHealthTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid_research_record"):
             self.report()
 
+    def test_legacy_missing_rejected_list(self):
+        with sqlite3.connect(self.research) as db:
+            db.execute("INSERT INTO research_scans VALUES (?,?,?,?)",
+                       (NOW, SYMBOL, "RESEARCH_ONLY",
+                        json.dumps({"symbol": SYMBOL, "status": "RESEARCH_ONLY",
+                                    "candidates_85_plus": []})))
+        self.assertEqual(self.report()["counts"]["scan_rows"], 2)
+
     def test_missing_db_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "research_database_missing"):
             summarize(research_db=self.root/"missing", sandbox_db=self.sandbox, now=NOW)
