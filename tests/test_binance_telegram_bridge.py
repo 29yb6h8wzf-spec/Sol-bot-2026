@@ -28,7 +28,7 @@ sys.modules["futures_engine.research_outbox"] = outbox_stub
 sys.modules["futures_engine.research_sqs_preview"] = preview_stub
 
 from binance_telegram_bridge import (
-    ENABLE_VAR, check_endpoint, load_secret, publish, sign_payload,
+    ENABLE_VAR, check_endpoint, load_secret, load_ssm_secret, publish, sign_payload,
 )
 
 URL = "https://sol-bot-2026.29yb6h8wzf.workers.dev/internal/binance-research"
@@ -130,6 +130,25 @@ class BridgeTests(unittest.TestCase):
         self.secret.write_bytes(b"short")
         with self.assertRaisesRegex(ValueError, "invalid_bridge_secret"):
             load_secret(self.secret)
+
+    def test_ssm_iam_role_secure_parameter(self):
+        calls = []
+        class FakeSSM:
+            def get_parameter(self, **kwargs):
+                calls.append(kwargs)
+                return {"Parameter": {"Value": "a" * 64}}
+        with patch("boto3.client", return_value=FakeSSM()) as client:
+            self.assertEqual(load_ssm_secret(), b"a" * 64)
+            self.assertTrue(calls[0]["WithDecryption"])
+            client.assert_called_once_with("ssm", region_name="il-central-1")
+
+    def test_ssm_invalid_secret_fails_closed(self):
+        class FakeSSM:
+            def get_parameter(self, **kwargs):
+                return {"Parameter": {"Value": "short"}}
+        with patch("boto3.client", return_value=FakeSSM()):
+            with self.assertRaisesRegex(ValueError, "invalid_ssm_bridge_secret"):
+                load_ssm_secret()
 
     def test_hmac_matches_expected(self):
         payload = {"type": "test", "score": 85}
