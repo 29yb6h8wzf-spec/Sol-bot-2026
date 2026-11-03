@@ -138,6 +138,7 @@ def run(root=ROOT):
                   "error_type": type(exc).__name__,
                   "allocation_ledger_reconciled": False,
                   "execution_authorized": False, "orders_sent": False}
+    status["observed_at"] = int(time.time())
     atomic_write(status_path, status)
     print(json.dumps(status, sort_keys=True))
     return status
