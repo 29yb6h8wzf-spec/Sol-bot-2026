@@ -1,3 +1,4 @@
+import { handleBinanceResearch } from "./binance_research_ingest.js";
 // SignalPilot Cloudflare Worker: scheduled market research, no trade execution.
 // Alerts are disabled until both Telegram secrets and SIGNAL_STATE KV are configured.
 const SYMBOLS = ['SOLUSDT','BTCUSDT','ETHUSDT','XRPUSDT','BNBUSDT'];
@@ -903,5 +904,5 @@ catch{watchDelivery={status:'failed',count:watchItems.length};console.warn('Owne
 const receipt={event:'scan_complete',release:RELEASE,source:'kraken_spot',cron:event.cron,scheduledTime:event.scheduledTime,recordedAt:Date.now(),ok:results.length===SYMBOLS.length,results:results.map(({watchCandidates:unused,...rest})=>rest),failures,watchDelivery};
 console.log(JSON.stringify(receipt));
 await env.SIGNAL_STATE.put('health:cron:'+event.scheduledTime,JSON.stringify(receipt),{expirationTtl:86400});await env.SIGNAL_STATE.put('health:latest',JSON.stringify(receipt),{expirationTtl:86400});try{await sendDailyHeartbeat(env,receipt);}catch{console.warn('Daily heartbeat Telegram delivery failed; will retry in the morning window');}await monitorBinanceAccount(env);if(results.length!==SYMBOLS.length)throw Error('One or more market scans failed');})());},
- async fetch(request){return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
+ async fetch(request,env){if(new URL(request.url).pathname==='/internal/binance-research')return handleBinanceResearch(request,env,{sendOwner:tgDirect});return new Response(JSON.stringify({service:'SignalPilot scanner',mode:'scheduled-only',note:'No manual trading endpoint'}),{headers:{'content-type':'application/json'}});}
 };
