@@ -37,6 +37,16 @@ class AttributionRiskTests(unittest.TestCase):
                     "unattributed_fills": 5,
                     "allocation_ledger_reconciled": False,
                     "execution_authorized": False, "orders_sent": False},
+                "demo-provenance-observation.json": {
+                    "source": "binance_demo_order_provenance_read_only",
+                    "observed_at": now, "day_start_utc_ms": start,
+                    "status": "AUDIT_ONLY_NOT_EXECUTABLE",
+                    "total_fills": 5, "unique_orders": 4,
+                    "verified_signalpilot_fills": 0,
+                    "unattributed_fills": 5,
+                    "order_classifications": {"EXTERNAL_OR_UNTAGGED": 4},
+                    "allocation_ledger_reconciled": False,
+                    "execution_authorized": False, "orders_sent": False},
                 "demo-position-stress.json": {
                     "source": "binance_demo_position_stress_read_only",
                     "observed_at": now, "position_count": 0,
@@ -97,6 +107,14 @@ class AttributionRiskTests(unittest.TestCase):
             docs["demo-reconciliation-status.json"]["prior_day_exposure_unresolved"] = False
             (root / "demo-reconciliation-status.json").write_text(
                 json.dumps(docs["demo-reconciliation-status.json"]))
+            docs["demo-provenance-observation.json"]["unattributed_fills"] = 4
+            (root / "demo-provenance-observation.json").write_text(
+                json.dumps(docs["demo-provenance-observation.json"]))
+            status = run(root)
+            self.assertEqual(status["reason"], "MISSING_OR_INVALID_OBSERVATION")
+            docs["demo-provenance-observation.json"]["unattributed_fills"] = 5
+            (root / "demo-provenance-observation.json").write_text(
+                json.dumps(docs["demo-provenance-observation.json"]))
             docs["demo-trade-attribution.json"]["observed_at"] = now - 100
             (root / "demo-trade-attribution.json").write_text(
                 json.dumps(docs["demo-trade-attribution.json"]))
