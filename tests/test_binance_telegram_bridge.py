@@ -9,6 +9,24 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+# The production research outbox/preview live on AWS and are intentionally
+# not part of this standalone CI unit-test fixture. Inject inert test stubs.
+import sys
+import types
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+if "futures_engine" not in sys.modules:
+    package = types.ModuleType("futures_engine")
+    package.__path__ = []
+    sys.modules["futures_engine"] = package
+outbox_stub = types.ModuleType("futures_engine.research_outbox")
+outbox_stub.DB = "/unused-ci-research.sqlite3"
+preview_stub = types.ModuleType("futures_engine.research_sqs_preview")
+def _no_live_preview(*args, **kwargs):
+    raise RuntimeError("offline_preview_stub_must_be_mocked")
+preview_stub.preview = _no_live_preview
+sys.modules["futures_engine.research_outbox"] = outbox_stub
+sys.modules["futures_engine.research_sqs_preview"] = preview_stub
+
 from binance_telegram_bridge import (
     ENABLE_VAR, check_endpoint, load_secret, publish, sign_payload,
 )
