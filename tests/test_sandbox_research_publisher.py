@@ -27,11 +27,15 @@ def make_db(path):
 
 class SandboxPublisherTests(unittest.TestCase):
     def setUp(self):
+        self.env=patch.dict(os.environ, {"SIGNALPILOT_SANDBOX_PUBLISH_ENABLED":"1"})
+        self.env.start()
         self.tmp=tempfile.TemporaryDirectory()
         self.db=os.path.join(self.tmp.name,"test.sqlite")
         make_db(self.db)
         self.sqs=FakeSQS()
-    def tearDown(self): self.tmp.cleanup()
+    def tearDown(self):
+        self.tmp.cleanup()
+        self.env.stop()
     def test_sends_only_sandbox_research_envelope(self):
         result=publish(db=self.db,sqs=self.sqs,now=(CANDLE+300000)//1000+10)
         self.assertEqual(result["sent"],1)
@@ -45,6 +49,19 @@ class SandboxPublisherTests(unittest.TestCase):
         result=publish(db=self.db,sqs=self.sqs,now=now)
         self.assertEqual(result["already_sent"],1)
         self.assertEqual(len(self.sqs.messages),1)
+    def test_ambiguous_send_never_retries(self):
+        class BrokenSQS:
+            def send_message(self, **kwargs):
+                raise TimeoutError("response lost")
+        now=(CANDLE+300000)//1000+10
+        with self.assertRaises(TimeoutError):
+            publish(db=self.db,sqs=BrokenSQS(),now=now)
+        result=publish(db=self.db,sqs=self.sqs,now=now)
+        self.assertEqual(result["already_sent"],1)
+        self.assertEqual(len(self.sqs.messages),0)
+        with sqlite3.connect(self.db) as db:
+            state=db.execute("SELECT message_id FROM sandbox_publish_log").fetchone()[0]
+        self.assertEqual(state,"UNCONFIRMED")
     def test_rejects_expired(self):
         result=publish(db=self.db,sqs=self.sqs,now=(CANDLE+300000)//1000+121)
         self.assertEqual(result["sent"],0)
