@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-const source=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
+const source=(await fs.readFile(new URL('./worker.js',import.meta.url),'utf8')).replace(/^import \{ handleBinanceResearch \} from "\.\/binance_research_ingest\.js";\n/,'');
 const {candles,fetchKrakenOHLC,parseNewsFeed,newsForSymbol,formatNewsContext,loadNews,tradePlan,tradeMessage,processTelegramAccess,readBinancePositions,monitorBinanceAccount,sendResearch,rsi,testBroadcast,evaluatePaperSignal,recordResearchSignal,filterAndLimitSetups,deliverResearchCandidates,scanAuditReport,sendDailyHeartbeat,setups,fetchMarketTimeframes,scoreWatchProgress,watchCandidates,sendWatchDigest,MIN_SIGNAL_SCORE,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const now=Date.now, originalFetch=globalThis.fetch;
 const fixed=1800000000000;
