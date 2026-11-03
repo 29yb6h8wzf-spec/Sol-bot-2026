@@ -63,6 +63,17 @@ class AttributionRiskTests(unittest.TestCase):
             self.assertEqual(status["unattributed_fills"], 5)
             self.assertFalse(status["execution_authorized"])
             self.assertEqual(status["virtual_allocation_usdt"], "150")
+            docs["demo-position-stress.json"]["stress_2pct_exceeds_daily_cap"] = True
+            docs["demo-position-stress.json"]["stress_loss_2pct_usdt"] = "8"
+            (root / "demo-position-stress.json").write_text(
+                json.dumps(docs["demo-position-stress.json"]))
+            status = run(root)
+            self.assertEqual(status["reason"], "POSITION_STRESS_EXCEEDS_DAILY_CAP")
+            self.assertFalse(status["execution_authorized"])
+            docs["demo-position-stress.json"]["stress_2pct_exceeds_daily_cap"] = False
+            docs["demo-position-stress.json"]["stress_loss_2pct_usdt"] = "0"
+            (root / "demo-position-stress.json").write_text(
+                json.dumps(docs["demo-position-stress.json"]))
             docs["demo-trade-attribution.json"]["observed_at"] = now - 100
             (root / "demo-trade-attribution.json").write_text(
                 json.dumps(docs["demo-trade-attribution.json"]))
