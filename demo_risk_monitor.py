@@ -190,6 +190,35 @@ def run(root=ROOT):
                     ("prior_day_exposure_unresolved", "unattributed_history_unresolved",
                      "monitoring_gap_unresolved", "open_exposure_now"))):
             raise ValueError("invalid_reconciliation_status")
+        provenance_path = root / "demo-provenance-observation.json"
+        provenance_stat = provenance_path.lstat()
+        if (provenance_path.is_symlink() or not provenance_path.is_file() or
+                provenance_stat.st_uid != 0 or provenance_stat.st_mode & 0o077):
+            raise ValueError("untrusted_provenance_observation")
+        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+        check_observation(provenance,
+                          "binance_demo_order_provenance_read_only",
+                          int(time.time()))
+        classifications = provenance.get("order_classifications")
+        if (provenance.get("status") != "AUDIT_ONLY_NOT_EXECUTABLE" or
+                provenance.get("execution_authorized") is not False or
+                provenance.get("allocation_ledger_reconciled") is not False or
+                provenance.get("day_start_utc_ms") != attribution.get("day_start_utc_ms") or
+                type(provenance.get("total_fills")) is not int or
+                type(provenance.get("unique_orders")) is not int or
+                type(provenance.get("verified_signalpilot_fills")) is not int or
+                type(provenance.get("unattributed_fills")) is not int or
+                provenance["total_fills"] < 0 or provenance["unique_orders"] < 0 or
+                provenance["verified_signalpilot_fills"] < 0 or
+                provenance["unattributed_fills"] < 0 or
+                provenance["total_fills"] != (provenance["verified_signalpilot_fills"] +
+                                               provenance["unattributed_fills"]) or
+                provenance["unattributed_fills"] != attribution["unattributed_fills"] or
+                provenance["verified_signalpilot_fills"] != attribution.get("signalpilot_fills") or
+                not isinstance(classifications, dict) or
+                any(type(v) is not int or v < 0 for v in classifications.values()) or
+                sum(classifications.values()) != provenance["unique_orders"]):
+            raise ValueError("provenance_attribution_mismatch")
         previous = json.loads(state_path.read_text()) if state_path.exists() else None
         status, state = assess(pnl, exposure, account, previous)
         if (attribution["unattributed_fills"] > 0 and
@@ -215,6 +244,8 @@ def run(root=ROOT):
         status["prior_day_exposure_unresolved"] = reconciliation["prior_day_exposure_unresolved"]
         status["unattributed_history_unresolved"] = reconciliation["unattributed_history_unresolved"]
         status["monitoring_gap_unresolved"] = reconciliation["monitoring_gap_unresolved"]
+        status["unattributed_orders"] = provenance["unique_orders"] - classifications.get("VERIFIED_SIGNALPILOT", 0)
+        status["provenance_verified_signalpilot_fills"] = provenance["verified_signalpilot_fills"]
         status["unattributed_fills"] = attribution["unattributed_fills"]
         status["virtual_allocation_usdt"] = allocation["virtual_start_capital_usdt"]
         status["virtual_allocation_reconciled"] = False
