@@ -130,8 +130,21 @@ def run(root=ROOT):
         pnl = json.loads((root / "demo-pnl-observation.json").read_text())
         exposure = json.loads((root / "demo-exposure-observation.json").read_text())
         account = json.loads((root / "demo-account-observation.json").read_text())
+        attribution = json.loads((root / "demo-trade-attribution.json").read_text())
+        check_observation(attribution,
+                          "binance_demo_four_symbol_trade_attribution_read_only",
+                          int(time.time()))
+        if (attribution.get("allocation_ledger_reconciled") is not False or
+                attribution.get("execution_authorized") is not False or
+                type(attribution.get("unattributed_fills")) is not int or
+                attribution["unattributed_fills"] < 0):
+            raise ValueError("invalid_trade_attribution")
         previous = json.loads(state_path.read_text()) if state_path.exists() else None
         status, state = assess(pnl, exposure, account, previous)
+        if (attribution["unattributed_fills"] > 0 and
+                status["reason"] != "DAILY_LOSS_KILL_SWITCH"):
+            status["reason"] = "UNATTRIBUTED_DEMO_FILLS"
+        status["unattributed_fills"] = attribution["unattributed_fills"]
         atomic_write(state_path, state)
     except (OSError, ValueError, TypeError, KeyError) as exc:
         status = {"status": "BLOCKED", "reason": "MISSING_OR_INVALID_OBSERVATION",
