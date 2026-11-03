@@ -86,10 +86,10 @@ def main():
     # Recompute signal independently from Binance Futures market data.
     # Risk preflight is intentionally absent: no demo orders are authorized.
     from demo_independent_verifier import verify
-    from demo_risk_adapter import load_account, preflight
+    from demo_risk_adapter import load_account, preflight_with_monitor
     account = load_account()
     for result in connect_inbox(args.inbox, args.journal, verifier=verify,
-                                preflight=preflight, account=account):
+                                preflight=preflight_with_monitor, account=account):
         print(json.dumps(result, sort_keys=True))
 
 
