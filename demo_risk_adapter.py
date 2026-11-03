@@ -59,3 +59,31 @@ def preflight(verified_intent, account):
         if key not in verified_intent:
             return False, "independent_order_plan_missing"
     return order_check(verified_intent, account)
+
+
+RISK_STATUS_PATH = "/opt/signalpilot/demo-risk-monitor-status.json"
+
+
+def preflight_with_monitor(verified_intent, account, *,
+                           status_path=RISK_STATUS_PATH, now=None):
+    """Never approve a demo order while account allocation is unreconciled.
+
+    The read-only monitor deliberately produces BLOCKED status only. A future
+    separately tested reconciler must implement an approved risk snapshot.
+    """
+    now = int(time.time()) if now is None else int(now)
+    try:
+        file = Path(status_path)
+        st = file.stat()
+        if not file.is_file() or st.st_uid != 0 or st.st_mode & 0o077:
+            return False, "risk_monitor_status_untrusted"
+        status = json.loads(file.read_text(encoding="utf-8"))
+        if type(status.get("observed_at")) is not int or not 0 <= now - status["observed_at"] <= 90:
+            return False, "risk_monitor_status_stale"
+        if (status.get("status") != "APPROVED" or
+                status.get("allocation_ledger_reconciled") is not True or
+                status.get("execution_authorized") is not True):
+            return False, "risk_monitor_blocked"
+        return preflight(verified_intent, account)
+    except (OSError, ValueError, TypeError, KeyError):
+        return False, "risk_monitor_status_missing"
