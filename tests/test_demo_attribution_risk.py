@@ -33,16 +33,28 @@ class AttributionRiskTests(unittest.TestCase):
                     "orders_sent": False},
                 "demo-trade-attribution.json": {
                     "source": "binance_demo_four_symbol_trade_attribution_read_only",
-                    "observed_at": now, "unattributed_fills": 5,
+                    "observed_at": now, "day_start_utc_ms": start,
+                    "unattributed_fills": 5,
+                    "allocation_ledger_reconciled": False,
+                    "execution_authorized": False, "orders_sent": False},
+                "demo-virtual-allocation.json": {
+                    "source": "signalpilot_demo_virtual_allocation_read_only",
+                    "observed_at": now, "day_start_utc_ms": start,
+                    "status": "BLOCKED_OBSERVATION_ONLY",
+                    "virtual_start_capital_usdt": "150",
+                    "max_daily_loss_usdt": "7.50",
+                    "unattributed_fills_today": 5,
                     "allocation_ledger_reconciled": False,
                     "execution_authorized": False, "orders_sent": False},
             }
             for name, obj in docs.items():
                 (root / name).write_text(json.dumps(obj))
+                (root / name).chmod(0o600)
             status = run(root)
             self.assertEqual(status["reason"], "UNATTRIBUTED_DEMO_FILLS")
             self.assertEqual(status["unattributed_fills"], 5)
             self.assertFalse(status["execution_authorized"])
+            self.assertEqual(status["virtual_allocation_usdt"], "150")
             docs["demo-trade-attribution.json"]["observed_at"] = now - 100
             (root / "demo-trade-attribution.json").write_text(
                 json.dumps(docs["demo-trade-attribution.json"]))
