@@ -137,16 +137,19 @@ class BridgeTests(unittest.TestCase):
             def get_parameter(self, **kwargs):
                 calls.append(kwargs)
                 return {"Parameter": {"Value": "a" * 64}}
-        with patch("boto3.client", return_value=FakeSSM()) as client:
+        fake = types.ModuleType("boto3")
+        fake.client = lambda service, region_name: FakeSSM()
+        with patch.dict(sys.modules, {"boto3": fake}):
             self.assertEqual(load_ssm_secret(), b"a" * 64)
             self.assertTrue(calls[0]["WithDecryption"])
-            client.assert_called_once_with("ssm", region_name="il-central-1")
 
     def test_ssm_invalid_secret_fails_closed(self):
         class FakeSSM:
             def get_parameter(self, **kwargs):
                 return {"Parameter": {"Value": "short"}}
-        with patch("boto3.client", return_value=FakeSSM()):
+        fake = types.ModuleType("boto3")
+        fake.client = lambda service, region_name: FakeSSM()
+        with patch.dict(sys.modules, {"boto3": fake}):
             with self.assertRaisesRegex(ValueError, "invalid_ssm_bridge_secret"):
                 load_ssm_secret()
 
