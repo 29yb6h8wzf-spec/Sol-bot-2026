@@ -46,7 +46,7 @@ export async function verifyBinanceResearchSignature(secret, timestamp, raw, sig
 export async function handleBinanceResearch(request, env, { sendOwner } = {}) {
   if (new URL(request.url).pathname !== ROUTE) return new Response("Not found", { status: 404 });
   if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
-  if (!env.BINANCE_RESEARCH_INGEST_SECRET || !env.SIGNAL_STATE || !env.TELEGRAM_CHAT_ID) {
+  if (!env.BINANCE_RESEARCH_INGEST_SECRET || !env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
     return new Response("Research bridge disabled", { status: 503 });
   }
   const raw = await request.text();
@@ -77,24 +77,11 @@ export async function handleBinanceResearch(request, env, { sendOwner } = {}) {
   } catch {
     return new Response("Invalid or expired research", { status: 422 });
   }
-  const key = testOnly ? "binance-research:test:" + body.nonce :
-    "binance-research:owner:" + body.signal_id;
-  try {
-    if (await env.SIGNAL_STATE.get(key)) {
-      return Response.json({ status: "already_claimed", research_only: true });
-    }
-  } catch (error) {
-    console.error("research_bridge_kv_get_failed", String(error).slice(0, 160));
-    return Response.json({ status: "kv_read_unavailable" }, { status: 503 });
-  }
-  // Claim before external delivery: ambiguous Telegram failures require manual
-  // reconciliation; never automatically resend a possibly delivered alert.
-  try {
-    await env.SIGNAL_STATE.put(key, "claimed", { expirationTtl: 86400 });
-  } catch (error) {
-    console.error("research_bridge_kv_claim_failed", String(error).slice(0, 160));
-    return Response.json({ status: "kv_claim_unavailable" }, { status: 503 });
-  }
+  // Stateless Cloudflare relay: the free KV daily write quota can be exhausted.
+  // AWS alone serializes publication and durably claims each research signal
+  // BEFORE sending HTTPS. No retries after ambiguous delivery. HMAC + timestamp
+  // protect this endpoint; the relay itself does not guarantee replay prevention.
+  // Never send from a second publisher or log signed requests.
   const message = testOnly ? [
     "🧪 SIGNALPILOT — בדיקת חיבור",
     "AWS → Cloudflare → Telegram",
@@ -112,10 +99,8 @@ export async function handleBinanceResearch(request, env, { sendOwner } = {}) {
   try {
     if (typeof sendOwner !== "function") throw new Error("missing_delivery_handler");
     await sendOwner(env, String(env.TELEGRAM_CHAT_ID), message);
-    await env.SIGNAL_STATE.put(key, "delivered", { expirationTtl: 86400 });
     return Response.json({ status: "delivered_owner_only", research_only: true, test_only: testOnly });
   } catch {
-    await env.SIGNAL_STATE.put(key, "delivery_unconfirmed", { expirationTtl: 86400 });
     return Response.json({ status: "delivery_unconfirmed", research_only: true }, { status: 502 });
   }
 }
