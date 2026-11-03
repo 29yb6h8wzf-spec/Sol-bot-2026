@@ -42,7 +42,7 @@ class Exchange:
         self.position_reads += 1
         # preflight flat, then entry filled, then emergency exit reconciled
         contracts = 0 if self.position_reads == 1 else (
-            4.8 if self.position_reads == 2 or self.residual else 0)
+            4.8 if not self.exit_submitted or self.residual else 0)
         return [{"symbol": symbols[0], "contracts": contracts}]
 
     def fetch_open_orders(self, symbol):
