@@ -1,0 +1,25 @@
+name: Binance research bridge safety tests
+
+on:
+  push:
+    branches: [29yb6h8wzf-spec-patch-1]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  bridge-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test Cloudflare owner-only HMAC research ingress
+        run: node --test tests/test_binance_research_ingest.mjs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test Python read-only bridge
+        run: python -m unittest discover -s tests -p 'test_binance_telegram_bridge.py' -v
