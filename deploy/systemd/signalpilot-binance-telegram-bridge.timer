@@ -1,0 +1,11 @@
+[Unit]
+Description=SignalPilot Binance Futures research Telegram delivery timer (requires secure provisioning)
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=1min
+AccuracySec=15s
+Unit=signalpilot-binance-telegram-bridge.service
+
+[Install]
+WantedBy=timers.target
