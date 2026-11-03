@@ -7,6 +7,7 @@ import json
 from futures_engine.market import closed_futures_bars
 from futures_engine.verified_candidate_audit import SYMBOLS, audit_candidate
 from strategies import candidates
+from futures_engine.research_history import record
 
 
 def to_strategy_candles(bars):
@@ -59,11 +60,18 @@ def evaluate(symbol, *, loader=closed_futures_bars, now_ms=None):
 def main():
     for symbol in SYMBOLS:
         try:
-            print(json.dumps(evaluate(symbol), ensure_ascii=False))
+            result = evaluate(symbol)
+            record(result)
+            print(json.dumps(result, ensure_ascii=False))
         except Exception as exc:
-            print(json.dumps({"symbol": symbol, "status": "BLOCKED",
-                              "reason": str(exc), "sqs_sent": False,
-                              "orders_sent": False}))
+            result = {"symbol": symbol, "status": "BLOCKED",
+                      "reason": str(exc), "sqs_sent": False,
+                      "orders_sent": False}
+            try:
+                record(result)
+            except Exception as storage_exc:
+                result["storage_error"] = type(storage_exc).__name__
+            print(json.dumps(result))
 
 
 if __name__ == "__main__":
