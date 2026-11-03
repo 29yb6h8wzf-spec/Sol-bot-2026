@@ -172,6 +172,24 @@ def run(root=ROOT):
                 type(stress.get("stress_5pct_exceeds_daily_cap")) is not bool or
                 type(stress.get("stress_2pct_exceeds_daily_cap")) is not bool):
             raise ValueError("invalid_position_stress")
+        reconciliation_path = root / "demo-reconciliation-status.json"
+        reconciliation_stat = reconciliation_path.lstat()
+        if (reconciliation_path.is_symlink() or not reconciliation_path.is_file() or
+                reconciliation_stat.st_uid != 0 or reconciliation_stat.st_mode & 0o077):
+            raise ValueError("untrusted_reconciliation_status")
+        reconciliation = json.loads(reconciliation_path.read_text(encoding="utf-8"))
+        check_observation(reconciliation,
+                          "signalpilot_demo_reconciliation_guard_read_only",
+                          int(time.time()))
+        if (reconciliation.get("status") != "BLOCKED_UNRECONCILED" or
+                reconciliation.get("allocation_ledger_reconciled") is not False or
+                reconciliation.get("execution_authorized") is not False or
+                reconciliation.get("day_start_utc_ms") != pnl.get("day_start_utc_ms") or
+                reconciliation.get("unattributed_fills_today") != attribution["unattributed_fills"] or
+                any(type(reconciliation.get(k)) is not bool for k in
+                    ("prior_day_exposure_unresolved", "unattributed_history_unresolved",
+                     "monitoring_gap_unresolved", "open_exposure_now"))):
+            raise ValueError("invalid_reconciliation_status")
         previous = json.loads(state_path.read_text()) if state_path.exists() else None
         status, state = assess(pnl, exposure, account, previous)
         if (attribution["unattributed_fills"] > 0 and
@@ -182,6 +200,20 @@ def run(root=ROOT):
             status["reason"] = "POSITION_STRESS_EXCEEDS_DAILY_CAP"
         status["stress_loss_2pct_usdt"] = stress["stress_loss_2pct_usdt"]
         status["stress_loss_5pct_usdt"] = stress["stress_loss_5pct_usdt"]
+        if status["reason"] != "DAILY_LOSS_KILL_SWITCH":
+            if reconciliation["prior_day_exposure_unresolved"]:
+                status["reason"] = "PRIOR_DAY_EXPOSURE_UNRECONCILED"
+            elif reconciliation["monitoring_gap_unresolved"]:
+                status["reason"] = "MONITORING_GAP_UNRECONCILED"
+            elif reconciliation["unattributed_history_unresolved"] and not attribution["unattributed_fills"]:
+                status["reason"] = "UNATTRIBUTED_HISTORICAL_FILLS"
+            elif (number(reconciliation.get("account_realized_gap_usdt")) != 0 or
+                  number(reconciliation.get("account_commission_gap_usdt")) != 0 or
+                  number(reconciliation.get("account_funding_unattributed_usdt")) != 0):
+                status["reason"] = "ACCOUNTING_GAP_UNRECONCILED"
+        status["prior_day_exposure_unresolved"] = reconciliation["prior_day_exposure_unresolved"]
+        status["unattributed_history_unresolved"] = reconciliation["unattributed_history_unresolved"]
+        status["monitoring_gap_unresolved"] = reconciliation["monitoring_gap_unresolved"]
         status["unattributed_fills"] = attribution["unattributed_fills"]
         status["virtual_allocation_usdt"] = allocation["virtual_start_capital_usdt"]
         status["virtual_allocation_reconciled"] = False
