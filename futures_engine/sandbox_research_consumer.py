@@ -4,6 +4,8 @@ import os
 import sqlite3
 import time
 import boto3
+from futures_engine.sandbox_hmac import verify
+from futures_engine.sandbox_secret import load_key
 
 QUEUE = "https://sqs.il-central-1.amazonaws.com/514349355336/signalpilot-signals-sandbox"
 DB = "/opt/signalpilot/sandbox-received.sqlite3"
@@ -37,8 +39,11 @@ def validate(body):
     # This is only schema validation, not cryptographic source authentication.
     return sid
 
-def process(body, *, db=DB):
-    sid = validate(body)
+def process(body, *, db=DB, key=None):
+    if key is None:
+        key = load_key()
+    unsigned = verify(body, secret=key)
+    sid = validate(unsigned)
     with sqlite3.connect(db, timeout=20) as conn:
         conn.execute("CREATE TABLE IF NOT EXISTS sandbox_received ("
                      "research_signal_id TEXT PRIMARY KEY, received_at INTEGER NOT NULL, "
@@ -50,6 +55,7 @@ def process(body, *, db=DB):
 def poll_once(*, sqs=None, db=DB):
     if os.environ.get("SIGNALPILOT_SANDBOX_CONSUME_ENABLED") != "1":
         raise RuntimeError("sandbox consumer disabled")
+    key = load_key()  # Fail closed before receiving any queue messages.
     sqs = sqs or boto3.client("sqs", region_name="il-central-1")
     response = sqs.receive_message(QueueUrl=QUEUE, MaxNumberOfMessages=5,
                                    WaitTimeSeconds=10, VisibilityTimeout=60)
@@ -57,7 +63,7 @@ def poll_once(*, sqs=None, db=DB):
     for message in response.get("Messages", []):
         try:
             body = json.loads(message["Body"])
-            outcome = process(body, db=db)
+            outcome = process(body, db=db, key=key)
         except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
             # Do not delete invalid messages; retain for investigation / redrive.
             print(json.dumps({"rejected_message_id":message.get("MessageId"),
