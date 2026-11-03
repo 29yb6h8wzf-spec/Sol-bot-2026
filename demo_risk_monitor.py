@@ -207,9 +207,10 @@ def run(root=ROOT):
                 status["reason"] = "MONITORING_GAP_UNRECONCILED"
             elif reconciliation["unattributed_history_unresolved"] and not attribution["unattributed_fills"]:
                 status["reason"] = "UNATTRIBUTED_HISTORICAL_FILLS"
-            elif (number(reconciliation.get("account_realized_gap_usdt")) != 0 or
-                  number(reconciliation.get("account_commission_gap_usdt")) != 0 or
-                  number(reconciliation.get("account_funding_unattributed_usdt")) != 0):
+            elif (not attribution["unattributed_fills"] and
+                  (number(reconciliation.get("account_realized_gap_usdt")) != 0 or
+                   number(reconciliation.get("account_commission_gap_usdt")) != 0 or
+                   number(reconciliation.get("account_funding_unattributed_usdt")) != 0)):
                 status["reason"] = "ACCOUNTING_GAP_UNRECONCILED"
         status["prior_day_exposure_unresolved"] = reconciliation["prior_day_exposure_unresolved"]
         status["unattributed_history_unresolved"] = reconciliation["unattributed_history_unresolved"]
