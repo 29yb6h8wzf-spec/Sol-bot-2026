@@ -1,0 +1,10 @@
+[Unit]
+Description=SignalPilot research expiry ledger (no trading)
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/signalpilot
+ExecStart=/usr/bin/flock -n /run/lock/signalpilot-research-expiry.lock /opt/signalpilot/.venv/bin/python -m futures_engine.research_expiry_ledger --apply
+NoNewPrivileges=true
