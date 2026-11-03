@@ -111,7 +111,8 @@ async function main(){
   report('BNBUSDT Kraken Spot '+interval+'m public OHLC pair and candle count verified before deployment.');
  }
  const code=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
- const form=new FormData();form.append('metadata',new Blob([JSON.stringify(metadata)],{type:'application/json'}),'metadata.json');form.append('worker.js',new Blob([code],{type:'application/javascript+module'}),'worker.js');
+ const ingest=await fs.readFile(new URL('./binance_research_ingest.js',import.meta.url),'utf8');
+ const form=new FormData();form.append('metadata',new Blob([JSON.stringify(metadata)],{type:'application/json'}),'metadata.json');form.append('worker.js',new Blob([code],{type:'application/javascript+module'}),'worker.js');form.append('binance_research_ingest.js',new Blob([ingest],{type:'application/javascript+module'}),'binance_research_ingest.js');
  const deployed=await api('',{method:'PUT',body:form});
  report('Worker deployed; version '+(deployed.deployment_id||deployed.id||'accepted')+'.');
  const after=await api('/settings');

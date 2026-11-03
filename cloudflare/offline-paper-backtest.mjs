@@ -2,7 +2,7 @@
 // No network calls, credentials, live orders, optimization, or fabricated returns.
 import fs from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
-const workerSource=await fs.readFile(new URL('./worker.js',import.meta.url),'utf8');
+const workerSource=(await fs.readFile(new URL('./worker.js',import.meta.url),'utf8')).replace(/^import \{ handleBinanceResearch \} from "\.\/binance_research_ingest\.js";\n/,'');
 const {evaluatePaperSignal}=await import('data:text/javascript;base64,'+Buffer.from(workerSource).toString('base64'));
 function timestamp(value){const n=typeof value==='number'?value:Date.parse(value);if(!Number.isFinite(n))throw Error('Invalid timestamp');return n;}
 export function analyzeBacktest(payload){
