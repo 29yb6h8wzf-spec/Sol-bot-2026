@@ -60,7 +60,7 @@ def summarize(*, research_db=RESEARCH_DB, sandbox_db=SANDBOX_DB, now=None):
                 counts["scan_errors"] += 1
                 continue
             accepted = payload.get("candidates_85_plus")
-            rejected = payload.get("rejected_candidates")
+            rejected = payload.get("rejected_candidates", [])
             if not isinstance(accepted, list) or not isinstance(rejected, list):
                 raise ValueError("invalid_candidate_lists")
             for candidate in accepted:
