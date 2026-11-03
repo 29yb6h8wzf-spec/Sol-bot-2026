@@ -37,6 +37,14 @@ class AttributionRiskTests(unittest.TestCase):
                     "unattributed_fills": 5,
                     "allocation_ledger_reconciled": False,
                     "execution_authorized": False, "orders_sent": False},
+                "demo-position-stress.json": {
+                    "source": "binance_demo_position_stress_read_only",
+                    "observed_at": now, "position_count": 0,
+                    "unrealized_pnl_usdt": "0", "gross_notional_usdt": "0",
+                    "stress_loss_2pct_usdt": "0", "stress_loss_5pct_usdt": "0",
+                    "stress_2pct_exceeds_daily_cap": False,
+                    "stress_5pct_exceeds_daily_cap": False,
+                    "execution_authorized": False, "orders_sent": False},
                 "demo-virtual-allocation.json": {
                     "source": "signalpilot_demo_virtual_allocation_read_only",
                     "observed_at": now, "day_start_utc_ms": start,
