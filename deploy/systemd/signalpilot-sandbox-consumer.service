@@ -1,0 +1,13 @@
+[Unit]
+Description=SignalPilot sandbox-only research consumer (no trading)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/signalpilot
+Environment=SIGNALPILOT_SANDBOX_CONSUME_ENABLED=1
+ExecStart=/usr/bin/flock -n /run/lock/signalpilot-sandbox-consumer.lock /opt/signalpilot/.venv/bin/python -m futures_engine.sandbox_research_consumer
+TimeoutStartSec=45
+NoNewPrivileges=true
