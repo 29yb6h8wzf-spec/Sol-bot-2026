@@ -4,6 +4,7 @@ from futures_engine.verified_strategy_scan import evaluate
 
 STEP = {"5m": 300000, "4h": 14400000}
 BASE = 1728000000000
+END = BASE + 110*STEP["4h"]
 
 class DummyExchange:
     closed = False
@@ -12,7 +13,7 @@ class DummyExchange:
 
 def loader(symbol, timeframe):
     step = STEP[timeframe]
-    bars = [[BASE + i*step, 100, 102, 99, 100+i*0.01, 10]
+    bars = [[END - (110-i)*step, 100, 102, 99, 100+i*0.01, 10]
             for i in range(110)]
     return DummyExchange(), {}, bars
 
@@ -22,7 +23,7 @@ class StrategyScanTests(unittest.TestCase):
                    return_value=([{"strategy":"EMA_ADX","direction":"LONG",
                                    "score":90,"reason":"test"}], {})):
             result = evaluate("SOL/USDT:USDT", loader=loader,
-                              now_ms=BASE + 110*STEP["4h"] + 1000)
+                              now_ms=END + 1000)
         self.assertEqual(len(result["candidates_85_plus"]), 1)
         self.assertFalse(result["score_verified_independently"])
         self.assertFalse(result["sqs_sent"])
@@ -43,7 +44,7 @@ class StrategyScanTests(unittest.TestCase):
     def test_reject_stale_data(self):
         with self.assertRaisesRegex(ValueError, "stale"):
             evaluate("SOL/USDT:USDT", loader=loader,
-                     now_ms=BASE + 112*STEP["4h"] + 200000)
+                     now_ms=END + 2*STEP["4h"] + 200000)
 
 if __name__ == "__main__":
     unittest.main()
