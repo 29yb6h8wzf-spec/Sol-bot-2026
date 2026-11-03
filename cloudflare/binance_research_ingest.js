@@ -90,7 +90,7 @@ export async function handleBinanceResearch(request, env, { sendOwner } = {}) {
     "AWS → Cloudflare → Telegram",
     "זו הודעת בדיקה בלבד, לא איתות מסחר.",
     "🚫 לא נפתחה עסקה ולא הופעל מסחר אוטומטי."
-  ].join("\\n") : [
+  ].join("\n") : [
     "🔔 SIGNALPILOT | Binance Futures — מחקר",
     body.symbol + " | " + body.direction.toUpperCase() +
       " | דירוג תנאים " + body.score + "/100",
