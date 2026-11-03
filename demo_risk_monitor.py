@@ -139,12 +139,31 @@ def run(root=ROOT):
                 type(attribution.get("unattributed_fills")) is not int or
                 attribution["unattributed_fills"] < 0):
             raise ValueError("invalid_trade_attribution")
+        allocation_path = root / "demo-virtual-allocation.json"
+        allocation_stat = allocation_path.lstat()
+        if (allocation_path.is_symlink() or not allocation_path.is_file() or
+                allocation_stat.st_uid != 0 or allocation_stat.st_mode & 0o077):
+            raise ValueError("untrusted_allocation_observation")
+        allocation = json.loads(allocation_path.read_text(encoding="utf-8"))
+        check_observation(allocation,
+                          "signalpilot_demo_virtual_allocation_read_only",
+                          int(time.time()))
+        if (allocation.get("status") != "BLOCKED_OBSERVATION_ONLY" or
+                allocation.get("virtual_start_capital_usdt") != "150" or
+                allocation.get("max_daily_loss_usdt") != "7.50" or
+                allocation.get("execution_authorized") is not False or
+                allocation.get("allocation_ledger_reconciled") is not False or
+                allocation.get("unattributed_fills_today") != attribution["unattributed_fills"] or
+                allocation.get("day_start_utc_ms") != attribution.get("day_start_utc_ms")):
+            raise ValueError("invalid_virtual_allocation")
         previous = json.loads(state_path.read_text()) if state_path.exists() else None
         status, state = assess(pnl, exposure, account, previous)
         if (attribution["unattributed_fills"] > 0 and
                 status["reason"] != "DAILY_LOSS_KILL_SWITCH"):
             status["reason"] = "UNATTRIBUTED_DEMO_FILLS"
         status["unattributed_fills"] = attribution["unattributed_fills"]
+        status["virtual_allocation_usdt"] = allocation["virtual_start_capital_usdt"]
+        status["virtual_allocation_reconciled"] = False
         atomic_write(state_path, state)
     except (OSError, ValueError, TypeError, KeyError) as exc:
         status = {"status": "BLOCKED", "reason": "MISSING_OR_INVALID_OBSERVATION",
