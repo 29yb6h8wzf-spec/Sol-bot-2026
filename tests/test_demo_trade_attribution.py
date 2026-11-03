@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from demo_trade_attribution import audit, fetch_day_trades, registry_orders
+from demo_execution_registry import client_order_id
 
 NOW = int(datetime(2026, 11, 3, 15, tzinfo=timezone.utc).timestamp() * 1000)
 START = int(datetime(2026, 11, 3, tzinfo=timezone.utc).timestamp() * 1000)
@@ -20,11 +21,11 @@ def trade(order="123", client=None, *, fee="0.01", realized="0.5"):
 
 
 class Exchange:
-    def __init__(self, *, trades=None, demo=True, order_client="SPDEMO-signal1"):
+    def __init__(self, *, trades=None, demo=True, order_client=None):
         self.urls = {"api": {"fapi": "https://demo-fapi.binance.com/fapi" if demo
                              else "https://fapi.binance.com/fapi"}}
         self.trades = [] if trades is None else trades
-        self.order_client = order_client
+        self.order_client = client_order_id("signal1") if order_client is None else order_client
         self.order_reads = 0
         self.trade_reads = 0
 
@@ -56,8 +57,8 @@ class AttributionTests(unittest.TestCase):
                 "schema_version": 1, "source": "signalpilot_demo_executor_registry",
                 "execution_mode": "binance_demo",
                 "orders": [{"symbol": "XRP/USDT:USDT", "order_id": "123",
-                            "client_order_id": "SPDEMO-signal1",
-                            "signal_id": "signal1"}]}))
+                            "client_order_id": client_order_id("signal1"),
+                            "signal_id": "signal1", "leg": "entry"}]}))
             p.chmod(0o600)
             x = audit(Exchange(trades=[trade()]), registry_path=p, now_ms=NOW)
             self.assertEqual(x["signalpilot_fills"], 1)
