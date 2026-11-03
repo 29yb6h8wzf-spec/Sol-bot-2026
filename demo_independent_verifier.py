@@ -51,7 +51,7 @@ def verify(payload, *, scan=None, now=None):
     candidates = result.get("candidates_85_plus", [])
     matches = [c for c in candidates if isinstance(c, dict)
                and (compact or c.get("strategy") == strategy)
-               and c.get("direction") == direction
+               and c.get("direction") == direction.upper()
                and type(c.get("score")) is int and 85 <= c["score"] <= 100
                and isinstance(c.get("verification"), dict)
                and bool(c["verification"])]
