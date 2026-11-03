@@ -156,11 +156,32 @@ def run(root=ROOT):
                 allocation.get("unattributed_fills_today") != attribution["unattributed_fills"] or
                 allocation.get("day_start_utc_ms") != attribution.get("day_start_utc_ms")):
             raise ValueError("invalid_virtual_allocation")
+        stress_path = root / "demo-position-stress.json"
+        stress_stat = stress_path.lstat()
+        if (stress_path.is_symlink() or not stress_path.is_file() or
+                stress_stat.st_uid != 0 or stress_stat.st_mode & 0o077):
+            raise ValueError("untrusted_position_stress")
+        stress = json.loads(stress_path.read_text(encoding="utf-8"))
+        check_observation(stress, "binance_demo_position_stress_read_only", int(time.time()))
+        if (stress.get("execution_authorized") is not False or
+                stress.get("position_count") != exposure.get("open_position_count") or
+                number(stress.get("unrealized_pnl_usdt")) != number(exposure.get("unrealized_pnl_usdt")) or
+                number(stress.get("gross_notional_usdt")) < 0 or
+                number(stress.get("stress_loss_2pct_usdt")) < 0 or
+                number(stress.get("stress_loss_5pct_usdt")) < 0 or
+                type(stress.get("stress_5pct_exceeds_daily_cap")) is not bool or
+                type(stress.get("stress_2pct_exceeds_daily_cap")) is not bool):
+            raise ValueError("invalid_position_stress")
         previous = json.loads(state_path.read_text()) if state_path.exists() else None
         status, state = assess(pnl, exposure, account, previous)
         if (attribution["unattributed_fills"] > 0 and
                 status["reason"] != "DAILY_LOSS_KILL_SWITCH"):
             status["reason"] = "UNATTRIBUTED_DEMO_FILLS"
+        if (stress["stress_2pct_exceeds_daily_cap"] and
+                status["reason"] != "DAILY_LOSS_KILL_SWITCH"):
+            status["reason"] = "POSITION_STRESS_EXCEEDS_DAILY_CAP"
+        status["stress_loss_2pct_usdt"] = stress["stress_loss_2pct_usdt"]
+        status["stress_loss_5pct_usdt"] = stress["stress_loss_5pct_usdt"]
         status["unattributed_fills"] = attribution["unattributed_fills"]
         status["virtual_allocation_usdt"] = allocation["virtual_start_capital_usdt"]
         status["virtual_allocation_reconciled"] = False
