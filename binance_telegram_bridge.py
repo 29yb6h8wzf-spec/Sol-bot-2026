@@ -41,7 +41,7 @@ def check_endpoint(url):
 def load_secret(path=SECRET_PATH):
     path = Path(path)
     st = path.lstat()
-    if (not stat.S_ISREG(st.st_mode) or st.st_uid != 0 or
+    if (not stat.S_ISREG(st.st_mode) or st.st_uid != os.geteuid() or
             st.st_mode & 0o077):
         raise ValueError("untrusted_bridge_secret_permissions")
     secret = path.read_bytes().strip()
