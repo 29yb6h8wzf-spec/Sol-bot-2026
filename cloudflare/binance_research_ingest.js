@@ -79,12 +79,22 @@ export async function handleBinanceResearch(request, env, { sendOwner } = {}) {
   }
   const key = testOnly ? "binance-research:test:" + body.nonce :
     "binance-research:owner:" + body.signal_id;
-  if (await env.SIGNAL_STATE.get(key)) {
-    return Response.json({ status: "already_claimed", research_only: true });
+  try {
+    if (await env.SIGNAL_STATE.get(key)) {
+      return Response.json({ status: "already_claimed", research_only: true });
+    }
+  } catch (error) {
+    console.error("research_bridge_kv_get_failed", String(error).slice(0, 160));
+    return Response.json({ status: "kv_read_unavailable" }, { status: 503 });
   }
   // Claim before external delivery: ambiguous Telegram failures require manual
   // reconciliation; never automatically resend a possibly delivered alert.
-  await env.SIGNAL_STATE.put(key, "claimed", { expirationTtl: 86400 });
+  try {
+    await env.SIGNAL_STATE.put(key, "claimed", { expirationTtl: 86400 });
+  } catch (error) {
+    console.error("research_bridge_kv_claim_failed", String(error).slice(0, 160));
+    return Response.json({ status: "kv_claim_unavailable" }, { status: 503 });
+  }
   const message = testOnly ? [
     "🧪 SIGNALPILOT — בדיקת חיבור",
     "AWS → Cloudflare → Telegram",
