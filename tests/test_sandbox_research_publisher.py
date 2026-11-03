@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from futures_engine.sandbox_research_publisher import publish
+from futures_engine.sandbox_hmac import verify
 
 CANDLE=1800000000000
 SID="research-12345678901234567890123456789012"
@@ -29,18 +30,21 @@ class SandboxPublisherTests(unittest.TestCase):
     def setUp(self):
         self.env=patch.dict(os.environ, {"SIGNALPILOT_SANDBOX_PUBLISH_ENABLED":"1"})
         self.env.start()
+        self.keypatch=patch('futures_engine.sandbox_research_publisher.load_key', return_value=b'k'*32)
+        self.keypatch.start()
         self.tmp=tempfile.TemporaryDirectory()
         self.db=os.path.join(self.tmp.name,"test.sqlite")
         make_db(self.db)
         self.sqs=FakeSQS()
     def tearDown(self):
         self.tmp.cleanup()
+        self.keypatch.stop()
         self.env.stop()
     def test_sends_only_sandbox_research_envelope(self):
         result=publish(db=self.db,sqs=self.sqs,now=(CANDLE+300000)//1000+10)
         self.assertEqual(result["sent"],1)
         body=json.loads(self.sqs.messages[0]["MessageBody"])
-        self.assertEqual(body["type"],"SIGNALPILOT_SANDBOX_RESEARCH")
+        self.assertEqual(verify(body,secret=b'k'*32,now=body['authentication']['issued_at'])['type'],"SIGNALPILOT_SANDBOX_RESEARCH")
         self.assertFalse(body["orders_enabled"])
         self.assertNotIn("source",body)
     def test_deduplicates_after_success(self):
