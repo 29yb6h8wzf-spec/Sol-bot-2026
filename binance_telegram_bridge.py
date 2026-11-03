@@ -75,7 +75,8 @@ def send_https(url, raw, timestamp, signature):
         url, data=raw, method="POST",
         headers={"Content-Type": "application/json",
                  "X-Signalpilot-Timestamp": str(timestamp),
-                 "X-Signalpilot-Signature": signature})
+                 "X-Signalpilot-Signature": signature,
+                 "User-Agent": "SignalPilot-Research-Bridge/1.0"})
     opener = urllib.request.build_opener(NoRedirect())
     with opener.open(req, timeout=8) as response:
         if response.status != 200:
