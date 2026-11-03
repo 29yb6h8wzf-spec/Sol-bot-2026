@@ -172,7 +172,21 @@ def execute_protected_entry(exchange, intent, *, journal, account):
                 if amount > 0:
                     exchange.create_order(intent.symbol, "market", exit_side,
                                           float(amount), None, {"reduceOnly": True})
-                journal.mark(intent.signal_id, "EMERGENCY_FLATTEN_SUBMITTED_VERIFY_MANUALLY")
+                # A successful reduce-only submission is not proof of a flat account.
+                # Fail closed until the exchange confirms no remaining exposure.
+                remaining_positions = exchange.fetch_positions([intent.symbol])
+                remaining = sum((abs(D(str(p.get("contracts") or 0)))
+                                 for p in remaining_positions
+                                 if p.get("symbol") == intent.symbol), D("0"))
+                if remaining != 0:
+                    raise LiveSafetyError("emergency flatten not confirmed: residual position")
+                remaining_algos = exchange.fapiPrivateGetOpenAlgoOrders(
+                    {"symbol": exchange.market_id(intent.symbol)})
+                algo_rows = (remaining_algos.get("orders", [])
+                             if isinstance(remaining_algos, dict) else remaining_algos)
+                if algo_rows or exchange.fetch_open_orders(intent.symbol):
+                    raise LiveSafetyError("emergency cleanup not confirmed: open orders")
+                journal.mark(intent.signal_id, "EMERGENCY_FLATTEN_VERIFIED_FLAT")
             except Exception as flatten_exc:
                 journal.mark(intent.signal_id, "CRITICAL_UNPROTECTED_POSITION_MANUAL_INTERVENTION")
                 raise LiveSafetyError("emergency flatten failed; manual intervention required") from flatten_exc
