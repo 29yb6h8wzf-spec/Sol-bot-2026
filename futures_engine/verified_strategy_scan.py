@@ -9,6 +9,7 @@ from futures_engine.verified_candidate_audit import SYMBOLS, audit_candidate
 from strategies import candidates
 from futures_engine.research_history import record
 from futures_engine.candidate_verifier import verify_candidate, VerificationError
+from futures_engine.research_outbox import stage
 
 
 def to_strategy_candles(bars):
@@ -81,6 +82,7 @@ def main():
         try:
             result = evaluate(symbol)
             record(result)
+            result['new_research_outbox_items'] = stage(result)
             print(json.dumps(result, ensure_ascii=False))
         except Exception as exc:
             result = {"symbol": symbol, "status": "BLOCKED",
