@@ -13,7 +13,12 @@ def observe(exchange, now=None):
     exposed = []
     total = Decimal('0')
     for p in positions:
-        contracts = Decimal(str(p.get('contracts') or 0))
+        raw_contracts = p.get('contracts')
+        if raw_contracts is None:
+            raw_contracts = (p.get('info') or {}).get('positionAmt')
+        if raw_contracts is None:
+            raise ValueError('missing_position_quantity')
+        contracts = Decimal(str(raw_contracts))
         if not contracts.is_finite():
             raise ValueError('invalid_contracts')
         if contracts == 0:
