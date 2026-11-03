@@ -6,6 +6,7 @@ confirms the same SPDEMO- identifier. No registry is created here.
 This is a partial four-symbol audit, NEVER a risk approval or a trade executor.
 """
 import json
+import hashlib
 import os
 import time
 from datetime import datetime, timezone
@@ -52,11 +53,16 @@ def registry_orders(path=REGISTRY):
             raise ValueError("invalid_registry_row")
         symbol, oid, client, sid = (row.get(k) for k in
                                     ("symbol", "order_id", "client_order_id", "signal_id"))
+        leg = row.get("leg")
         if (symbol not in SYMBOLS or not isinstance(oid, str) or
                 not oid.isdecimal() or not isinstance(client, str) or
-                not client.startswith("SPDEMO-") or len(client) > 36 or
-                not isinstance(sid, str) or not 1 <= len(sid) <= 128):
+                not isinstance(sid, str) or not 1 <= len(sid) <= 128 or
+                leg not in ("entry", "stop", "target")):
             raise ValueError("invalid_registry_identity")
+        expected = "SPDEMO-" + hashlib.sha256(
+            (sid + ":" + leg).encode("utf-8")).hexdigest()[:24]
+        if client != expected:
+            raise ValueError("registry_client_id_signal_mismatch")
         key = (symbol, oid)
         if key in orders or client in clients:
             raise ValueError("duplicate_registry_identity")
