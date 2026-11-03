@@ -34,7 +34,7 @@ class AttributionRiskTests(unittest.TestCase):
                 "demo-trade-attribution.json": {
                     "source": "binance_demo_four_symbol_trade_attribution_read_only",
                     "observed_at": now, "day_start_utc_ms": start,
-                    "unattributed_fills": 5,
+                    "unattributed_fills": 5, "signalpilot_fills": 0,
                     "allocation_ledger_reconciled": False,
                     "execution_authorized": False, "orders_sent": False},
                 "demo-provenance-observation.json": {
