@@ -1,0 +1,11 @@
+[Unit]
+Description=SignalPilot Binance Futures 85+ research health every five minutes
+
+[Timer]
+OnBootSec=60s
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=signalpilot-binance-research-health.service
+
+[Install]
+WantedBy=timers.target
