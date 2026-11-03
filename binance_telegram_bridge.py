@@ -31,8 +31,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 def check_endpoint(url):
     parsed = urllib.parse.urlsplit(url)
     if (parsed.scheme != "https" or not parsed.hostname or
-            not parsed.hostname.endswith(".workers.dev") or
-            parsed.hostname == ".workers.dev" or parsed.port not in (None, 443) or
+            parsed.hostname != "sol-bot-2026.29yb6h8wzf.workers.dev" or parsed.port not in (None, 443) or
             parsed.path != "/internal/binance-research" or
             parsed.username or parsed.password or parsed.query or parsed.fragment):
         raise ValueError("invalid_cloudflare_ingest_endpoint")
@@ -121,7 +120,8 @@ def publish(*, db=DB, url=None, secret_path=SECRET_PATH, now=None, transport=sen
                          (sid, "UNCONFIRMED", now))
             conn.commit()
             try:
-                transport(url, raw_body, now, signature)
+                if transport(url, raw_body, now, signature) is not True:
+                    raise RuntimeError("research_delivery_not_acknowledged")
             except Exception:
                 stats["send_failed_unconfirmed"] += 1
                 continue
