@@ -64,5 +64,6 @@ def verify(payload, *, scan=None, now=None):
         "direction": direction,
         "score": matches[0]["score"],
         "source": "verified_85_score_engine",
+        "closed_5m_candle_ms": observed_candle,
         "verification": matches[0]["verification"],
     }
