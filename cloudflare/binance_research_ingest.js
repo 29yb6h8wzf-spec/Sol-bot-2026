@@ -58,20 +58,39 @@ export async function handleBinanceResearch(request, env, { sendOwner } = {}) {
     env.BINANCE_RESEARCH_INGEST_SECRET, timestamp, raw, signature, now)) {
     return new Response("Unauthorized", { status: 401 });
   }
-  let body;
+  let body, testOnly = false;
   try {
-    body = validateBinanceResearchEnvelope(JSON.parse(raw), now);
+    const parsed = JSON.parse(raw);
+    if (parsed.type === "SIGNALPILOT_BINANCE_BRIDGE_TEST_V1") {
+      if (Object.keys(parsed).sort().join(",") !==
+          "execution_authorized,nonce,orders_sent,timestamp,type" ||
+          parsed.execution_authorized !== false || parsed.orders_sent !== false ||
+          !Number.isInteger(parsed.timestamp) || Math.abs(now - parsed.timestamp) > 90 ||
+          typeof parsed.nonce !== "string" || !/^test-[0-9a-f]{24}$/.test(parsed.nonce)) {
+        throw new Error("invalid_test");
+      }
+      body = parsed;
+      testOnly = true;
+    } else {
+      body = validateBinanceResearchEnvelope(parsed, now);
+    }
   } catch {
     return new Response("Invalid or expired research", { status: 422 });
   }
-  const key = "binance-research:owner:" + body.signal_id;
+  const key = testOnly ? "binance-research:test:" + body.nonce :
+    "binance-research:owner:" + body.signal_id;
   if (await env.SIGNAL_STATE.get(key)) {
     return Response.json({ status: "already_claimed", research_only: true });
   }
   // Claim before external delivery: ambiguous Telegram failures require manual
   // reconciliation; never automatically resend a possibly delivered alert.
   await env.SIGNAL_STATE.put(key, "claimed", { expirationTtl: 86400 });
-  const message = [
+  const message = testOnly ? [
+    "🧪 SIGNALPILOT — בדיקת חיבור",
+    "AWS → Cloudflare → Telegram",
+    "זו הודעת בדיקה בלבד, לא איתות מסחר.",
+    "🚫 לא נפתחה עסקה ולא הופעל מסחר אוטומטי."
+  ].join("\\n") : [
     "🔔 SIGNALPILOT | Binance Futures — מחקר",
     body.symbol + " | " + body.direction.toUpperCase() +
       " | דירוג תנאים " + body.score + "/100",
@@ -84,7 +103,7 @@ export async function handleBinanceResearch(request, env, { sendOwner } = {}) {
     if (typeof sendOwner !== "function") throw new Error("missing_delivery_handler");
     await sendOwner(env, String(env.TELEGRAM_CHAT_ID), message);
     await env.SIGNAL_STATE.put(key, "delivered", { expirationTtl: 86400 });
-    return Response.json({ status: "delivered_owner_only", research_only: true });
+    return Response.json({ status: "delivered_owner_only", research_only: true, test_only: testOnly });
   } catch {
     await env.SIGNAL_STATE.put(key, "delivery_unconfirmed", { expirationTtl: 86400 });
     return Response.json({ status: "delivery_unconfirmed", research_only: true }, { status: 502 });
