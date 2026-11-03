@@ -1,0 +1,11 @@
+[Unit]
+Description=Run SignalPilot sandbox research publisher every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+Persistent=false
+AccuracySec=5s
+Unit=signalpilot-sandbox-publisher.service
+
+[Install]
+WantedBy=timers.target
