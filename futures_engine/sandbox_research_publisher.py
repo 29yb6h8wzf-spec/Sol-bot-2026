@@ -1,5 +1,6 @@
 """Sandbox-only research publisher. No execution messages, no trading."""
 import json
+import os
 import sqlite3
 import time
 import boto3
@@ -9,6 +10,8 @@ from futures_engine.research_sqs_preview import preview
 QUEUE = "https://sqs.il-central-1.amazonaws.com/514349355336/signalpilot-signals-sandbox"
 
 def publish(*, db=DB, sqs=None, now=None):
+    if os.environ.get("SIGNALPILOT_SANDBOX_PUBLISH_ENABLED") != "1":
+        raise RuntimeError("sandbox publisher disabled; explicit environment opt-in required")
     now = int(time.time()) if now is None else int(now)
     sqs = sqs or boto3.client("sqs", region_name="il-central-1")
     stats = {"sent": 0, "expired_or_blocked": 0, "already_sent": 0}
@@ -33,12 +36,17 @@ def publish(*, db=DB, sqs=None, now=None):
                     "research_signal_id":sid,
                     "candidate":checked["payload"],
                     "execution_authorized":False, "orders_enabled":False}
+            # Persist a claim BEFORE network I/O. If send result is ambiguous,
+            # never retry automatically; operator must reconcile SQS first.
+            conn.execute("INSERT INTO sandbox_publish_log VALUES (?,?,?)",
+                         (sid,"UNCONFIRMED",int(time.time())))
+            conn.commit()
             response = sqs.send_message(
                 QueueUrl=QUEUE,
                 MessageBody=json.dumps(body,sort_keys=True),
                 MessageAttributes={"purpose":{"DataType":"String","StringValue":"research-only"}})
-            conn.execute("INSERT INTO sandbox_publish_log VALUES (?,?,?)",
-                         (sid,response["MessageId"],int(time.time())))
+            conn.execute("UPDATE sandbox_publish_log SET message_id=?, sent_at=? WHERE signal_id=?",
+                         (response["MessageId"],int(time.time()),sid))
             conn.commit()
             stats["sent"] += 1
     return stats
