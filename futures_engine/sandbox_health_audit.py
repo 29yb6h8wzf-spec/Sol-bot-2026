@@ -32,12 +32,10 @@ def audit(*, sqs=None, now=None, outbox_db=OUTBOX_DB, received_db=RECEIVED_DB):
     attrs = sqs.get_queue_attributes(
         QueueUrl=QUEUE,
         AttributeNames=["ApproximateNumberOfMessages",
-                        "ApproximateNumberOfMessagesNotVisible",
-                        "ApproximateAgeOfOldestMessage"],
+                        "ApproximateNumberOfMessagesNotVisible"],
     )["Attributes"]
     visible = int(attrs.get("ApproximateNumberOfMessages", 0))
     in_flight = int(attrs.get("ApproximateNumberOfMessagesNotVisible", 0))
-    oldest = int(attrs.get("ApproximateAgeOfOldestMessage", 0))
     unconfirmed = _scalar(
         outbox_db,
         "SELECT COUNT(*) FROM sandbox_publish_log WHERE message_id='UNCONFIRMED'",
@@ -62,15 +60,15 @@ def audit(*, sqs=None, now=None, outbox_db=OUTBOX_DB, received_db=RECEIVED_DB):
         alerts.append("UNCONFIRMED_SEND_REQUIRES_MANUAL_RECONCILIATION")
     if received is None:
         alerts.append("RECEIVED_DB_UNAVAILABLE")
-    if visible > 0 and oldest > 120:
-        alerts.append("OLD_SANDBOX_QUEUE_MESSAGES")
+    if visible > 0:
+        alerts.append("SANDBOX_QUEUE_HAS_VISIBLE_MESSAGES")
     if in_flight:
         alerts.append("SANDBOX_MESSAGES_IN_FLIGHT")
     return {
         "mode": "READ_ONLY_SANDBOX_HEALTH",
         "timestamp": now,
         "queue": {"visible_approx": visible, "in_flight_approx": in_flight,
-                  "oldest_seconds_approx": oldest},
+                  "oldest_seconds_approx": None},
         "outbox": {"pending": pending, "stale_pending": stale_pending,
                    "published": published, "unconfirmed": unconfirmed},
         "consumer": {"stored_total": received},
@@ -78,7 +76,7 @@ def audit(*, sqs=None, now=None, outbox_db=OUTBOX_DB, received_db=RECEIVED_DB):
         "status": "CHECK" if alerts else "OK",
         "orders_enabled": False,
         "execution_authorized": False,
-        "notes": "SQS counts are approximate; totals are cumulative, not delivery reconciliation.",
+        "notes": "SQS counts are approximate; message age requires CloudWatch; totals are cumulative, not delivery reconciliation.",
     }
 
 
