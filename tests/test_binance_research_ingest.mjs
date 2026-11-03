@@ -123,3 +123,38 @@ test("other path does not invoke bridge", async () => {
     new Request("https://sol-bot-2026.29yb6h8wzf.workers.dev/"), environment());
   assert.equal(r.status, 404);
 });
+
+test("explicit signed test delivers only clearly labeled test message to owner", async () => {
+  const env = environment();
+  const testPayload = {
+    type: "SIGNALPILOT_BINANCE_BRIDGE_TEST_V1",
+    nonce: "test-0123456789abcdef01234567",
+    timestamp: now,
+    execution_authorized: false,
+    orders_sent: false
+  };
+  let sent = [];
+  const opts = {sendOwner: async (e, id, msg) => sent.push({id, msg})};
+  const r1 = await handleBinanceResearch(await signedRequest(testPayload), env, opts);
+  const r2 = await handleBinanceResearch(await signedRequest(testPayload), env, opts);
+  assert.equal(r1.status, 200);
+  assert.equal((await r1.json()).test_only, true);
+  assert.equal((await r2.json()).status, "already_claimed");
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].id, "12345");
+  assert.match(sent[0].msg, /בדיקה בלבד/);
+  assert.doesNotMatch(sent[0].msg, /SOLUSDT|LONG|SHORT/);
+});
+
+test("test mode cannot be used to authorize orders", async () => {
+  const testPayload = {
+    type: "SIGNALPILOT_BINANCE_BRIDGE_TEST_V1",
+    nonce: "test-0123456789abcdef01234567",
+    timestamp: now,
+    execution_authorized: true,
+    orders_sent: false
+  };
+  const r = await handleBinanceResearch(await signedRequest(testPayload), environment(),
+    {sendOwner: async () => {throw Error("must not deliver");}});
+  assert.equal(r.status, 422);
+});
