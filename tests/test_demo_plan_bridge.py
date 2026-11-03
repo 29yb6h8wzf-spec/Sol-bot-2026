@@ -73,7 +73,7 @@ class BridgeTests(unittest.TestCase):
 
     def test_candle_mismatch_fails_and_closes_exchange(self):
         def wrong(symbol, timeframe):
-            return self.exchange, market(), BARS[:-1]
+            return self.exchange, market(), [[b[0]-300000, *b[1:]] for b in BARS]
         with self.assertRaisesRegex(ValueError, "verified_candle_mismatch"):
             build_plan(payload(), verifier=verified, loader=wrong, now_ms=NOW)
         self.assertTrue(self.exchange.closed)
