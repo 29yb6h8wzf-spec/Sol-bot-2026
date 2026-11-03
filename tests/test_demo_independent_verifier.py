@@ -14,7 +14,7 @@ def scanner(symbol, *, now_ms):
     return {"symbol": symbol, "status": "RESEARCH_ONLY",
             "closed_5m_candle_ms": CANDLE,
             "candidates_85_plus": [{"strategy": "EMA_ADX",
-                                    "direction": "long", "score": 85,
+                                    "direction": "LONG", "score": 85,
                                     "verification": {"independently_checked": True}}]}
 
 class IndependentVerifierTests(unittest.TestCase):
@@ -63,7 +63,7 @@ class IndependentVerifierTests(unittest.TestCase):
         def ambiguous(symbol, *, now_ms):
             result = scanner(symbol, now_ms=now_ms)
             result["candidates_85_plus"].append({
-                "strategy": "BREAKOUT", "direction": "long",
+                "strategy": "BREAKOUT", "direction": "LONG",
                 "score": 90, "verification": {"checked": True}})
             return result
         with self.assertRaisesRegex(ValueError, "independent_candidate_mismatch"):
