@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll SignalPilot sandbox research queue every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:20
+Persistent=false
+AccuracySec=5s
+Unit=signalpilot-sandbox-consumer.service
+
+[Install]
+WantedBy=timers.target
