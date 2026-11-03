@@ -31,7 +31,7 @@ def sign(envelope, *, secret, now=None):
     if not isinstance(envelope, dict) or "authentication" in envelope:
         raise ValueError("invalid unsigned envelope")
     now = int(time.time()) if now is None else int(now)
-    signed = dict(envelope)
+    signed = json.loads(canonical_bytes(envelope))
     signed["authentication"] = {"version": VERSION, "issued_at": now}
     mac = hmac.new(_key(secret), canonical_bytes(signed), hashlib.sha256)
     signed["authentication"]["signature"] = mac.hexdigest()
