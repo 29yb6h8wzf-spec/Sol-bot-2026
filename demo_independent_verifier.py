@@ -31,6 +31,8 @@ def verify(payload, *, scan=None, now=None):
     result = scan(symbol, now_ms=now * 1000)
     if result.get("symbol") != symbol or result.get("closed_5m_candle_ms") != candle:
         raise ValueError("candle_mismatch")
+    if result.get("status") != "RESEARCH_ONLY":
+        raise ValueError("scanner_not_ready")
     candidates = result.get("candidates_85_plus", [])
     matches = [c for c in candidates if isinstance(c, dict)
                and c.get("strategy") == strategy
