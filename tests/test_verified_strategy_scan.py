@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch
 from futures_engine.verified_strategy_scan import evaluate
+from futures_engine.candidate_verifier import VerificationError
 
 STEP = {"5m": 300000, "4h": 14400000}
 BASE = 1728000000000
@@ -21,11 +22,27 @@ class StrategyScanTests(unittest.TestCase):
     def test_high_score_is_research_only(self):
         with patch("futures_engine.verified_strategy_scan.candidates",
                    return_value=([{"strategy":"EMA_ADX","direction":"LONG",
-                                   "score":90,"reason":"test"}], {})):
+                                   "score":90,"reason":"test"}], {})), \
+             patch("futures_engine.verified_strategy_scan.verify_candidate",
+                   return_value={"status":"RECALCULATED_RESEARCH_CANDIDATE",
+                                 "execution_authorized":False}):
             result = evaluate("SOL/USDT:USDT", loader=loader,
                               now_ms=END + 1000)
         self.assertEqual(len(result["candidates_85_plus"]), 1)
         self.assertFalse(result["score_verified_independently"])
+        self.assertFalse(result["sqs_sent"])
+        self.assertFalse(result["orders_sent"])
+
+    def test_failed_verification_is_rejected(self):
+        with patch("futures_engine.verified_strategy_scan.candidates",
+                   return_value=([{"strategy":"EMA_ADX","direction":"LONG",
+                                   "score":90,"reason":"test"}], {})), \
+             patch("futures_engine.verified_strategy_scan.verify_candidate",
+                   side_effect=VerificationError("mismatch")):
+            result = evaluate("SOL/USDT:USDT", loader=loader,
+                              now_ms=END + 1000)
+        self.assertEqual(result["candidates_85_plus"], [])
+        self.assertEqual(len(result["rejected_candidates"]), 1)
         self.assertFalse(result["sqs_sent"])
         self.assertFalse(result["orders_sent"])
 
