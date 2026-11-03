@@ -1,0 +1,16 @@
+[Unit]
+Description=SignalPilot Binance Futures research health report (read-only)
+After=local-fs.target
+ConditionPathExists=/opt/signalpilot/research-history.sqlite3
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/signalpilot
+ExecStart=/opt/signalpilot/.venv/bin/python /opt/signalpilot/binance_research_health.py
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+IPAddressDeny=any
+TimeoutStartSec=30
