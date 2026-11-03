@@ -6,6 +6,8 @@ import time
 import boto3
 from futures_engine.research_outbox import DB
 from futures_engine.research_sqs_preview import preview
+from futures_engine.sandbox_hmac import sign
+from futures_engine.sandbox_secret import load_key
 
 QUEUE = "https://sqs.il-central-1.amazonaws.com/514349355336/signalpilot-signals-sandbox"
 
@@ -13,6 +15,7 @@ def publish(*, db=DB, sqs=None, now=None):
     if os.environ.get("SIGNALPILOT_SANDBOX_PUBLISH_ENABLED") != "1":
         raise RuntimeError("sandbox publisher disabled; explicit environment opt-in required")
     now = int(time.time()) if now is None else int(now)
+    key = load_key()  # Fail closed before any send or publish claim.
     sqs = sqs or boto3.client("sqs", region_name="il-central-1")
     stats = {"sent": 0, "expired_or_blocked": 0, "already_sent": 0}
     with sqlite3.connect(db, timeout=20) as conn:
@@ -36,6 +39,7 @@ def publish(*, db=DB, sqs=None, now=None):
                     "research_signal_id":sid,
                     "candidate":checked["payload"],
                     "execution_authorized":False, "orders_enabled":False}
+            body = sign(body, secret=key, now=int(time.time()))
             # Persist a claim BEFORE network I/O. If send result is ambiguous,
             # never retry automatically; operator must reconcile SQS first.
             conn.execute("INSERT INTO sandbox_publish_log VALUES (?,?,?)",
