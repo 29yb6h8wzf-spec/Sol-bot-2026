@@ -35,6 +35,7 @@ function environment() {
   return {
     BINANCE_RESEARCH_INGEST_SECRET: secret,
     TELEGRAM_CHAT_ID: "12345",
+    TELEGRAM_BOT_TOKEN: "test-only-token",
     SIGNAL_STATE: {
       async get(k) { return values.get(k) || null; },
       async put(k, v) { values.set(k, v); }
@@ -54,13 +55,16 @@ test("owner-only valid research delivery, no order", async () => {
   assert.doesNotMatch(delivered[0].message, /כניסה: \$/);
 });
 
-test("dedup prevents repeated delivery", async () => {
+test("stateless relay never uses exhausted Cloudflare KV", async () => {
   const env = environment();
+  env.SIGNAL_STATE = {
+    get: async () => { throw Error("KV unavailable"); },
+    put: async () => { throw Error("KV quota exhausted"); }
+  };
   let calls = 0;
-  const opts = {sendOwner: async () => { calls++; }};
-  await handleBinanceResearch(await signedRequest(), env, opts);
-  const r = await handleBinanceResearch(await signedRequest(), env, opts);
-  assert.equal((await r.json()).status, "already_claimed");
+  const r = await handleBinanceResearch(await signedRequest(), env,
+    {sendOwner: async () => { calls++; }});
+  assert.equal(r.status, 200);
   assert.equal(calls, 1);
 });
 
@@ -107,14 +111,13 @@ test("below 85 rejected", () => {
     {...payload, score: 84}, now), /invalid_or_stale/);
 });
 
-test("ambiguous Telegram delivery never auto retries", async () => {
+test("ambiguous Telegram delivery returns unconfirmed without internal retry", async () => {
   const env = environment();
   let calls = 0;
   const opts = {sendOwner: async () => { calls++; throw Error("ambiguous"); }};
-  const r1 = await handleBinanceResearch(await signedRequest(), env, opts);
-  const r2 = await handleBinanceResearch(await signedRequest(), env, opts);
-  assert.equal(r1.status, 502);
-  assert.equal((await r2.json()).status, "already_claimed");
+  const r = await handleBinanceResearch(await signedRequest(), env, opts);
+  assert.equal(r.status, 502);
+  assert.equal((await r.json()).status, "delivery_unconfirmed");
   assert.equal(calls, 1);
 });
 
@@ -136,10 +139,8 @@ test("explicit signed test delivers only clearly labeled test message to owner",
   let sent = [];
   const opts = {sendOwner: async (e, id, msg) => sent.push({id, msg})};
   const r1 = await handleBinanceResearch(await signedRequest(testPayload), env, opts);
-  const r2 = await handleBinanceResearch(await signedRequest(testPayload), env, opts);
   assert.equal(r1.status, 200);
   assert.equal((await r1.json()).test_only, true);
-  assert.equal((await r2.json()).status, "already_claimed");
   assert.equal(sent.length, 1);
   assert.equal(sent[0].id, "12345");
   assert.match(sent[0].msg, /בדיקה בלבד/);
