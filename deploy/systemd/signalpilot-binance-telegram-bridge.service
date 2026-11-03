@@ -2,7 +2,6 @@
 Description=SignalPilot Binance Futures research Telegram bridge (owner-only, no trading)
 After=network-online.target
 Wants=network-online.target
-ConditionPathExists=/etc/signalpilot/binance-research-bridge-secret
 ConditionPathExists=/etc/signalpilot/binance-research-bridge.env
 
 [Service]
