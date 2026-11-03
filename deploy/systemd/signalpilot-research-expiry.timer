@@ -1,0 +1,10 @@
+[Unit]
+Description=Run SignalPilot research expiry ledger every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:40 UTC
+Persistent=true
+Unit=signalpilot-research-expiry.service
+
+[Install]
+WantedBy=timers.target
