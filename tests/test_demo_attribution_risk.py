@@ -45,6 +45,20 @@ class AttributionRiskTests(unittest.TestCase):
                     "stress_2pct_exceeds_daily_cap": False,
                     "stress_5pct_exceeds_daily_cap": False,
                     "execution_authorized": False, "orders_sent": False},
+                "demo-reconciliation-status.json": {
+                    "source": "signalpilot_demo_reconciliation_guard_read_only",
+                    "observed_at": now, "day_start_utc_ms": start,
+                    "status": "BLOCKED_UNRECONCILED",
+                    "unattributed_fills_today": 5,
+                    "account_realized_gap_usdt": "-0.01",
+                    "account_commission_gap_usdt": "0",
+                    "account_funding_unattributed_usdt": "0",
+                    "prior_day_exposure_unresolved": False,
+                    "unattributed_history_unresolved": True,
+                    "monitoring_gap_unresolved": False,
+                    "open_exposure_now": False,
+                    "allocation_ledger_reconciled": False,
+                    "execution_authorized": False, "orders_sent": False},
                 "demo-virtual-allocation.json": {
                     "source": "signalpilot_demo_virtual_allocation_read_only",
                     "observed_at": now, "day_start_utc_ms": start,
@@ -74,6 +88,15 @@ class AttributionRiskTests(unittest.TestCase):
             docs["demo-position-stress.json"]["stress_loss_2pct_usdt"] = "0"
             (root / "demo-position-stress.json").write_text(
                 json.dumps(docs["demo-position-stress.json"]))
+            docs["demo-reconciliation-status.json"]["prior_day_exposure_unresolved"] = True
+            (root / "demo-reconciliation-status.json").write_text(
+                json.dumps(docs["demo-reconciliation-status.json"]))
+            status = run(root)
+            self.assertEqual(status["reason"], "PRIOR_DAY_EXPOSURE_UNRECONCILED")
+            self.assertFalse(status["execution_authorized"])
+            docs["demo-reconciliation-status.json"]["prior_day_exposure_unresolved"] = False
+            (root / "demo-reconciliation-status.json").write_text(
+                json.dumps(docs["demo-reconciliation-status.json"]))
             docs["demo-trade-attribution.json"]["observed_at"] = now - 100
             (root / "demo-trade-attribution.json").write_text(
                 json.dumps(docs["demo-trade-attribution.json"]))
