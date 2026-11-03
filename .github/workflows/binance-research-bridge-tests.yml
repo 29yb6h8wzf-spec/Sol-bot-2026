@@ -2,7 +2,7 @@ name: Binance research bridge safety tests
 
 on:
   push:
-    branches: [29yb6h8wzf-spec-patch-1]
+    branches: [main, 29yb6h8wzf-spec-patch-1]
   pull_request:
 
 permissions:
