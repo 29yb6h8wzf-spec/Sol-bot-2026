@@ -50,6 +50,19 @@ def load_secret(path=SECRET_PATH):
     return secret
 
 
+def load_ssm_secret(name="/signalpilot/binance-research-bridge/ingest-secret"):
+    """Read a SecureString at runtime using the EC2 instance IAM role.
+
+    The key never enters SSM Run Command arguments, logs, or local files.
+    """
+    import boto3
+    value = boto3.client("ssm", region_name="il-central-1").get_parameter(
+        Name=name, WithDecryption=True)["Parameter"]["Value"]
+    if not isinstance(value, str) or len(value) < 32 or len(value) > 256 or value != value.strip():
+        raise ValueError("invalid_ssm_bridge_secret")
+    return value.encode("utf-8")
+
+
 def sign_payload(body, secret, timestamp):
     raw = json.dumps(body, separators=(",", ":"), sort_keys=True).encode("utf-8")
     signature = hmac.new(secret, str(timestamp).encode() + b"." + raw,
@@ -74,11 +87,11 @@ def send_https(url, raw, timestamp, signature):
         return True
 
 
-def publish(*, db=DB, url=None, secret_path=SECRET_PATH, now=None, transport=send_https):
+def publish(*, db=DB, url=None, secret_path=None, now=None, transport=send_https):
     if os.environ.get(ENABLE_VAR) != "1":
         raise RuntimeError("binance_research_telegram_disabled")
     url = check_endpoint(url or os.environ.get(URL_VAR, ""))
-    secret = load_secret(secret_path)
+    secret = load_ssm_secret() if secret_path is None else load_secret(secret_path)
     now = int(time.time()) if now is None else int(now)
     stats = {"delivered": 0, "expired": 0, "claimed_or_unconfirmed": 0,
              "send_failed_unconfirmed": 0, "orders_sent": False}
