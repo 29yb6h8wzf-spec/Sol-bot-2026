@@ -8,6 +8,7 @@ import json
 import sqlite3
 import time
 from pathlib import Path
+from verified_signal_identity import verified_event_key
 
 ALLOWED = frozenset({"BTC/USDT:USDT", "ETH/USDT:USDT", "SOL/USDT:USDT", "XRP/USDT:USDT"})
 
@@ -58,6 +59,10 @@ def connect_inbox(inbox_path, journal_path, *, verifier=None, preflight=None, ac
         journal.execute("""CREATE TABLE IF NOT EXISTS demo_signal_route (
             signal_id TEXT PRIMARY KEY, status TEXT NOT NULL,
             reason TEXT NOT NULL, checked_at INTEGER NOT NULL)""")
+        journal.execute("""CREATE TABLE IF NOT EXISTS demo_event_claims (
+            event_key TEXT PRIMARY KEY,
+            signal_id TEXT NOT NULL UNIQUE,
+            claimed_at INTEGER NOT NULL)""")
         for sid, raw in rows:
             if not isinstance(sid, str) or not sid or len(sid) > 128:
                 continue
@@ -81,7 +86,27 @@ def connect_inbox(inbox_path, journal_path, *, verifier=None, preflight=None, ac
             if isinstance(payload, dict) and payload.get("signal_id") != sid:
                 status, reason = "REJECTED", "signal_id_mismatch"
             else:
-                status, reason = evaluate(payload, verifier=verifier, preflight=preflight, account=account, now=now)
+                verified_capture = {}
+                def capture_verification(message):
+                    verified = verifier(message)
+                    verified_capture["value"] = verified
+                    return verified
+                status, reason = evaluate(
+                    payload, verifier=capture_verification if verifier is not None else None,
+                    preflight=preflight, account=account, now=now)
+                if status == "DEMO_ELIGIBLE_NOT_SUBMITTED":
+                    try:
+                        event_key = verified_event_key(verified_capture["value"])
+                    except (ValueError, KeyError, TypeError):
+                        status, reason = "BLOCKED_UNVERIFIED", "invalid_verified_event_identity"
+                    else:
+                        # SQLite unique constraint makes the claim atomic across
+                        # repeated IDs and independent router processes.
+                        inserted = journal.execute(
+                            "INSERT OR IGNORE INTO demo_event_claims VALUES (?,?,?)",
+                            (event_key, sid, int(time.time()))).rowcount
+                        if not inserted:
+                            status, reason = "REJECTED_DUPLICATE", "verified_event_already_claimed"
             journal.execute("""INSERT INTO demo_signal_route VALUES (?,?,?,?)
                 ON CONFLICT(signal_id) DO UPDATE SET status=excluded.status,
                 reason=excluded.reason, checked_at=excluded.checked_at""",
