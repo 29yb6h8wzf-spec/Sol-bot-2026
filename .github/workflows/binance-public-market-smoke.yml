@@ -1,0 +1,29 @@
+name: Binance Public Futures Market Smoke
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-market-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/binance-futures-paper-foundation-20261027
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install read-only market dependencies
+        run: python -m pip install 'ccxt>=4,<5'
+      - name: Fetch public closed Binance Futures candles
+        run: python -m futures_engine.market_smoke market-evidence
+      - name: Upload evidence even on market failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: binance-public-market-smoke
+          path: market-evidence/
+          if-no-files-found: warn
+          retention-days: 14
