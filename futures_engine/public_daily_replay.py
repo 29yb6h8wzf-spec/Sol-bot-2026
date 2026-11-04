@@ -5,6 +5,7 @@ in memory, then records a hypothetical outcome. No authenticated APIs/orders.
 """
 import csv
 import io
+from datetime import date as Date, datetime, timezone
 from .public_archive_download import download_daily_public_archive
 from .offline_binance_archive_verify import verify_binance_archive
 from .offline_replay_pipeline import process_one
@@ -14,6 +15,12 @@ def run_public_daily_replay(*, plan, symbol, day, directory,
     if not isinstance(plan, dict) or plan.get("symbol") not in (
         symbol, symbol.replace("USDT", "/USDT:USDT")):
         raise ValueError("plan_symbol_mismatch")
+    archive_day = Date.fromisoformat(day)
+    start_ms = int(datetime.combine(archive_day, datetime.min.time(), tzinfo=timezone.utc).timestamp() * 1000)
+    end_ms = start_ms + 86400000
+    signal_ms = plan.get('closed_5m_candle_ms')
+    if type(signal_ms) is not int or not (start_ms <= signal_ms < end_ms):
+        raise ValueError('signal_outside_archive_day')
     downloaded = download_daily_public_archive(
         symbol=symbol, day=day, directory=directory, today_utc=today_utc)
     verified = verify_binance_archive(
@@ -31,6 +38,8 @@ def run_public_daily_replay(*, plan, symbol, day, directory,
         timestamp = int(row[0])
         if timestamp < 1_000_000_000_000 or timestamp > 9_999_999_999_999:
             raise ValueError("expected_millisecond_timestamp")
+        if not (start_ms <= timestamp < end_ms):
+            raise ValueError('candle_outside_archive_day')
         candles.append([timestamp, *row[1:5]])
     if not candles:
         raise ValueError("empty_archive_csv")
