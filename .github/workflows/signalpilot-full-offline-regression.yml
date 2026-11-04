@@ -36,4 +36,4 @@ jobs:
       - name: Compile Python modules
         run: python -m compileall -q .
       - name: Run all Python tests together (no exchange credentials)
-        run: python -m pytest -q tests/
+        run: sudo env PYTHONPATH=. TRADING_MODE=paper SIGNALPILOT_LIVE_ARMED=NO "$(command -v python)" -m pytest -q tests/
