@@ -1,0 +1,37 @@
+name: SignalPilot inbox contract
+on:
+  push:
+    branches:
+      - audit/signalpilot-e2e-20261104
+  pull_request:
+    paths:
+      - signal_inbox.py
+      - tests/test_signal_inbox_contract.py
+      - tests/test_inbox_to_demo_route_contract.py
+      - tests/test_demo_router_fail_closed_contract.py
+      - demo_signal_router.py
+      - demo_fill_ownership_audit.py
+      - demo_attribution_summary.py
+      - demo_historical_coverage.py
+      - demo_historical_inventory.py
+      - demo_offline_fill_comparison.py
+      - tests/test_demo_offline_fill_comparison.py
+      - tests/test_demo_historical_inventory.py
+      - tests/test_demo_historical_coverage.py
+      - tests/test_demo_attribution_summary.py
+      - tests/test_demo_fill_ownership_audit.py
+      - .github/workflows/signalpilot-inbox-contract.yml
+jobs:
+  inbox-contract:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pytest
+        run: python -m pip install pytest
+      - name: Run offline inbox contract tests
+        run: python -m pytest -q tests/test_signal_inbox_contract.py tests/test_inbox_to_demo_route_contract.py tests/test_demo_router_fail_closed_contract.py tests/test_demo_fill_ownership_audit.py tests/test_demo_attribution_summary.py tests/test_demo_historical_coverage.py tests/test_demo_historical_inventory.py tests/test_demo_offline_fill_comparison.py

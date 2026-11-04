@@ -14,10 +14,9 @@ from unittest.mock import patch
 import sys
 import types
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-if "futures_engine" not in sys.modules:
-    package = types.ModuleType("futures_engine")
-    package.__path__ = []
-    sys.modules["futures_engine"] = package
+# Import the real package so collection cannot replace it with an empty
+# module and break unrelated tests in the same pytest process.
+import futures_engine
 outbox_stub = types.ModuleType("futures_engine.research_outbox")
 outbox_stub.DB = "/unused-ci-research.sqlite3"
 preview_stub = types.ModuleType("futures_engine.research_sqs_preview")
