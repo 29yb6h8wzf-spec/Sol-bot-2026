@@ -6,7 +6,9 @@ on:
   pull_request:
     paths:
       - signal_inbox.py
-      - tests/test_signal_inbox_contract.py
+      - tests/test_signal_inbox_contract.py tests/test_inbox_to_demo_route_contract.py
+      - tests/test_inbox_to_demo_route_contract.py
+      - demo_signal_router.py
       - .github/workflows/signalpilot-inbox-contract.yml
 jobs:
   inbox-contract:
