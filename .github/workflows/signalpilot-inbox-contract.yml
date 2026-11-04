@@ -10,7 +10,9 @@ on:
       - tests/test_inbox_to_demo_route_contract.py
       - demo_signal_router.py
       - demo_fill_ownership_audit.py
-      - tests/test_demo_fill_ownership_audit.py
+      - demo_attribution_summary.py
+      - tests/test_demo_attribution_summary.py
+      - tests/test_demo_fill_ownership_audit.py tests/test_demo_attribution_summary.py
       - .github/workflows/signalpilot-inbox-contract.yml
 jobs:
   inbox-contract:
