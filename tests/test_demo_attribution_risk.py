@@ -5,6 +5,8 @@ import time
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 from demo_risk_monitor import run
 
 
@@ -82,6 +84,21 @@ class AttributionRiskTests(unittest.TestCase):
             for name, obj in docs.items():
                 (root / name).write_text(json.dumps(obj))
                 (root / name).chmod(0o600)
+            # Simulate root-owned observation fixtures on unprivileged CI runners.
+            # Production ownership checks in demo_risk_monitor remain unchanged.
+            original_lstat = Path.lstat
+            trusted_names = {
+                "demo-virtual-allocation.json", "demo-position-stress.json",
+                "demo-reconciliation-status.json", "demo-provenance-observation.json"
+            }
+            def fixture_lstat(path, *args, **kwargs):
+                stat = original_lstat(path, *args, **kwargs)
+                if path.parent == root and path.name in trusted_names:
+                    return SimpleNamespace(st_uid=0, st_mode=stat.st_mode)
+                return stat
+            ownership_patch = patch.object(Path, "lstat", fixture_lstat)
+            ownership_patch.start()
+            self.addCleanup(ownership_patch.stop)
             status = run(root)
             self.assertEqual(status["reason"], "UNATTRIBUTED_DEMO_FILLS")
             self.assertEqual(status["unattributed_fills"], 5)
