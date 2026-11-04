@@ -5,7 +5,6 @@ in memory, then records a hypothetical outcome. No authenticated APIs/orders.
 """
 import csv
 import io
-from datetime import date as Date
 from .public_archive_download import download_daily_public_archive
 from .offline_binance_archive_verify import verify_binance_archive
 from .offline_replay_pipeline import process_one
@@ -49,8 +48,7 @@ def run_public_daily_replay(*, plan, symbol, day, directory,
         plan=plan,
         history={"exchange": "BINANCE", "market": "USDT_M_FUTURES",
                  "symbol": symbol, "interval": "5m",
-                 "fetched_at_ms": int(Date.fromisoformat(day).strftime("%s"))*1000
-                 + 172800000 if False else end + 300000,
+                 "fetched_at_ms": end + 300000,
                  "closed_through_ms": end, "klines": selected},
         journal_path=journal_path)
     result["archive_sha256"] = verified["archive_sha256"]
