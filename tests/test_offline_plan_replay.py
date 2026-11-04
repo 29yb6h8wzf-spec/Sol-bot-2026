@@ -49,3 +49,32 @@ def test_execution_must_remain_disabled():
 def test_bad_ohlc_rejected():
     with pytest.raises(ValueError):
         replay(plan(), [(T,100,99,98,101)])
+
+def test_short_stop_first_same_candle():
+    p = plan(side="short", stop="101", target="98")
+    r = replay(p, [(T,100,102,97,99)])
+    assert r["status"] == "CLOSED_HYPOTHETICAL"
+    assert r["exit_reason"] == "STOP"
+    assert float(r["net_pnl_excluding_funding"]) < 0
+
+def test_short_target_with_fees():
+    p = plan(side="short", stop="101", target="98")
+    r = replay(p, [(T,100,100.2,97.8,98)])
+    assert r["exit_reason"] == "TARGET"
+    assert float(r["fees"]) > 0
+    assert float(r["net_pnl_excluding_funding"]) < float(r["gross_pnl"])
+
+def test_duplicate_candle_is_unknown():
+    r = replay(plan(), [(T,100,100.5,99.8,100),
+                        (T,100,100.5,99.8,100)])
+    assert r["status"] == "UNKNOWN"
+
+def test_nonfinite_price_rejected():
+    with pytest.raises(ValueError):
+        replay(plan(), [(T,100,float("nan"),99,100)])
+
+def test_hypothetical_only_even_when_closed():
+    r = replay(plan(), [(T,100,102.5,99.8,102)])
+    assert r["status"] == "CLOSED_HYPOTHETICAL"
+    assert r["orders_sent"] is False
+    assert "net_pnl_excluding_funding" in r
