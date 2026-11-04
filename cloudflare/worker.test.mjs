@@ -759,8 +759,8 @@ test('BTC theoretical quantity text matches the displayed notional instead of ro
  assert.match(message,/Kraken Spot/);
 });
 
-test('research Telegram delivery accepts original strategy scores 85+ only',async()=>{
- assert.equal(MIN_SIGNAL_SCORE,85);
+test('research Telegram delivery accepts original strategy scores 75+ only',async()=>{
+ assert.equal(MIN_SIGNAL_SCORE,75);
  const saved=globalThis.fetch,kv=new Map(),sent=[];
  const env={TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'100',SIGNAL_STATE:{get:async k=>kv.get(k)||null,put:async(k,v)=>kv.set(k,v)}};
  const base=Date.UTC(2026,9,28,8,30);
@@ -770,12 +770,12 @@ test('research Telegram delivery accepts original strategy scores 85+ only',asyn
  assert.ok(plan);
  globalThis.fetch=async(url,options)=>{assert.match(String(url),/sendMessage/);sent.push(JSON.parse(options.body));return new Response(JSON.stringify({ok:true,result:{message_id:1}}));};
  try{
-  const found=[{setup:setup('BREAKOUT',84),plan},{setup:setup('EMA_ADX',85),plan},{setup:setup('MACD_VOLUME',100),plan},{setup:setup('RSI_BOLL',NaN),plan}];
+  const found=[{setup:setup('BREAKOUT',74),plan},{setup:setup('EMA_ADX',75),plan},{setup:setup('MACD_VOLUME',100),plan},{setup:setup('RSI_BOLL',NaN),plan}];
   const result=await deliverResearchCandidates(env,found,'BTCUSDT',{status:'unavailable'});
   assert.deepEqual(result,{duplicates:0,delivered:2,deliveryFailed:0});
   assert.equal(sent.length,2);
   assert.ok(sent.every(x=>/85\/100|100\/100/.test(x.text)));
-  assert.ok(sent.every(x=>!x.text.includes('84/100')));
+  assert.ok(sent.every(x=>!x.text.includes('74/100')));
   assert.equal([...kv.keys()].filter(x=>x.startsWith('signal:')&&!x.includes(':delivered:')).length,2);
  }finally{globalThis.fetch=saved;}
 });

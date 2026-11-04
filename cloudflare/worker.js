@@ -95,7 +95,7 @@ async function sendHourlyNewsDigest(env,news,now=Date.now()){
 }
 const PERIOD = 300000;
 // Minimum original strategy quality grade for research Telegram signals (not a win probability).
-export const MIN_SIGNAL_SCORE=85;
+export const MIN_SIGNAL_SCORE=75;
 const avg = a => a.reduce((x,y)=>x+y,0)/a.length;
 function ema(v,n) {let x=v[0], a=2/(n+1);for(const y of v.slice(1))x=a*y+(1-a)*x;return x;}
 function emaSeries(v,n) {let x=v[0],a=2/(n+1);return v.map((y,i)=>(x=i?a*y+(1-a)*x:y));}
