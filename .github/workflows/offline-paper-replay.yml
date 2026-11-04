@@ -9,6 +9,8 @@ on:
       - 'tests/test_offline_plan_replay.py'
       - 'futures_engine/offline_history_boundary.py'
       - 'tests/test_offline_history_boundary.py'
+      - 'futures_engine/offline_replay_journal.py'
+      - 'tests/test_offline_replay_journal.py'
       - '.github/workflows/offline-paper-replay.yml'
 jobs:
   offline-replay:
@@ -23,6 +25,6 @@ jobs:
       - name: Install test runner
         run: python -m pip install pytest
       - name: Execute targeted regression suite
-        run: python -m pytest -q tests/test_offline_plan_replay.py tests/test_offline_history_boundary.py
+        run: python -m pytest -q tests/test_offline_plan_replay.py tests/test_offline_history_boundary.py tests/test_offline_replay_journal.py
       - name: Compile isolated simulator
-        run: python -m py_compile futures_engine/offline_plan_replay.py futures_engine/offline_history_boundary.py
+        run: python -m py_compile futures_engine/offline_plan_replay.py futures_engine/offline_history_boundary.py futures_engine/offline_replay_journal.py
