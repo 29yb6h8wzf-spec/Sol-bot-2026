@@ -1,0 +1,29 @@
+name: Kraken Spot Research Data Smoke
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-spot-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/binance-futures-paper-foundation-20261027
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install public market dependency
+        run: python -m pip install 'ccxt>=4,<5'
+      - name: Fetch public closed Kraken spot candles
+        run: python -m futures_engine.alternate_market_smoke spot-evidence
+      - name: Upload evidence even on market failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kraken-spot-research-smoke
+          path: spot-evidence/
+          if-no-files-found: warn
+          retention-days: 14
