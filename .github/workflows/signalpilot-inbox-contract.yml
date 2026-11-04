@@ -1,0 +1,24 @@
+name: SignalPilot inbox contract
+on:
+  push:
+    branches:
+      - audit/signalpilot-e2e-20261104
+  pull_request:
+    paths:
+      - signal_inbox.py
+      - tests/test_signal_inbox_contract.py
+      - .github/workflows/signalpilot-inbox-contract.yml
+jobs:
+  inbox-contract:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pytest
+        run: python -m pip install pytest
+      - name: Run offline inbox contract tests
+        run: python -m pytest -q tests/test_signal_inbox_contract.py
