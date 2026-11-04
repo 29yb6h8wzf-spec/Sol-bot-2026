@@ -20,8 +20,10 @@ jobs:
           python-version: '3.11'
       - name: Python syntax check
         run: python -m py_compile bot.py strategies.py news.py
+      - name: Install test runner
+        run: python -m pip install 'pytest>=8,<10'
       - name: Futures-only market source regression tests
-        run: python -m unittest discover -s tests -p 'test_*.py' -v
+        run: python -m pytest tests -q
       - name: Indicator smoke test without live data
         run: |
           python - <<'PY'
