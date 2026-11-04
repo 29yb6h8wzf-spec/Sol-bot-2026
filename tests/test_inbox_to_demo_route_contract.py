@@ -54,3 +54,31 @@ def test_approved_mock_is_only_eligible_not_submitted(tmp_path):
                            account={"equity": "150"})
     assert result[0]["status"] == "DEMO_ELIGIBLE_NOT_SUBMITTED"
     assert result[0]["orders_sent"] is False
+
+
+def test_transient_block_can_recover_without_duplicate_submission(tmp_path):
+    inbox, journal = str(tmp_path / "inbox.sqlite"), str(tmp_path / "journal.sqlite")
+    assert accept(payload(), db=inbox)
+    first = connect_inbox(inbox, journal)
+    assert first[0]["status"] == "BLOCKED_UNVERIFIED"
+    recovered = connect_inbox(inbox, journal, verifier=verified,
+                              preflight=lambda v, a: (True, "ok"),
+                              account={"equity": "150"})
+    assert len(recovered) == 1
+    assert recovered[0]["status"] == "DEMO_ELIGIBLE_NOT_SUBMITTED"
+    assert recovered[0]["orders_sent"] is False
+    assert connect_inbox(inbox, journal, verifier=verified,
+                         preflight=lambda v, a: (True, "ok"),
+                         account={"equity": "150"}) == []
+
+
+def test_risk_rejection_remains_terminal(tmp_path):
+    inbox, journal = str(tmp_path / "inbox.sqlite"), str(tmp_path / "journal.sqlite")
+    assert accept(payload(), db=inbox)
+    rejected = connect_inbox(inbox, journal, verifier=verified,
+                             preflight=lambda v, a: (False, "unreconciled_fills"),
+                             account={"equity": "150"})
+    assert rejected[0]["status"] == "REJECTED_RISK"
+    assert connect_inbox(inbox, journal, verifier=verified,
+                         preflight=lambda v, a: (True, "ok"),
+                         account={"equity": "150"}) == []
