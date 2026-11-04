@@ -10,7 +10,7 @@ MIDNIGHT = int(datetime(2026, 11, 4, tzinfo=timezone.utc).timestamp() * 1000)
 
 
 def observation(source, **fields):
-    return {"source": source, "observed_at": NOW, **fields}
+    return {"source": source, "observed_at": NOW, "orders_sent": False, **fields}
 
 
 def evidence(*, unknown=0, realized="0", fees="0", net="0"):
