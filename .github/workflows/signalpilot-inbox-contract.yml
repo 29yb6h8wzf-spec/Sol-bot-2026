@@ -11,7 +11,9 @@ on:
       - demo_signal_router.py
       - demo_fill_ownership_audit.py
       - demo_attribution_summary.py
-      - tests/test_demo_attribution_summary.py
+      - demo_historical_coverage.py
+      - tests/test_demo_historical_coverage.py
+      - tests/test_demo_attribution_summary.py tests/test_demo_historical_coverage.py
       - tests/test_demo_fill_ownership_audit.py
       - .github/workflows/signalpilot-inbox-contract.yml
 jobs:
