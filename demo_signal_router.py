@@ -65,8 +65,15 @@ def connect_inbox(inbox_path, journal_path, *, verifier=None, preflight=None, ac
             # Transient blocks may recover when the verifier/account returns.
             # Never reprocess terminal decisions or a demo-eligible signal.
             retryable = {"BLOCKED_UNVERIFIED", "BLOCKED_PREFLIGHT", "BLOCKED_VERIFICATION_ERROR"}
-            if previous and previous[0] not in retryable:
-                continue
+            if previous:
+                if previous[0] not in retryable:
+                    continue
+                # A retry must have the dependency that was previously missing;
+                # otherwise preserve the recorded block and avoid journal churn.
+                if verifier is None:
+                    continue
+                if previous[0] == "BLOCKED_PREFLIGHT" and (preflight is None or account is None):
+                    continue
             try:
                 payload = json.loads(raw)
             except (TypeError, ValueError):
