@@ -61,7 +61,11 @@ def connect_inbox(inbox_path, journal_path, *, verifier=None, preflight=None, ac
         for sid, raw in rows:
             if not isinstance(sid, str) or not sid or len(sid) > 128:
                 continue
-            if journal.execute("SELECT 1 FROM demo_signal_route WHERE signal_id=?", (sid,)).fetchone():
+            previous = journal.execute("SELECT status FROM demo_signal_route WHERE signal_id=?", (sid,)).fetchone()
+            # Transient blocks may recover when the verifier/account returns.
+            # Never reprocess terminal decisions or a demo-eligible signal.
+            retryable = {"BLOCKED_UNVERIFIED", "BLOCKED_PREFLIGHT", "BLOCKED_VERIFICATION_ERROR"}
+            if previous and previous[0] not in retryable:
                 continue
             try:
                 payload = json.loads(raw)
@@ -71,8 +75,10 @@ def connect_inbox(inbox_path, journal_path, *, verifier=None, preflight=None, ac
                 status, reason = "REJECTED", "signal_id_mismatch"
             else:
                 status, reason = evaluate(payload, verifier=verifier, preflight=preflight, account=account, now=now)
-            journal.execute("INSERT INTO demo_signal_route VALUES (?,?,?,?)",
-                            (sid, status, reason, int(time.time())))
+            journal.execute("""INSERT INTO demo_signal_route VALUES (?,?,?,?)
+                ON CONFLICT(signal_id) DO UPDATE SET status=excluded.status,
+                reason=excluded.reason, checked_at=excluded.checked_at""",
+                (sid, status, reason, int(time.time())))
             results.append({"signal_id": sid, "status": status, "reason": reason, "orders_sent": False})
     return results
 
