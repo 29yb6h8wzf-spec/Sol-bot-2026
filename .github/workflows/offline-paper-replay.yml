@@ -1,0 +1,26 @@
+name: Offline paper replay regression tests
+on:
+  push:
+    branches:
+      - feature/paper-replay-issue-87
+  pull_request:
+    paths:
+      - 'futures_engine/offline_plan_replay.py'
+      - 'tests/test_offline_plan_replay.py'
+      - '.github/workflows/offline-paper-replay.yml'
+jobs:
+  offline-replay:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test runner
+        run: python -m pip install pytest
+      - name: Execute targeted regression suite
+        run: python -m pytest -q tests/test_offline_plan_replay.py
+      - name: Compile isolated simulator
+        run: python -m py_compile futures_engine/offline_plan_replay.py
