@@ -1,5 +1,6 @@
 """Public, unauthenticated Binance USDT-M Futures data via ccxt."""
 import time
+from .closed_candle_validation import validate_rows, CandleValidationError
 
 
 class MarketDataError(RuntimeError):
@@ -39,7 +40,11 @@ def closed_futures_bars(symbol, timeframe, limit=240):
                 or not row[3] <= row[4] <= row[2] or row[5] < 0
                 or (i and row[0] - closed[i-1][0] != duration)):
                 raise MarketDataError('invalid or gapped futures candles')
-        return exchange, market, closed
+        try:
+            validated = validate_rows(symbol.replace('/USDT:USDT', 'USDT'), duration, rows, now)
+        except CandleValidationError as exc:
+            raise MarketDataError('invalid_binance_market_data') from exc
+        return exchange, market, validated
     except Exception:
         exchange.close() if hasattr(exchange, 'close') else None
         raise
