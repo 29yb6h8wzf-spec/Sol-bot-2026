@@ -15,7 +15,7 @@ on:
       - demo_historical_inventory.py
       - demo_offline_fill_comparison.py
       - tests/test_demo_offline_fill_comparison.py
-      - tests/test_demo_historical_inventory.py tests/test_demo_offline_fill_comparison.py
+      - tests/test_demo_historical_inventory.py
       - tests/test_demo_historical_coverage.py
       - tests/test_demo_attribution_summary.py
       - tests/test_demo_fill_ownership_audit.py
@@ -33,4 +33,4 @@ jobs:
       - name: Install pytest
         run: python -m pip install pytest
       - name: Run offline inbox contract tests
-        run: python -m pytest -q tests/test_signal_inbox_contract.py tests/test_inbox_to_demo_route_contract.py tests/test_demo_fill_ownership_audit.py tests/test_demo_attribution_summary.py tests/test_demo_historical_coverage.py tests/test_demo_historical_inventory.py
+        run: python -m pytest -q tests/test_signal_inbox_contract.py tests/test_inbox_to_demo_route_contract.py tests/test_demo_fill_ownership_audit.py tests/test_demo_attribution_summary.py tests/test_demo_historical_coverage.py tests/test_demo_historical_inventory.py tests/test_demo_offline_fill_comparison.py
