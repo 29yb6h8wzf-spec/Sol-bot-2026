@@ -12,7 +12,9 @@ on:
       - demo_fill_ownership_audit.py
       - demo_attribution_summary.py
       - demo_historical_coverage.py
-      - tests/test_demo_historical_coverage.py
+      - demo_historical_inventory.py
+      - tests/test_demo_historical_inventory.py
+      - tests/test_demo_historical_coverage.py tests/test_demo_historical_inventory.py
       - tests/test_demo_attribution_summary.py
       - tests/test_demo_fill_ownership_audit.py
       - .github/workflows/signalpilot-inbox-contract.yml
