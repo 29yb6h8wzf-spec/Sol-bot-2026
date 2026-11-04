@@ -17,12 +17,14 @@ def inventory(exchange, start_day, end_day, *, limit=1000):
         since = int(day.timestamp() * 1000)
         until = int((day + timedelta(days=1)).timestamp() * 1000)
         fills = 0
+        by_symbol = {}
         for symbol in SYMBOLS:
             assert_demo(exchange)
             batch = exchange.fetch_my_trades(symbol, since=since, limit=limit)
             if not isinstance(batch, list) or len(batch) >= limit:
                 raise ValueError("incomplete_historical_page")
             seen = set()
+            symbol_fills = 0
             for trade in batch:
                 if not isinstance(trade, dict) or trade.get("symbol") != symbol:
                     raise ValueError("invalid_historical_trade")
@@ -38,8 +40,12 @@ def inventory(exchange, start_day, end_day, *, limit=1000):
                     raise ValueError("duplicate_historical_trade")
                 seen.add(str(trade_id))
                 fills += 1
+                symbol_fills += 1
+            by_symbol[symbol] = symbol_fills
         days.append({"day": day.date().isoformat(), "observed_fills": fills,
-                     "scope": "four_symbols_only"})
+                     "fills_by_symbol": by_symbol,
+                     "scope": "four_symbols_only",
+                     "complete_account_coverage": False})
     return {"status": "HISTORICAL_INVENTORY_ONLY", "days": days,
             "historical_reconciliation_complete": False,
             "execution_authorized": False, "orders_sent": False}
