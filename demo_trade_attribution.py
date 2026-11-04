@@ -35,6 +35,8 @@ def decimal(value):
 def registry_orders(path=REGISTRY):
     """Read root-owned registry; absence means zero trusted SignalPilot orders."""
     path = Path(path)
+    if path.is_symlink():
+        raise ValueError("untrusted_registry_symlink")
     if not path.exists():
         return {}, False
     st = path.stat()
