@@ -4,6 +4,7 @@ Kraken spot candles are NOT Binance USDT-M futures prices.
 Never sends orders or silently substitutes a data source.
 """
 import json
+import math
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,12 +23,19 @@ def inspect(symbol, timeframe="5m"):
         duration = exchange.parse_timeframe(timeframe) * 1000
         rows = exchange.fetch_ohlcv(symbol, timeframe, limit=240)
         now = exchange.milliseconds()
-        closed = [r for r in rows if len(r) >= 6 and r[0] + duration <= now]
+        if not isinstance(rows, list) or not rows:
+            raise ValueError("empty or malformed spot response")
+        for row in rows:
+            if (not isinstance(row, (list, tuple)) or len(row) < 6
+                or any(isinstance(value, bool) or not isinstance(value, (int, float))
+                       or not math.isfinite(value) for value in row[:6])):
+                raise ValueError("invalid nonfinite or malformed spot candle")
+        closed = [r for r in rows if r[0] + duration <= now]
         if len(closed) < 100:
             raise ValueError("insufficient closed candles")
         for index, row in enumerate(closed):
             t, o, h, l, c, v = row[:6]
-            if (t % duration or min(o, h, l, c) <= 0 or v < 0
+            if (t < 0 or t % duration or min(o, h, l, c) <= 0 or v < 0
                 or not l <= o <= h or not l <= c <= h
                 or (index and t - closed[index - 1][0] != duration)):
                 raise ValueError("invalid or gapped spot candles")
