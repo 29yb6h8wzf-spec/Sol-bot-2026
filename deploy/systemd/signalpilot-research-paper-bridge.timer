@@ -1,0 +1,11 @@
+[Unit]
+Description=Evaluate new verified Binance research for indicative paper plans
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=5s
+Persistent=true
+Unit=signalpilot-research-paper-bridge.service
+
+[Install]
+WantedBy=timers.target
