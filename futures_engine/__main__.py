@@ -45,7 +45,8 @@ def main():
     try:
         ledger.roll_day(bars[-1][0])
         exit_event = ledger.evaluate_exit(bars, config.taker_fee, config.slippage_fraction)
-        signal = crossover_signal(bars)
+        # Keep EMA warmup stable when the exchange returns 239 or 240 closed candles.
+        signal = crossover_signal(bars[-239:])
         result = {'mode':'paper','symbol':config.symbol,'timeframe':config.timeframe,
                   'closed_candle':bars[-1][0],'equity':ledger.state['equity'],
                   'signal':signal,'exit':exit_event,'entry':None}
