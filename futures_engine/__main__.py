@@ -3,6 +3,7 @@ import json
 import os
 from decimal import Decimal as D
 from dotenv import load_dotenv
+from ccxt.base.errors import InvalidOrder
 from .core import Config, crossover_signal, plan_trade
 from .market import closed_futures_bars
 from .paper import PaperLedger
@@ -54,7 +55,13 @@ def main():
             min_cost = (limits.get('cost') or {}).get('min') or 0
             raw = plan_trade(config,signal,bars[-1][4],ledger.state['equity'],
                              ledger.state['day_start_equity'],amount_step=D('0.00000001'))
-            amount = D(exchange.amount_to_precision(config.symbol,raw['quantity']))
+            try:
+                amount = D(exchange.amount_to_precision(config.symbol, raw['quantity']))
+            except InvalidOrder:
+                # A quantity below the exchange precision is not a valid paper order.
+                result['skip_reason'] = 'below_exchange_precision'
+                print(json.dumps(result, ensure_ascii=False))
+                return
             if amount <= 0:
                 result['skip_reason'] = 'below_exchange_precision'
                 print(json.dumps(result, ensure_ascii=False))
