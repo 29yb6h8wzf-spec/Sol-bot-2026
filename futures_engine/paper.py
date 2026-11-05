@@ -68,6 +68,21 @@ class PaperLedger:
         return None
 
     def open_position(self, plan, signal_candle):
+        # Fail closed before touching the persistent paper ledger.
+        if not isinstance(plan, dict) or plan.get('side') not in ('long', 'short'):
+            raise ValueError('invalid paper entry side')
+        if type(signal_candle) is not int or signal_candle < 0:
+            raise ValueError('invalid paper signal candle')
+        try:
+            entry, stop, target, qty = (D(str(plan[k])) for k in
+                                        ('entry', 'stop', 'target', 'quantity'))
+        except (KeyError, TypeError, ValueError, ArithmeticError) as exc:
+            raise ValueError('invalid paper entry plan') from exc
+        if not all(x.is_finite() and x > 0 for x in (entry, stop, target, qty)):
+            raise ValueError('invalid paper entry numbers')
+        if not (stop < entry < target if plan['side'] == 'long'
+                else target < entry < stop):
+            raise ValueError('invalid paper entry stop or target')
         if self.state['position'] or self.state['last_signal_candle'] == signal_candle:
             raise ValueError('position already open or duplicate signal')
         self.state['position'] = {**plan,'signal_candle':signal_candle}
