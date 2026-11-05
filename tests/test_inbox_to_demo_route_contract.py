@@ -12,7 +12,9 @@ def payload():
 
 def verified(p):
     return dict(signal_id=p["signal_id"], symbol="XRP/USDT:USDT",
-                source="verified_85_score_engine", score=85)
+                source="verified_85_score_engine", score=85,
+                strategy="EMA_ADX", direction="long", closed_5m_candle_ms=300000,
+                verification={"independent": True})
 
 
 def test_missing_independent_verifier_blocks_and_journals_once(tmp_path):
