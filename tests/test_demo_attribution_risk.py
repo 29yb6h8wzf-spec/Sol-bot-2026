@@ -1,10 +1,12 @@
 """Read-only risk monitor integration with trade attribution audit."""
 import json
+import os
 import tempfile
 import time
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 from demo_risk_monitor import run
 
 
@@ -82,6 +84,23 @@ class AttributionRiskTests(unittest.TestCase):
             for name, obj in docs.items():
                 (root / name).write_text(json.dumps(obj))
                 (root / name).chmod(0o600)
+            # CI fixtures are runner-owned; simulate root ownership only for
+            # these trusted test observations, without relaxing production checks.
+            original_lstat = Path.lstat
+            trusted_names = {
+                "demo-virtual-allocation.json", "demo-position-stress.json",
+                "demo-reconciliation-status.json", "demo-provenance-observation.json",
+            }
+            def trusted_fixture_lstat(path, *args, **kwargs):
+                stat = original_lstat(path, *args, **kwargs)
+                if Path(path).parent == root and Path(path).name in trusted_names:
+                    values = list(stat)
+                    values[4] = 0  # st_uid: root-owned observation fixture
+                    return os.stat_result(values)
+                return stat
+            owner_patch = patch.object(Path, "lstat", trusted_fixture_lstat)
+            owner_patch.start()
+            self.addCleanup(owner_patch.stop)
             status = run(root)
             self.assertEqual(status["reason"], "UNATTRIBUTED_DEMO_FILLS")
             self.assertEqual(status["unattributed_fills"], 5)
