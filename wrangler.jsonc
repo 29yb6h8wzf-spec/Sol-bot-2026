@@ -19,6 +19,10 @@
       {
         "binding": "SIGNAL_STATE",
         "id": "a6c15394b60044dfa0c02b1da40edaa1"
+      },
+      {
+        "binding": "SIGNAL-STATE",
+        "id": "a6c15394b60044dfa0c02b1da40edaa1"
       }
     ]
   }
