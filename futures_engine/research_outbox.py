@@ -1,6 +1,10 @@
 """Durable idempotent research outbox. Never publishes to SQS or places orders."""
 import json
 import sqlite3
+# Mirrors the verified scanner's supported research strategy identities.
+# Keep this constant in tracked code so fresh CI/deployments can reject
+# unknown and synthetic candidates without server-local imports.
+RESEARCH_STRATEGIES = frozenset(("EMA_ADX", "RSI_BOLL", "MACD_VOLUME"))
 
 DB = "/opt/signalpilot/research-history.sqlite3"
 
@@ -26,6 +30,7 @@ def stage(result, *, db=DB):
                 or verification.get("candle_ms") != result.get("closed_5m_candle_ms")
                 or verification.get("score") != item.get("score")
                 or verification.get("strategy") != item.get("strategy")
+                or verification.get("strategy") not in RESEARCH_STRATEGIES
                 or verification.get("direction") != item.get("direction")
                 or not verification.get("signal_id", "").startswith("research-")):
                 raise ValueError("unverified research candidate")
