@@ -35,11 +35,15 @@ def main():
                              ledger.state['day_start_equity'],amount_step=D('0.00000001'))
             amount = D(exchange.amount_to_precision(config.symbol,raw['quantity']))
             if amount <= 0:
-                raise ValueError('amount below exchange precision')
+                result['skip_reason'] = 'below_exchange_precision'
+                print(json.dumps(result, ensure_ascii=False))
+                return
             if amount > D(raw['quantity']):
                 raise ValueError('exchange precision unexpectedly increased risk')
             if amount < D(str(minimum)) or amount * D(raw['entry']) < D(str(min_cost)):
-                raise ValueError('insufficient balance / exchange dust limit')
+                result['skip_reason'] = 'below_exchange_minimum'
+                print(json.dumps(result, ensure_ascii=False))
+                return
             raw['quantity'] = str(amount)
             ledger.open_position(raw,bars[-1][0])
             result['entry'] = raw
