@@ -23,8 +23,12 @@ preview_stub = types.ModuleType("futures_engine.research_sqs_preview")
 def _no_live_preview(*args, **kwargs):
     raise RuntimeError("offline_preview_stub_must_be_mocked")
 preview_stub.preview = _no_live_preview
-sys.modules["futures_engine.research_outbox"] = outbox_stub
-sys.modules["futures_engine.research_sqs_preview"] = preview_stub
+# Keep the real research modules when they are included in this checkout.
+# The inert stubs are only for older standalone checkouts without these files.
+if not (Path(__file__).resolve().parents[1] / "futures_engine/research_outbox.py").is_file():
+    sys.modules["futures_engine.research_outbox"] = outbox_stub
+if not (Path(__file__).resolve().parents[1] / "futures_engine/research_sqs_preview.py").is_file():
+    sys.modules["futures_engine.research_sqs_preview"] = preview_stub
 
 from binance_telegram_bridge import (
     ENABLE_VAR, check_endpoint, load_secret, load_ssm_secret, publish, sign_payload,
