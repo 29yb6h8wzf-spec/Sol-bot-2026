@@ -81,7 +81,9 @@ def test_four_simultaneous_assets_use_separate_37_5_ledger():
 
 
 def test_same_coin_overlapping_signal_rejected_without_second_position():
-    inputs = [candidate("BTC"), candidate("BTC", T+STEP_MS)]
+    shared = bars(n=20)
+    inputs = [candidate("BTC", history=shared[:18]),
+              candidate("BTC", T+STEP_MS, history=shared[1:19])]
     out = run(inputs)
     assert len(events(out, "ACCEPTED_RESEARCH_ONLY")) == 1
     assert len(events(out, "SKIPPED_RESEARCH_ONLY")) == 1
@@ -91,12 +93,13 @@ def test_same_coin_overlapping_signal_rejected_without_second_position():
 
 
 def test_money_and_margin_released_only_after_stop_candle_closes():
-    primary = candidate("BTC", history=bars(stop_at=1))
+    shared = bars(n=21, stop_at=1)
+    primary = candidate("BTC", history=shared[:18])
     # Stop occurs on candle starting T + 2*STEP, so risk frees
     # only at T + 3*STEP. The first replacement entry occurs earlier.
-    early = candidate("BTC", T+STEP_MS, sid="too-early", history=bars(T+STEP_MS))
+    early = candidate("BTC", T+STEP_MS, sid="too-early", history=shared[1:19])
     later = candidate("BTC", T+2*STEP_MS, sid="after-close",
-                      history=bars(T+2*STEP_MS))
+                      history=shared[2:20])
     # All replacement candles must be fully closed before this retrospective replay.
     out = run([primary, early, later], as_of=T+24*STEP_MS)
     assert len(events(out, "SKIPPED_RESEARCH_ONLY")) == 1
@@ -226,3 +229,49 @@ def test_account_results_not_reported_as_actual_fills_or_funding_complete():
     assert result["actual_fills_verified"] is False
     assert result["funding_included"] is False
     assert result["orders_sent"] is False
+
+def test_conflicting_same_coin_ohlc_at_identical_time_fails_closed():
+    shared = bars(n=20)
+    first = candidate("BTC", history=shared[:18])
+    second = candidate("BTC", T+STEP_MS, sid="conflicting-snapshot",
+                       history=list(shared[1:19]))
+    bar = second["candles"][0]
+    # Both are individually valid OHLC candles with the SAME timestamp.
+    # Changing only the second signal's open must not be accepted.
+    second["candles"][0] = (bar[0], "99.96", bar[2], bar[3], bar[4])
+    with pytest.raises(ValueError, match="conflicting_symbol_candle_history"):
+        run([first, second])
+
+
+def test_matching_overlaps_allow_equivalent_numeric_representations():
+    shared = bars(n=20)
+    first = candidate("BTC", history=shared[:18])
+    second = candidate("BTC", T+STEP_MS, sid="equivalent-format",
+                       history=list(shared[1:19]))
+    bar = second["candles"][0]
+    second["candles"][0] = (bar[0], "99.9500", bar[2], bar[3], bar[4])
+    out = run([first, second])
+    assert len(events(out, "ACCEPTED_RESEARCH_ONLY")) == 1
+    assert len(events(out, "SKIPPED_RESEARCH_ONLY")) == 1
+
+
+def test_conflicting_history_rejected_even_if_second_trade_would_be_skipped():
+    shared = bars(n=20)
+    first = candidate("SOL", history=shared[:18])
+    second = candidate("SOL", T+STEP_MS, sid="overlapping-skipped",
+                       history=list(shared[1:19]))
+    bar = second["candles"][2]
+    second["candles"][2] = (bar[0], bar[1], "100.40", bar[3], bar[4])
+    with pytest.raises(ValueError, match="conflicting_symbol_candle_history"):
+        run([first, second])
+
+
+def test_invalid_ohlc_from_skipped_candidate_still_fails_closed():
+    shared = bars(n=20)
+    first = candidate("XRP", history=shared[:18])
+    second = candidate("XRP", T+STEP_MS, sid="invalid-skipped",
+                       history=list(shared[1:19]))
+    bar = second["candles"][0]
+    second["candles"][0] = (bar[0], bar[1], "NaN", bar[3], bar[4])
+    with pytest.raises(ValueError, match="invalid_portfolio_candle"):
+        run([first, second])

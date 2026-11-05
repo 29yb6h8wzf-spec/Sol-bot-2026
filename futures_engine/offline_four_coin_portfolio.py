@@ -140,6 +140,33 @@ def simulate_one_day(records, *, horizon_minutes, as_of_ms, market_limits,
             raise ValueError("multi_day_portfolio_requires_separate_daily_runs")
         normalized.append((entry_at, symbol, sid, timestamp, plan, candles))
 
+    # An independent research plan must not invent a different market history
+    # for a timestamp already present in another plan for the same symbol.
+    # Validate ALL candidate histories before replay, even if a later signal
+    # would ultimately be skipped due to an open position.
+    history_by_symbol_and_open = {}
+    for _entry_at, symbol, _sid, _signal_open, _plan, candle_history in normalized:
+        for candle in candle_history:
+            if (not isinstance(candle, (list, tuple)) or
+                    len(candle) != 5 or
+                    type(candle[0]) is not int or
+                    candle[0] < 0 or candle[0] % STEP_MS):
+                raise ValueError("invalid_portfolio_candle")
+            try:
+                prices = tuple(_number(price) for price in candle[1:])
+            except ValueError as exc:
+                raise ValueError("invalid_portfolio_candle") from exc
+            opening, high, low, closing = prices
+            if (min(prices) <= 0 or
+                    high < max(opening, closing, low) or
+                    low > min(opening, closing, high)):
+                raise ValueError("invalid_portfolio_candle")
+            key = (symbol, candle[0])
+            previous = history_by_symbol_and_open.get(key)
+            if previous is not None and previous != prices:
+                raise ValueError("conflicting_symbol_candle_history")
+            history_by_symbol_and_open[key] = prices
+
     normalized.sort(key=lambda item: (item[0], item[1], item[2]))
     for entry_at, symbol, sid, timestamp, plan, candles in normalized:
         # Only previously CLOSED exits can free resources at this entry time.
