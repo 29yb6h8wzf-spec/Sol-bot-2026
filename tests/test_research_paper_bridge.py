@@ -50,6 +50,19 @@ def test_plan_once(tmp_path):
     assert calls[0]["direction"] == "short"
     assert calls[0]["closed_5m_candle_ms"] == CANDLE
 
+def test_synthetic_strategy_cannot_reach_paper_planner(tmp_path):
+    source, journal = tmp_path/"source.db", tmp_path/"journal.db"
+    row=list(record("research-synthetic-test"))
+    payload=json.loads(row[4])
+    payload["strategy"]="E2E_SYNTHETIC_TEST"
+    row[4]=json.dumps(payload)
+    setup(source, [tuple(row)])
+    calls=[]
+    a=run(source,journal,now=NOW,planner=lambda *args, **kwargs: calls.append(1))
+    assert a["planned"] == 0
+    assert a["blocked"] == 1
+    assert calls == []
+
 def test_stale_and_tampered(tmp_path):
     source, journal = tmp_path/"source.db", tmp_path/"journal.db"
     setup(source, [record(), record("research-tampered", authorized=True)])
