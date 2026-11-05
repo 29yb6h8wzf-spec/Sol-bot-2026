@@ -7,6 +7,7 @@ import pytest
 from futures_engine.offline_90day_coverage_gate import (
     COINS, DAYS, EXPECTED_BARS, INTERVAL_MS,
     TRAIN_DAYS, TEST_DAYS, MAX_EVAL_BARS, inspect_90_days,
+    classify_historical_signal,
 )
 
 START = "2026-08-07"
@@ -164,3 +165,45 @@ def test_no_fabricated_funding_evidence_or_live_edge(dataset):
     assert r["source_independently_authenticated"] is False
     assert r["production_ready"] is False
     assert "pnl" not in str(r).lower()
+
+
+def test_signal_classifier_explicitly_enforces_train_embargo_and_test(dataset):
+    data, p = dataset
+    r = run(data, p)
+    classify = lambda t: classify_historical_signal(t, r)["status"]
+    assert classify(START_MS) == "OFFLINE_TRAIN_ONLY"
+    assert classify(r["last_eligible_train_signal_open_ms"]) == "OFFLINE_TRAIN_ONLY"
+    assert classify(r["last_eligible_train_signal_open_ms"] + INTERVAL_MS) == (
+        "EXCLUDED_TRAIN_TEST_EMBARGO")
+    assert classify(r["split_utc_ms"] - INTERVAL_MS) == (
+        "EXCLUDED_TRAIN_TEST_EMBARGO")
+    assert classify(r["first_eligible_test_signal_open_ms"]) == (
+        "OFFLINE_TEST_ONLY")
+    assert classify(r["last_eligible_test_signal_open_ms"]) == (
+        "OFFLINE_TEST_ONLY")
+    assert classify(r["last_eligible_test_signal_open_ms"] + INTERVAL_MS) == (
+        "EXCLUDED_OUTSIDE_FULL_WINDOW")
+    assert classify(START_MS-INTERVAL_MS) == "EXCLUDED_OUTSIDE_FULL_WINDOW"
+
+
+def test_signal_classifier_blocks_incomplete_history_not_fake_ready():
+    r = classify_historical_signal(START_MS, {
+        "status": "NOT_ENOUGH_VERIFIED_HISTORY"})
+    assert r["status"] == "BLOCKED_INCOMPLETE_DATA"
+    assert r["orders_sent"] is False
+
+
+@pytest.mark.parametrize("timestamp", [None, False, True, 1.2, "0", -1,
+                                        START_MS+1])
+def test_signal_classifier_rejects_invalid_signal_time(timestamp):
+    with pytest.raises(ValueError, match="signal_timestamp"):
+        classify_historical_signal(timestamp, {})
+
+
+def test_signal_classifier_rejects_tampered_split_boundaries(dataset):
+    data, p = dataset
+    result = run(data, p)
+    damaged = dict(result)
+    damaged["last_eligible_train_signal_open_ms"] += INTERVAL_MS
+    with pytest.raises(ValueError, match="invalid_split_boundaries"):
+        classify_historical_signal(START_MS, damaged)
