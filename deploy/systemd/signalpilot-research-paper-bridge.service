@@ -1,0 +1,11 @@
+[Unit]
+Description=SignalPilot Binance research to indicative paper plan journal (read-only)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/signalpilot
+ExecStart=/opt/signalpilot/.venv/bin/python /opt/signalpilot/research_paper_bridge.py
+NoNewPrivileges=true
+TimeoutStartSec=90
