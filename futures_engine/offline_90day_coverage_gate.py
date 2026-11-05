@@ -154,3 +154,47 @@ def inspect_90_days(*, start_day, candles_by_symbol, provenance_by_symbol,
         "orders_sent": False,
         "production_ready": False,
     }
+
+
+def classify_historical_signal(signal_candle_open_ms, coverage_report):
+    """Return train/test/embargo eligibility for a 5m signal OPEN timestamp.
+
+    This is a pure, offline split classifier. It never creates a trade or
+    accepts missing history as evidence. The split is meaningful only after
+    all four sources pass the (still unauthenticated) OHLC continuity checks.
+    """
+    if type(signal_candle_open_ms) is not int or signal_candle_open_ms < 0:
+        raise ValueError("invalid_signal_timestamp")
+    if signal_candle_open_ms % INTERVAL_MS:
+        raise ValueError("unaligned_signal_timestamp")
+    if not isinstance(coverage_report, dict):
+        raise ValueError("invalid_coverage_report")
+    if coverage_report.get("status") != (
+            "OHLCV_CONTINUITY_COMPLETE_PROVENANCE_UNAUTHENTICATED"):
+        return {"status": "BLOCKED_INCOMPLETE_DATA", "orders_sent": False}
+    split = coverage_report.get("split_utc_ms")
+    end = coverage_report.get("window_end_exclusive_ms")
+    start = _at_utc_midnight(coverage_report.get("window_start_utc"))
+    last_train = coverage_report.get("last_eligible_train_signal_open_ms")
+    last_test = coverage_report.get("last_eligible_test_signal_open_ms")
+    max_bars = coverage_report.get("max_evaluation_bars")
+    if (type(split) is not int or type(end) is not int or
+            type(last_train) is not int or type(last_test) is not int or
+            type(max_bars) is not int or
+            max_bars <= 0 or max_bars > MAX_EVAL_BARS or
+            split != start + TRAIN_DAYS * 86_400_000 or
+            end != start + DAYS * 86_400_000 or
+            last_train != split - (max_bars + 1) * INTERVAL_MS or
+            last_test != end - (max_bars + 1) * INTERVAL_MS):
+        raise ValueError("invalid_split_boundaries")
+    if signal_candle_open_ms < start or signal_candle_open_ms > last_test:
+        section = "EXCLUDED_OUTSIDE_FULL_WINDOW"
+    elif signal_candle_open_ms <= last_train:
+        section = "OFFLINE_TRAIN_ONLY"
+    elif signal_candle_open_ms < split:
+        section = "EXCLUDED_TRAIN_TEST_EMBARGO"
+    else:
+        section = "OFFLINE_TEST_ONLY"
+    return {"status": section, "orders_sent": False,
+            "execution_authorized": False,
+            "source_independently_authenticated": False}
