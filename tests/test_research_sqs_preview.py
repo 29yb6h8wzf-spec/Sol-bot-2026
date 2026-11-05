@@ -11,6 +11,7 @@ def record():
                        "candle_ms":CANDLE,"status":"RECALCULATED_RESEARCH_CANDIDATE",
                        "score_verified_independently":True,
                        "execution_authorized":False,"sqs_sent":False,"orders_sent":False,
+                       "strategy":"EMA_ADX",
                        "score":85,"direction":"LONG"}}
 
 class PreviewTests(unittest.TestCase):
@@ -32,6 +33,18 @@ class PreviewTests(unittest.TestCase):
         r["payload"]["score_verified_independently"]=False
         with self.assertRaisesRegex(ValueError,"verification"):
             preview(r,now=(CANDLE+300000)//1000+1)
+    def test_rejects_synthetic_research_even_when_flagged_verified(self):
+        r=record()
+        r["payload"]["strategy"]="E2E_SYNTHETIC_TEST"
+        with self.assertRaisesRegex(ValueError,"verification"):
+            preview(r,now=(CANDLE+300000)//1000+1)
+
+    def test_rejects_missing_strategy(self):
+        r=record()
+        del r["payload"]["strategy"]
+        with self.assertRaisesRegex(ValueError,"verification"):
+            preview(r,now=(CANDLE+300000)//1000+1)
+
     def test_deterministic(self):
         now=(CANDLE+300000)//1000+1
         self.assertEqual(preview(record(),now=now),preview(record(),now=now))

@@ -29,6 +29,13 @@ class OutboxTests(unittest.TestCase):
         f["candidates_85_plus"][0]["verification"]["score_verified_independently"]=False
         with self.assertRaises(ValueError):
             stage(f,db=self.db)
+    def test_rejects_synthetic_strategy_even_with_verified_flag(self):
+        f=fixture()
+        f["candidates_85_plus"][0]["strategy"]="E2E_SYNTHETIC_TEST"
+        f["candidates_85_plus"][0]["verification"]["strategy"]="E2E_SYNTHETIC_TEST"
+        with self.assertRaisesRegex(ValueError,"unverified research candidate"):
+            stage(f,db=self.db)
+
     def test_rejects_mismatched_score(self):
         f=fixture()
         f["candidates_85_plus"][0]["score"]=95
