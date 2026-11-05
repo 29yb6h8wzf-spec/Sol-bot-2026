@@ -33,7 +33,7 @@ def test_paper_entry_exit_survives_restart_and_never_double_exits(tmp_path):
     assert restarted.state["position"]["quantity"] == "0.5"
     event = restarted.evaluate_exit([[600000,100,105,97,100,1]], D("0.0006"), D("0.0005"))
     assert event["reason"] == "stop"
-    assert event["pnl"] == "-1.1089"
+    assert D(event["pnl"]) == D("-1.1089")
     after = PaperLedger(path)
     assert after.state["position"] is None
     assert len(after.state["history"]) == 2
