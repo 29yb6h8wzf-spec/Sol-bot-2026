@@ -157,8 +157,7 @@ def simulate_portfolio(candidates, *, horizons=HORIZONS_MINUTES,
                 events.append({**basic, "status": "BLOCKED_RESEARCH_ONLY",
                                "reason": "equity_exhausted"})
                 continue
-            free_coin_margin = max(Decimal("0"),
-                                   eq - used_margin if False else eq)
+            free_coin_margin = eq
             free_portfolio_margin = max(
                 Decimal("0"), total_equity() - used_margin)
             available_margin = min(free_coin_margin, free_portfolio_margin)
@@ -221,7 +220,10 @@ def simulate_portfolio(candidates, *, horizons=HORIZONS_MINUTES,
 
         # At finalization, only exits supported by closed historical bars are
         # recognized. Unknown/open positions remain reserved, not profitable.
-        release_before(2**62)
+        future_exits = [p["exit_at"] for p in positions.values()
+                        if p["exit_at"] is not None]
+        if future_exits:
+            release_before(max(future_exits))
         remaining = {coin: {"margin": str(x["margin"]),
                             "risk": str(x["risk"]),
                             "outcome": "UNRESOLVED_RESEARCH_ONLY"}
