@@ -11,6 +11,64 @@ from pathlib import Path
 from portfolio_risk import approve
 
 
+def verified_paper_equity_cap(states):
+    """Permit only profits provable from all four existing Paper ledgers.
+
+    Unexplained account injections remain blocked. No Demo/live caller uses this.
+    """
+    total_cap = D('150')
+    for state in states:
+        history = state['history']
+        if not isinstance(history, list):
+            raise ValueError('invalid_paper_history')
+        balance = D('37.50')
+        peak = balance
+        opened = None
+        for event in history:
+            if not isinstance(event, dict):
+                raise ValueError('invalid_paper_history_event')
+            if event.get('event') == 'paper_entry':
+                if opened is not None or event.get('side') not in ('long', 'short'):
+                    raise ValueError('invalid_paper_entry_sequence')
+                opened = event
+                continue
+            if event.get('event') != 'paper_exit' or opened is None:
+                raise ValueError('invalid_paper_exit_sequence')
+            if event.get('side') != opened['side'] or event.get('reason') not in ('stop', 'target'):
+                raise ValueError('invalid_paper_exit')
+            entry = D(str(opened['entry']))
+            qty = D(str(opened['quantity']))
+            exit_price = D(str(event['exit']))
+            if event['reason'] == 'stop' and exit_price != D(str(opened['stop'])):
+                raise ValueError('invalid_paper_stop_exit')
+            if event['reason'] == 'target' and exit_price != D(str(opened['target'])):
+                raise ValueError('invalid_paper_target_exit')
+            direction = D('1') if opened['side'] == 'long' else D('-1')
+            pnl = (exit_price-entry)*direction*qty
+            pnl -= (entry+exit_price)*qty*(D('0.0006')+D('0.0005'))
+            if not all(v.is_finite() for v in (entry, qty, exit_price, pnl)):
+                raise ValueError('nonfinite_paper_profit')
+            if min(entry, qty, exit_price) <= 0 or pnl != D(str(event['pnl'])):
+                raise ValueError('unverified_paper_profit')
+            balance += pnl
+            peak = max(peak, balance)
+            total_cap += max(D('0'), pnl)
+            opened = None
+        if not balance.is_finite() or balance <= 0:
+            raise ValueError('invalid_paper_balance')
+        if balance != D(str(state['equity'])):
+            raise ValueError('unreconciled_paper_equity')
+        day_start = D(str(state['day_start_equity']))
+        if not day_start.is_finite() or day_start <= 0 or day_start > peak:
+            raise ValueError('unverified_paper_day_start')
+        position = state['position']
+        if (opened is None) != (position is None):
+            raise ValueError('unreconciled_paper_position')
+        if opened is not None and {k: v for k, v in opened.items() if k != 'event'} != position:
+            raise ValueError('unreconciled_paper_position')
+    return total_cap
+
+
 def approve_paper_portfolio_entry(raw, amount, leverage, root=Path('/opt/signalpilot')):
     """Fail closed across all four paper ledgers before any new paper entry."""
     try:
@@ -23,9 +81,14 @@ def approve_paper_portfolio_entry(raw, amount, leverage, root=Path('/opt/signalp
         positions = [s['position'] for s in states if s['position']]
         used_margin = sum((D(pos['margin_estimate']) for pos in positions), D('0'))
         open_risk = sum((D(pos['max_estimated_loss']) for pos in positions), D('0'))
+        # Keep the original 150 USDT cap unless a profit above it is
+        # reconciled against the actual closed Paper trade history.
+        paper_cap = D('150')
+        if total_equity > paper_cap or total_start > paper_cap:
+            paper_cap = verified_paper_equity_cap(states)
         return approve(total_equity, total_start, used_margin,
                        amount * D(raw['entry']), D(raw['max_estimated_loss']),
-                       leverage=leverage, open_risk=open_risk)
+                       leverage=leverage, open_risk=open_risk, account_cap=paper_cap)
     except (OSError, ValueError, KeyError, TypeError, ArithmeticError):
         return False, 'portfolio_state_unavailable'
 
