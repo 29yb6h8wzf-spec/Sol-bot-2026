@@ -1,6 +1,7 @@
 """Offline release-gate tests: never authorize execution or touch live."""
 import importlib.util
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ GATE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(GATE)
 STAGING_SHA = "a" * 40
 ACTIVE_SHA = "b" * 40
+NOW = datetime(2026, 11, 5, 21, 30, tzinfo=timezone.utc)
 
 
 @pytest.fixture
@@ -27,10 +29,11 @@ def fixture(tmp_path, monkeypatch):
         "source_branches_unmerged": True,
         "base_production_sha": ACTIVE_SHA,
         "verified_history_gate": "NOT_ENOUGH_VERIFIED_HISTORY",
+        "generated_at_utc": NOW.isoformat(),
     }
     (stage / "staging-results.json").write_text(json.dumps(evidence))
     (active / "binance-paper-status.json").write_text(
-        json.dumps({"live_orders_enabled": False}))
+        json.dumps({"live_orders_enabled": False, "checked_at_utc": NOW.isoformat()}))
     monkeypatch.setattr(
         GATE, "_sha", lambda path: STAGING_SHA if Path(path) == stage else ACTIVE_SHA)
     monkeypatch.setattr(GATE, "_tracked_dirty", lambda path: False)
@@ -42,6 +45,7 @@ def check(fixture, **kwargs):
     return GATE.check_release_gate(
         staging_dir=stage, active_dir=active,
         expected_staging_sha=kwargs.pop("expected_staging_sha", STAGING_SHA),
+        observed_at_utc=kwargs.pop("observed_at_utc", NOW),
         **kwargs)
 
 
@@ -135,3 +139,60 @@ def test_no_sensitive_paths_reported_when_input_file_missing(fixture):
     r = check(fixture)
     assert r["reasons"] == ["missing_or_invalid_evidence"]
     assert str(active) not in json.dumps(r)
+
+
+@pytest.mark.parametrize("age_seconds", [1801, 3600, 86400])
+def test_stale_staging_evidence_blocks_offline_release(fixture, age_seconds):
+    stage, _, evidence = fixture
+    evidence["generated_at_utc"] = (NOW - timedelta(seconds=age_seconds)).isoformat()
+    (stage / "staging-results.json").write_text(json.dumps(evidence))
+    r = check(fixture)
+    assert "staging_evidence_missing_or_stale" in r["reasons"]
+    assert r["offline_staging_checks_passed"] is False
+
+
+@pytest.mark.parametrize("age_seconds", [1801, 7200])
+def test_stale_paper_status_blocks_offline_release(fixture, age_seconds):
+    _, active, _ = fixture
+    (active / "binance-paper-status.json").write_text(json.dumps({
+        "live_orders_enabled": False,
+        "checked_at_utc": (NOW - timedelta(seconds=age_seconds)).isoformat(),
+    }))
+    r = check(fixture)
+    assert "paper_status_missing_or_stale" in r["reasons"]
+    assert r["offline_staging_checks_passed"] is False
+
+
+@pytest.mark.parametrize("raw", [None, "", "yesterday", "2026-11-05T21:30:00",
+                                "2026-11-05T23:30:00+02:00",
+                                "2026-11-05T21:40:00+00:00"])
+def test_untrusted_evidence_clock_cannot_open_gate(fixture, raw):
+    stage, _, evidence = fixture
+    evidence["generated_at_utc"] = raw
+    (stage / "staging-results.json").write_text(json.dumps(evidence))
+    r = check(fixture)
+    assert "staging_evidence_missing_or_stale" in r["reasons"]
+
+
+def test_fresh_utc_clock_and_two_min_future_skew_are_allowed(fixture):
+    stage, _, evidence = fixture
+    evidence["generated_at_utc"] = (NOW + timedelta(seconds=119)).isoformat()
+    (stage / "staging-results.json").write_text(json.dumps(evidence))
+    r = check(fixture)
+    assert "staging_evidence_missing_or_stale" not in r["reasons"]
+    assert r["offline_staging_checks_passed"] is True
+
+
+def test_clock_injection_must_have_timezone(fixture):
+    with pytest.raises(ValueError, match="invalid_audit_clock"):
+        check(fixture, observed_at_utc=datetime(2026, 11, 5, 21, 30))
+
+
+def test_missing_timestamp_cannot_reuse_green_live_disabled_flag(fixture):
+    _, active, _ = fixture
+    (active / "binance-paper-status.json").write_text(
+        json.dumps({"live_orders_enabled": False}))
+    r = check(fixture)
+    assert "live_trading_not_verified_disabled" not in r["reasons"]
+    assert "paper_status_missing_or_stale" in r["reasons"]
+    assert not r["offline_staging_checks_passed"]
