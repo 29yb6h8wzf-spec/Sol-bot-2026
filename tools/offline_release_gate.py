@@ -8,7 +8,11 @@ Binance Demo/Live trading or make production changes.
 import argparse
 import json
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
+
+MAX_EVIDENCE_AGE_SECONDS = 1800
+MAX_FUTURE_SKEW_SECONDS = 120
 
 
 REQUIRED_STAGING_MODE = "RESEARCH_STAGING_ONLY_NO_EXECUTION"
@@ -38,8 +42,23 @@ def _load(path):
     return json.loads(Path(path).read_text())
 
 
+def _fresh_timestamp(raw, now, max_age_seconds=MAX_EVIDENCE_AGE_SECONDS):
+    """Demand an explicit UTC timestamp, not untrusted filesystem mtime."""
+    if not isinstance(raw, str) or not raw.endswith("Z") and not raw.endswith("+00:00"):
+        return False
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if parsed.tzinfo is None or parsed.utcoffset().total_seconds() != 0:
+        return False
+    age = (now - parsed).total_seconds()
+    return -MAX_FUTURE_SKEW_SECONDS <= age <= max_age_seconds
+
+
 def check_release_gate(*, staging_dir, active_dir, expected_staging_sha,
-                       evidence_path=None, paper_status_path=None):
+                       evidence_path=None, paper_status_path=None,
+                       observed_at_utc=None):
     """Verify a read-only staging checkout; never return a live-ready signal.
 
     Use a versioned local baseline with exact full commit hash; a branch name
@@ -51,6 +70,10 @@ def check_release_gate(*, staging_dir, active_dir, expected_staging_sha,
     paper_status_path = (Path(paper_status_path) if paper_status_path
                          else active_dir / "binance-paper-status.json")
     problems = []
+    now = observed_at_utc if observed_at_utc is not None else datetime.now(timezone.utc)
+    if not isinstance(now, datetime) or now.tzinfo is None:
+        raise ValueError("invalid_audit_clock")
+    now = now.astimezone(timezone.utc)
     try:
         observed_staging = _sha(staging_dir)
         observed_active = _sha(active_dir)
@@ -85,6 +108,10 @@ def check_release_gate(*, staging_dir, active_dir, expected_staging_sha,
         problems.append("active_production_revision_changed")
     if paper_status.get("live_orders_enabled") is not False:
         problems.append("live_trading_not_verified_disabled")
+    if not _fresh_timestamp(evidence.get("generated_at_utc"), now):
+        problems.append("staging_evidence_missing_or_stale")
+    if not _fresh_timestamp(paper_status.get("checked_at_utc"), now):
+        problems.append("paper_status_missing_or_stale")
     if evidence.get("verified_history_gate") != HISTORY_READY:
         problems.append("90_day_history_not_complete")
     # Even 90 days of self-declared data do not prove provenance, fees,
@@ -108,7 +135,9 @@ def check_release_gate(*, staging_dir, active_dir, expected_staging_sha,
                 "staging_orders_not_verified_disabled",
                 "branch_review_scope_not_verified",
                 "active_production_revision_changed",
-                "live_trading_not_verified_disabled")),
+                "live_trading_not_verified_disabled",
+                "staging_evidence_missing_or_stale",
+                "paper_status_missing_or_stale")),
         "execution_authorized": False,
         "orders_sent": False,
         "production_ready": False,
