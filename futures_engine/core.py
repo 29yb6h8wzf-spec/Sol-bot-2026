@@ -66,7 +66,7 @@ def crossover_signal(closed_bars):
     if len(closed_bars) < 202:
         raise ValueError('at least 202 closed bars required')
     prices = [D(str(row[4])) for row in closed_bars]
-    if any(x <= 0 for x in prices):
+    if any(not x.is_finite() or x <= 0 for x in prices):
         raise ValueError('invalid candle prices')
     fast_before, slow_before = ema(prices[:-1], 50), ema(prices[:-1], 200)
     fast_now, slow_now = ema(prices, 50), ema(prices, 200)
