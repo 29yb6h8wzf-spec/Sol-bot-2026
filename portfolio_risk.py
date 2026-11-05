@@ -3,17 +3,21 @@ from decimal import Decimal, InvalidOperation
 
 
 def approve(equity, day_start, used_margin, proposed_notional, proposed_risk,
-            leverage=2, open_risk=0):
+            leverage=2, open_risk=0, account_cap=150):
     try:
         values = [Decimal(str(v)) for v in (
             equity, day_start, used_margin, proposed_notional,
-            proposed_risk, leverage, open_risk)]
+            proposed_risk, leverage, open_risk, account_cap)]
     except (InvalidOperation, TypeError, ValueError):
         return False, "invalid_input"
     if not all(v.is_finite() for v in values):
         return False, "invalid_input"
-    equity, day_start, used_margin, proposed_notional, proposed_risk, leverage, open_risk = values
-    if equity <= 0 or day_start <= 0 or equity > 150 or day_start > 150:
+    equity, day_start, used_margin, proposed_notional, proposed_risk, leverage, open_risk, account_cap = values
+    # The default 150 USDT cap is mandatory for Demo/order preflight.
+    # Only the Paper scanner can provide a cap proven from its closed trade ledger.
+    if account_cap < 150:
+        return False, "invalid_account"
+    if equity <= 0 or day_start <= 0 or equity > account_cap or day_start > account_cap:
         return False, "invalid_account"
     if leverage < 1 or leverage > 2:
         return False, "invalid_account"
