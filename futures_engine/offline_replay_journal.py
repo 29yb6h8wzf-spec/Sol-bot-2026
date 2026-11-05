@@ -6,6 +6,7 @@ uniqueness and explicit source fingerprints.
 """
 import json
 import sqlite3
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 DAILY_CAP = Decimal("7.50")
@@ -27,6 +28,11 @@ def record_result(path, *, signal_id, history_sha256, replay_record, day_utc):
         raise ValueError("invalid_history_digest")
     if not isinstance(day_utc, str) or len(day_utc) != 10:
         raise ValueError("invalid_day")
+    try:
+        if date.fromisoformat(day_utc).isoformat() != day_utc:
+            raise ValueError("invalid_day")
+    except ValueError as exc:
+        raise ValueError("invalid_day") from exc
     if not isinstance(replay_record, dict) or replay_record.get("orders_sent") is not False:
         raise ValueError("unsafe_result")
     status = replay_record.get("status")
@@ -47,11 +53,11 @@ def record_result(path, *, signal_id, history_sha256, replay_record, day_utc):
             pnl_excluding_funding TEXT, result_json TEXT NOT NULL)""")
         db.execute("BEGIN IMMEDIATE")
         existing = db.execute(
-            "SELECT history_sha256, result_json FROM paper_replay_events WHERE signal_id=?",
+            "SELECT history_sha256, result_json, day_utc FROM paper_replay_events WHERE signal_id=?",
             (signal_id,)).fetchone()
         payload = json.dumps(replay_record, sort_keys=True, separators=(",", ":"))
         if existing:
-            if existing != (history_sha256, payload):
+            if existing != (history_sha256, payload, day_utc):
                 raise ValueError("conflicting_replay_for_signal")
             return {"inserted": False, "reason": "already_recorded"}
         # Do not confuse this after-the-fact journal with a pre-trade risk
