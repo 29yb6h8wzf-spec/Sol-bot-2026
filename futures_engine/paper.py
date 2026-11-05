@@ -32,14 +32,25 @@ class PaperLedger:
         position = self.state['position']
         if not position:
             return None
+        fee_rate, slippage_rate = D(str(fee_rate)), D(str(slippage_rate))
+        if not all(x.is_finite() and x >= 0 for x in (fee_rate, slippage_rate)):
+            raise ValueError('invalid paper execution costs')
         entry_ts = position['signal_candle']
         direction = D(1) if position['side'] == 'long' else D(-1)
         stop, target = D(position['stop']), D(position['target'])
         for bar in bars:
             if bar[0] <= entry_ts:
                 continue
-            hit_stop = bar[3] <= stop if direction > 0 else bar[2] >= stop
-            hit_target = bar[2] >= target if direction > 0 else bar[3] <= target
+            if len(bar) < 6:
+                raise ValueError('invalid paper candle')
+            values = [D(str(x)) for x in bar[1:6]]
+            op, high, low, close, volume = values
+            if (not all(x.is_finite() for x in values) or
+                min(op, high, low, close) <= 0 or volume < 0 or
+                not low <= min(op, close) <= max(op, close) <= high):
+                raise ValueError('invalid paper candle')
+            hit_stop = low <= stop if direction > 0 else high >= stop
+            hit_target = high >= target if direction > 0 else low <= target
             if not (hit_stop or hit_target):
                 continue
             exit_price = stop if hit_stop else target
