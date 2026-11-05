@@ -301,6 +301,14 @@ export function tradePlan(s,bars,now=Date.now(),config=RISK_DEFAULTS,diagnostics
  const quantity=riskBudget/worstLoss;
  const notional=quantity*Math.max(low,high);
  const margin=notional/leverage;
+ // Research-only optional margin gate. Missing balance never implies affordability.
+ // Production callers must supply an independently verified availableMargin.
+ if(Object.prototype.hasOwnProperty.call(config,'availableMargin')){
+  if(!Number.isFinite(config.availableMargin)||config.availableMargin<0)
+   return reject('invalid_available_margin',{availableMargin:config.availableMargin});
+  if(margin>config.availableMargin)
+   return reject('insufficient_available_margin',{requiredMargin:margin,availableMargin:config.availableMargin});
+ }
  return {low,high,target,expires,netR,riskBudget,quantity,notional,margin,leverage,
   worstLoss,worstProfit,feeRate,slippageRate,source:s.source||'Kraken Spot USDT (research only)'};
 }

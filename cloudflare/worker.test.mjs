@@ -791,3 +791,20 @@ test('BNBUSDT Kraken Spot mapping, 5m and 4h candles and coin-specific news',asy
  const news={items:[{title:'BNB Chain network update',publishedAt:fixed-60000},{title:'Bitcoin network update',publishedAt:fixed-60000}]};
  assert.equal(newsForSymbol(news,'BNBUSDT',fixed).length,1);
 });
+
+test('research planner checks available margin when explicitly supplied',()=>{
+ const bars=Array.from({length:30},(_,i)=>({high:101,low:99,close:100,time:fixed-(30-i)*300000,volume:100}));
+ const setup={direction:'LONG',entry:100,stop:99,candle:fixed-300000};
+ const base={riskBudget:1.5,leverage:2,feeRate:0.0005,slippageRate:0.00025,minNetR:0.1};
+ const reference=tradePlan(setup,bars,fixed,base);
+ assert.ok(reference && reference.margin>0);
+ const blocked={};
+ assert.equal(tradePlan(setup,bars,fixed,{...base,availableMargin:0},blocked),null);
+ assert.equal(blocked.reason,'insufficient_available_margin');
+ const invalid={};
+ assert.equal(tradePlan(setup,bars,fixed,{...base,availableMargin:-1},invalid),null);
+ assert.equal(invalid.reason,'invalid_available_margin');
+ const allowed=tradePlan(setup,bars,fixed,{...base,availableMargin:reference.margin});
+ assert.ok(allowed);
+ assert.equal(allowed.margin,reference.margin);
+});
