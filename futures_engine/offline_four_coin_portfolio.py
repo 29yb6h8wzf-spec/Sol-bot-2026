@@ -127,6 +127,11 @@ def simulate_one_day(records, *, horizon_minutes, as_of_ms, market_limits,
                 plan.get("closed_5m_candle_ms") != timestamp or
                 plan.get("status") != "INDICATIVE_PLAN_ONLY_NOT_EXECUTABLE"):
             raise ValueError("invalid_archived_research_plan")
+        # Bind every archived research plan to the correct signal and coin.
+        # Never borrow another symbol's brackets or attribution.
+        if (plan.get("symbol") != symbol + "/USDT:USDT" or
+                plan.get("signal_id") != sid):
+            raise ValueError("research_plan_identity_mismatch")
         candles = item.get("candles")
         if not isinstance(candles, (list, tuple)):
             raise ValueError("invalid_research_candles")
@@ -176,7 +181,7 @@ def simulate_one_day(records, *, horizon_minutes, as_of_ms, market_limits,
                  "overlapping_same_symbol_position")
             continue
         last_possible_close = entry_at + horizon_minutes * 60000
-        if _utc_day(last_possible_close - 1) != scenario_day:
+        if _utc_day(last_possible_close) != scenario_day:
             note(sid, symbol, entry_at, "SKIPPED_RESEARCH_ONLY",
                  "horizon_crosses_utc_day")
             continue

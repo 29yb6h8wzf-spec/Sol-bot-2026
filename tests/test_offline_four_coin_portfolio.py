@@ -40,11 +40,12 @@ def bars(t=T, n=18, *, stop_at=None, target_at=None):
 
 
 def candidate(symbol, t=T, sid=None, history=None):
+    identity = sid or (symbol + "-" + str(t))
     return {
         "symbol": symbol,
-        "signal_id": sid or (symbol + "-" + str(t)),
+        "signal_id": identity,
         "signal_candle_open_ms": t,
-        "plan": plan(t),
+        "plan": plan(t, symbol=symbol + "/USDT:USDT", signal_id=identity),
         "candles": history if history is not None else bars(t),
     }
 
@@ -161,7 +162,8 @@ def test_missing_candle_data_cannot_generate_realized_profit():
 def test_ledger_dust_rejected_instead_of_borrowing_other_coins_equity():
     btc = candidate("BTC")
     btc["plan"] = plan(entry="79000", stop="79200", target="78600",
-                       quantity="0.003")
+                       quantity="0.003", symbol="BTC/USDT:USDT",
+                       signal_id=btc["signal_id"])
     btc["candles"] = [(T+STEP_MS, "79000", "79020", "78980", "79000")]
     limits = deepcopy(LIMITS)
     limits["BTC"] = {"amount_step": "0.001", "min_amount": "0.001",
@@ -275,3 +277,56 @@ def test_invalid_ohlc_from_skipped_candidate_still_fails_closed():
     second["candles"][0] = (bar[0], bar[1], "NaN", bar[3], bar[4])
     with pytest.raises(ValueError, match="invalid_portfolio_candle"):
         run([first, second])
+
+
+@pytest.mark.parametrize("mismatch", [
+    {"symbol": "ETH/USDT:USDT"},
+    {"symbol": "BTCUSDT"},
+    {"signal_id": "other-signal-which-belongs-to-someone-else"},
+    {"symbol": None},
+    {"signal_id": None},
+])
+def test_archive_identity_mismatch_fails_closed_before_portfolio(mismatch):
+    record = candidate("BTC")
+    record["plan"].update(mismatch)
+    with pytest.raises(ValueError, match="research_plan_identity_mismatch"):
+        run([record])
+
+
+def test_archive_plan_cannot_be_reused_for_different_coin():
+    eth = candidate("ETH")
+    btc = candidate("BTC")
+    eth["plan"] = dict(btc["plan"])
+    with pytest.raises(ValueError, match="research_plan_identity_mismatch"):
+        run([eth])
+
+
+def test_valid_archive_identity_keeps_simulation_order_free():
+    item = candidate("BTC")
+    result = run([item])
+    assert len(events(result, "ACCEPTED_RESEARCH_ONLY")) == 1
+    assert result["orders_sent"] is False
+
+
+def test_exit_at_exact_utc_midnight_is_not_counted_in_previous_day():
+    # 23:40 signal -> 23:45 theoretical entry -> 00:00 15-min exit.
+    at = 1793835600000
+    item = candidate("XRP", t=at, history=bars(at))
+    result = simulate_one_day([item], horizon_minutes=15,
+                              as_of_ms=at+21*STEP_MS,
+                              market_limits=LIMITS)
+    skipped = events(result, "SKIPPED_RESEARCH_ONLY")
+    assert len(skipped) == 1
+    assert skipped[0]["reason"] == "horizon_crosses_utc_day"
+    assert result["closed_hypothetical_count"] == 0
+
+
+def test_exit_before_utc_midnight_remains_eligible():
+    # 23:35 signal -> 23:40 entry -> 23:55 15-min exit.
+    at = 1793835300000
+    item = candidate("XRP", t=at, history=bars(at))
+    result = simulate_one_day([item], horizon_minutes=15,
+                              as_of_ms=at+21*STEP_MS,
+                              market_limits=LIMITS)
+    assert len(events(result, "ACCEPTED_RESEARCH_ONLY")) == 1
+    assert result["closed_hypothetical_count"] == 1
