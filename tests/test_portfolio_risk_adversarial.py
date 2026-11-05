@@ -32,3 +32,12 @@ def test_existing_open_risk_blocks_budget():
 def test_excessive_leverage_and_capital_blocked():
     assert approve(**{**BASE, "leverage": 3})[0] is False
     assert approve(**{**BASE, "equity": 151})[0] is False
+
+
+def test_five_percent_daily_loss_scales_down_with_starting_equity():
+    assert approve(**{**BASE, "day_start": "100", "equity": "95"}) == (False, "daily_loss_limit")
+    assert approve(**{**BASE, "day_start": "100", "equity": "96", "open_risk": "0", "proposed_risk": "1.01"}) == (False, "portfolio_risk_budget")
+
+
+def test_daily_budget_never_exceeds_seven_fifty():
+    assert approve(**{**BASE, "equity": "142.49", "proposed_risk": "0.02"})[0] is False
