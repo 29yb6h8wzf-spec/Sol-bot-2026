@@ -55,3 +55,21 @@ def test_order_flag_rejected(tmp_path):
         record_result(tmp_path/"paper.sqlite3", signal_id="s1",
                       history_sha256=DIGEST, day_utc=DAY,
                       replay_record={**closed(), "orders_sent": True})
+
+
+def test_same_signal_different_day_is_conflict(tmp_path):
+    path = tmp_path / "paper.sqlite3"
+    record_result(path, signal_id="s1", history_sha256=DIGEST,
+                  replay_record=closed(), day_utc=DAY)
+    with pytest.raises(ValueError, match="conflicting_replay_for_signal"):
+        record_result(path, signal_id="s1", history_sha256=DIGEST,
+                      replay_record=closed(), day_utc="2026-11-05")
+
+
+@pytest.mark.parametrize("invalid_day", ["2026-02-30", "2026-13-01",
+                                         "2026-1-04", "not-a-date"])
+def test_invalid_day_rejected(tmp_path, invalid_day):
+    with pytest.raises(ValueError, match="invalid_day"):
+        record_result(tmp_path / "paper.sqlite3", signal_id="s1",
+                      history_sha256=DIGEST, replay_record=closed(),
+                      day_utc=invalid_day)
