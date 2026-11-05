@@ -204,3 +204,31 @@ def test_executable_plan_is_never_admitted_to_portfolio():
     p = candidate("ETH", plan_changes={"execution_authorized": True})
     with pytest.raises(ValueError, match="non_executable_plan_required"):
         simulate_portfolio([p], horizons=(90,))
+
+
+def test_profitable_future_exit_is_not_credited_before_other_coin_entry():
+    btc = candidate("BTC", signal=T)
+    history = list(btc["candles"])
+    opening = history[2][1]
+    history[2] = (history[2][0], opening, opening+0.2, 97.5, 98.5)
+    btc["candles"] = history
+    # ETH's eligible entry opens while BTC is still holding its position.
+    eth = candidate("ETH", signal=T+STEP)
+    report = simulate_portfolio([btc, eth], horizons=(90,))["results"]["90"]
+    events = report["events"]
+    btc_open = next(i for i, e in enumerate(events)
+                    if e["symbol"] == "BTC" and
+                    e["status"] == "OPENED_RESEARCH_ONLY")
+    eth_open = next(i for i, e in enumerate(events)
+                    if e["symbol"] == "ETH" and
+                    e["status"] == "OPENED_RESEARCH_ONLY")
+    btc_close = next(i for i, e in enumerate(events)
+                     if e["symbol"] == "BTC" and
+                     e["status"] == "CLOSED_RESEARCH_ONLY")
+    assert btc_open < eth_open < btc_close
+    assert D(events[btc_close]["net_pnl_excluding_funding"]) > 0
+    assert D(report["max_used_margin"]) > D(
+        next(e["modeled_margin"] for e in events
+             if e["symbol"] == "BTC" and
+             e["status"] == "OPENED_RESEARCH_ONLY"))
+    assert report["closed"] == 2
