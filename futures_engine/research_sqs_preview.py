@@ -3,7 +3,7 @@ import hashlib
 import json
 import sqlite3
 import time
-from futures_engine.research_outbox import DB
+from futures_engine.research_outbox import DB, RESEARCH_STRATEGIES
 
 SYMBOLS={"BTC/USDT:USDT":"BTCUSDT","ETH/USDT:USDT":"ETHUSDT",
          "SOL/USDT:USDT":"SOLUSDT","XRP/USDT:USDT":"XRPUSDT"}
@@ -15,6 +15,7 @@ def preview(record, *, now=None):
     v=record["payload"]
     if (v.get("status")!="RECALCULATED_RESEARCH_CANDIDATE"
         or v.get("score_verified_independently") is not True
+        or v.get("strategy") not in RESEARCH_STRATEGIES
         or v.get("execution_authorized") is not False
         or v.get("sqs_sent") is not False
         or v.get("orders_sent") is not False
