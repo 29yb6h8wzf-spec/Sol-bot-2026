@@ -6,6 +6,27 @@ from dotenv import load_dotenv
 from .core import Config, crossover_signal, plan_trade
 from .market import closed_futures_bars
 from .paper import PaperLedger
+from pathlib import Path
+from portfolio_risk import approve
+
+
+def approve_paper_portfolio_entry(raw, amount, leverage, root=Path('/opt/signalpilot')):
+    """Fail closed across all four paper ledgers before any new paper entry."""
+    try:
+        states = [
+            json.loads((root / f'paper-ledger-{coin}.json').read_text())
+            for coin in ('btc', 'eth', 'sol', 'xrp')
+        ]
+        total_equity = sum((D(s['equity']) for s in states), D('0'))
+        total_start = sum((D(s['day_start_equity']) for s in states), D('0'))
+        positions = [s['position'] for s in states if s['position']]
+        used_margin = sum((D(pos['margin_estimate']) for pos in positions), D('0'))
+        open_risk = sum((D(pos['max_estimated_loss']) for pos in positions), D('0'))
+        return approve(total_equity, total_start, used_margin,
+                       amount * D(raw['entry']), D(raw['max_estimated_loss']),
+                       leverage=leverage, open_risk=open_risk)
+    except (OSError, ValueError, KeyError, TypeError, ArithmeticError):
+        return False, 'portfolio_state_unavailable'
 
 
 def main():
@@ -45,6 +66,11 @@ def main():
                 print(json.dumps(result, ensure_ascii=False))
                 return
             raw['quantity'] = str(amount)
+            approved, reason = approve_paper_portfolio_entry(raw, amount, config.leverage)
+            if not approved:
+                result['portfolio_block'] = reason
+                print(json.dumps(result, ensure_ascii=False))
+                return
             ledger.open_position(raw,bars[-1][0])
             result['entry'] = raw
         print(json.dumps(result,ensure_ascii=False))
