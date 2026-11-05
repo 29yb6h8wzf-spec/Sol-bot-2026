@@ -97,7 +97,8 @@ def test_money_and_margin_released_only_after_stop_candle_closes():
     early = candidate("BTC", T+STEP_MS, sid="too-early", history=bars(T+STEP_MS))
     later = candidate("BTC", T+2*STEP_MS, sid="after-close",
                       history=bars(T+2*STEP_MS))
-    out = run([primary, early, later])
+    # All replacement candles must be fully closed before this retrospective replay.
+    out = run([primary, early, later], as_of=T+24*STEP_MS)
     assert len(events(out, "SKIPPED_RESEARCH_ONLY")) == 1
     assert len(events(out, "ACCEPTED_RESEARCH_ONLY")) == 2
     closes = events(out, "CLOSED_HYPOTHETICAL")
