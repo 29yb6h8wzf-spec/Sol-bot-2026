@@ -91,7 +91,7 @@ def test_different_max_holding_durations_have_different_outcomes():
 def test_stop_hit_before_90_minutes_exits_at_stop():
     candles = bars()
     start = candles[2]
-    candles[2] = (start[0], start[1], 101.5, start[2], start[4])
+    candles[2] = (start[0], start[1], 101.5, start[3], start[4])
     result = study(history=candles)
     assert result["results"]["90"]["exit_reason"] == "STOP"
     assert result["results"]["90"]["exit_candle_ms"] == T + 3 * STEP
