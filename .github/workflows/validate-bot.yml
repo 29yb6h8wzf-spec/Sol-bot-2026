@@ -5,6 +5,9 @@ on:
     paths:
       - 'bot.py'
       - 'tests/**'
+      - 'futures_engine/**'
+      - 'portfolio_risk.py'
+      - 'demo_risk_adapter.py'
       - 'strategies.py'
       - 'news.py'
       - '.github/workflows/validate-bot.yml'
