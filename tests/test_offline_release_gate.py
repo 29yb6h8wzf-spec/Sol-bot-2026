@@ -30,6 +30,7 @@ def fixture(tmp_path, monkeypatch):
         "base_production_sha": ACTIVE_SHA,
         "verified_history_gate": "NOT_ENOUGH_VERIFIED_HISTORY",
         "generated_at_utc": NOW.isoformat(),
+        "validated_research_staging_sha": STAGING_SHA,
     }
     (stage / "staging-results.json").write_text(json.dumps(evidence))
     (active / "binance-paper-status.json").write_text(
@@ -195,4 +196,37 @@ def test_missing_timestamp_cannot_reuse_green_live_disabled_flag(fixture):
     r = check(fixture)
     assert "live_trading_not_verified_disabled" not in r["reasons"]
     assert "paper_status_missing_or_stale" in r["reasons"]
+    assert not r["offline_staging_checks_passed"]
+
+
+def test_recent_tests_for_old_commit_cannot_approve_current_stage(fixture):
+    stage, _, evidence = fixture
+    evidence["validated_research_staging_sha"] = "c" * 40
+    # Keep timestamp fresh, branch and Paper status otherwise valid.
+    (stage / "staging-results.json").write_text(json.dumps(evidence))
+    r = check(fixture)
+    assert "staging_validation_sha_mismatch" in r["reasons"]
+    assert r["offline_staging_checks_passed"] is False
+    assert r["execution_authorized"] is False
+    assert r["production_ready"] is False
+
+
+@pytest.mark.parametrize("invalid", [None, "", "main", False, "a"*39, "a"*41])
+def test_missing_or_invalid_validation_commit_fails_closed(fixture, invalid):
+    stage, _, evidence = fixture
+    evidence["validated_research_staging_sha"] = invalid
+    (stage / "staging-results.json").write_text(json.dumps(evidence))
+    r = check(fixture)
+    assert "staging_validation_sha_mismatch" in r["reasons"]
+    assert not r["offline_staging_checks_passed"]
+
+
+def test_validated_revision_with_other_active_head_still_blocks(fixture):
+    stage, _, evidence = fixture
+    evidence["base_production_sha"] = "d"*40
+    (stage / "staging-results.json").write_text(json.dumps(evidence))
+    r = check(fixture)
+    assert r["staging_sha_match"] is True
+    assert r["staging_tracked_clean"] is True
+    assert "active_production_revision_changed" in r["reasons"]
     assert not r["offline_staging_checks_passed"]
