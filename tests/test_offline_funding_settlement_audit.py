@@ -26,6 +26,7 @@ def fake_records():
                 "funding_rate": "-0.0001" if i % 3 == 0 else "0.0001",
                 "mark_price": "100"} for i, at in enumerate(timestamps)]
     sources = {coin: {"exchange": "BINANCE",
+                      "symbol": coin,
                       "market": "USDT_M_FUTURES",
                       "dataset": "FUNDING_SETTLEMENTS",
                       "fetched_at_ms": END_MS,
@@ -237,3 +238,33 @@ def test_no_historical_data_available_does_not_claim_a_complete_90_days():
         observed_as_of_ms=END_MS)
     assert result["status"] == "NOT_ENOUGH_VERIFIED_FUNDING"
     assert result["source_independently_authenticated"] is False
+
+
+@pytest.mark.parametrize("bad_source_symbol", ["BTCUSDT", "BNBUSDT",
+                                               "BTC/USDT:USDT", "", None])
+def test_eth_funding_source_must_match_its_exact_coin(fake_records, bad_source_symbol):
+    rows, schedule, sources = fake_records
+    sources["ETHUSDT"]["symbol"] = bad_source_symbol
+    report = audit(fake_records)
+    assert report["status"] == "NOT_ENOUGH_VERIFIED_FUNDING"
+    assert report["symbols"]["ETHUSDT"]["status"] == (
+        "UNVERIFIED_FUNDING_SOURCE")
+    assert not report["funding_reconciled"]
+    assert not report["execution_authorized"]
+
+
+def test_funding_provenance_missing_symbol_fails_closed(fake_records):
+    _, _, sources = fake_records
+    del sources["ETHUSDT"]["symbol"]
+    report = audit(fake_records)
+    assert report["status"] == "NOT_ENOUGH_VERIFIED_FUNDING"
+    assert report["symbols"]["ETHUSDT"]["status"] == (
+        "UNVERIFIED_FUNDING_SOURCE")
+
+
+def test_per_coin_source_identity_is_not_an_authenticity_claim(fake_records):
+    report = audit(fake_records)
+    assert report["status"] == "FUNDING_CONTINUITY_COMPLETE_UNAUTHENTICATED"
+    assert report["source_independently_authenticated"] is False
+    assert report["funding_reconciled"] is False
+    assert report["production_ready"] is False
