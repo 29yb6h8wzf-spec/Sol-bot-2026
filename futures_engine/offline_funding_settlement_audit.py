@@ -85,7 +85,11 @@ def audit_funding_90_days(*, start_day, rows_by_symbol,
     results = {}
     for coin in COINS:
         source = provenance_by_symbol[coin]
+        # Keyed funding observations are not sufficient identity evidence:
+        # reject a provenance bundle copied from a different instrument.
+        # This is still self-declared, NOT independent source authentication.
         if not isinstance(source, dict) or (
+                source.get("symbol") != coin or
                 source.get("exchange") != "BINANCE" or
                 source.get("market") != "USDT_M_FUTURES" or
                 source.get("dataset") != "FUNDING_SETTLEMENTS"):
