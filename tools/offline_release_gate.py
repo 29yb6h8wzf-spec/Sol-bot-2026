@@ -94,6 +94,11 @@ def check_release_gate(*, staging_dir, active_dir, expected_staging_sha,
         raise ValueError("invalid_expected_sha")
     if observed_staging != expected_staging_sha:
         problems.append("staging_commit_mismatch")
+    # A fresh evidence timestamp alone does NOT prove tests ran against
+    # the current staging commit. Bind the recorded validation to the exact
+    # tested Git revision, otherwise upgrading untested code looks green.
+    if evidence.get("validated_research_staging_sha") != observed_staging:
+        problems.append("staging_validation_sha_mismatch")
     if dirty:
         problems.append("staging_tracked_changes")
     if evidence.get("mode") != REQUIRED_STAGING_MODE:
@@ -130,7 +135,8 @@ def check_release_gate(*, staging_dir, active_dir, expected_staging_sha,
         "staging_tracked_clean": not dirty,
         "offline_staging_checks_passed":
             not any(reason in problems for reason in (
-                "staging_commit_mismatch", "staging_tracked_changes",
+                "staging_commit_mismatch", "staging_validation_sha_mismatch",
+                "staging_tracked_changes",
                 "incorrect_staging_mode", "staging_services_not_isolated",
                 "staging_orders_not_verified_disabled",
                 "branch_review_scope_not_verified",
