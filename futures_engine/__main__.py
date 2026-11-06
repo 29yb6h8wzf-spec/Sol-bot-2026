@@ -7,6 +7,7 @@ from ccxt.base.errors import InvalidOrder
 from .core import Config, crossover_signal, plan_trade
 from .market import closed_futures_bars
 from .paper import PaperLedger
+from .paper_signal_filter_audit import explain_paper_signal
 from pathlib import Path
 from portfolio_risk import approve
 
@@ -113,6 +114,11 @@ def main():
         result = {'mode':'paper','symbol':config.symbol,'timeframe':config.timeframe,
                   'closed_candle':bars[-1][0],'equity':ledger.state['equity'],
                   'signal':signal,'exit':exit_event,'entry':None}
+        # Observational only: explain a missing EMA/RSI signal using the SAME
+        # closed 239-bar window. Never substitute a diagnostic for a signal,
+        # and never alter portfolio sizing or execution gates.
+        if signal is None and len(bars) >= 202:
+            result['signal_filter'] = explain_paper_signal(bars[-239:])
         if signal and not ledger.state['position'] and ledger.state['last_signal_candle'] != bars[-1][0]:
             limits = market.get('limits') or {}
             minimum = (limits.get('amount') or {}).get('min') or 0
