@@ -7,11 +7,18 @@ class MarketDataError(RuntimeError):
     pass
 
 
+class MarketDataUnavailable(MarketDataError):
+    """A public market read failed due to a temporary transport error."""
+
+
 def closed_futures_bars(symbol, timeframe, limit=240):
     import ccxt
     exchange = ccxt.binanceusdm({'enableRateLimit': True, 'timeout': 15000})
     try:
-        markets = exchange.load_markets()
+        try:
+            markets = exchange.load_markets()
+        except ccxt.NetworkError as exc:
+            raise MarketDataUnavailable("exchange temporarily unavailable") from exc
         market = markets.get(symbol)
         if not market or not market.get('swap') or not market.get('linear') or market.get('active') is False:
             raise MarketDataError('not an active linear perpetual futures symbol')
@@ -25,7 +32,7 @@ def closed_futures_bars(symbol, timeframe, limit=240):
                 break
             except (ccxt.RateLimitExceeded, ccxt.NetworkError, ccxt.RequestTimeout, ccxt.ExchangeNotAvailable):
                 if attempt == 2:
-                    raise MarketDataError('exchange temporarily unavailable after retries')
+                    raise MarketDataUnavailable('exchange temporarily unavailable after retries')
                 time.sleep(0.5 * (2 ** attempt))
         if not rows:
             raise MarketDataError('empty OHLCV response')
