@@ -4,7 +4,7 @@ import os
 from decimal import Decimal as D
 from dotenv import load_dotenv
 from ccxt.base.errors import InvalidOrder
-from .core import Config, crossover_signal, plan_trade
+from .core import Config, crossover_signal, estimated_loss_per_unit, plan_trade
 from .market import closed_futures_bars
 from .paper import PaperLedger
 from pathlib import Path
@@ -136,6 +136,10 @@ def main():
                 result['skip_reason'] = 'below_exchange_minimum'
                 print(json.dumps(result, ensure_ascii=False))
                 return
+            if amount < D(raw['quantity']):
+                entry, stop = D(raw['entry']), D(raw['stop'])
+                raw['max_estimated_loss'] = str(amount * estimated_loss_per_unit(config, entry, stop))
+                raw['margin_estimate'] = str(amount * entry / D(config.leverage))
             raw['quantity'] = str(amount)
             approved, reason = approve_paper_portfolio_entry(raw, amount, config.leverage)
             if not approved:
