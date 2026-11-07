@@ -171,7 +171,7 @@ def hypothetical_position_funding(*, audit_report, rows_by_symbol,
     if (not _time(entry_ms) or not _time(exit_ms) or
             entry_ms >= exit_ms or
             entry_ms < audit_report.get("window_start_ms", 0) or
-            exit_ms > audit_report.get("window_end_exclusive_ms", 0)):
+            exit_ms >= audit_report.get("window_end_exclusive_ms", 0)):
         raise ValueError("funding_position_outside_history")
     if not isinstance(rows_by_symbol, dict) or set(rows_by_symbol) != set(COINS):
         raise ValueError("four_explicit_funding_symbols_required")
