@@ -209,9 +209,10 @@ def test_incomplete_audit_cannot_calculate_zero_funding(fake_records):
     assert result["reason"] == "funding_audit_incomplete"
 
 
-def test_position_outside_complete_window_is_rejected(fake_records):
+@pytest.mark.parametrize("exit_ms", [END_MS, END_MS + 1])
+def test_position_outside_complete_window_is_rejected(fake_records, exit_ms):
     with pytest.raises(ValueError, match="funding_position_outside_history"):
-        funding(fake_records, entry_ms=END_MS-1, exit_ms=END_MS+1)
+        funding(fake_records, entry_ms=END_MS-1, exit_ms=exit_ms)
 
 
 def test_invalid_quantity_must_not_produce_cashflow(fake_records):
