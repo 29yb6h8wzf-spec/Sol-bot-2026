@@ -78,6 +78,10 @@ def crossover_signal(closed_bars):
     return None
 
 
+def estimated_loss_per_unit(config, entry, stop):
+    return abs(entry - stop) + (entry + stop) * (config.taker_fee + config.slippage_fraction)
+
+
 def plan_trade(config, side, entry, equity, day_start_equity, minimum_amount=D('0'), amount_step=D('0.001'), min_cost=D('0')):
     config.validate()
     entry, equity, day_start_equity = D(str(entry)), D(str(equity)), D(str(day_start_equity))
@@ -89,7 +93,7 @@ def plan_trade(config, side, entry, equity, day_start_equity, minimum_amount=D('
     direction = D(1) if side == 'long' else D(-1)
     stop = entry * (D(1) - direction * config.stop_fraction)
     target = entry * (D(1) + direction * config.stop_fraction * config.reward_multiple)
-    loss_per_unit = abs(entry - stop) + (entry + stop) * (config.taker_fee + config.slippage_fraction)
+    loss_per_unit = estimated_loss_per_unit(config, entry, stop)
     risk_budget = min(equity * config.risk_fraction, equity - day_start_equity * (D(1) - config.daily_loss_fraction))
     if risk_budget <= 0 or loss_per_unit <= 0:
         raise ValueError('no risk budget available')
