@@ -4,6 +4,9 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from decimal import Decimal as D
+
+from futures_engine.offline_plan_replay import replay
 
 from demo_plan_bridge import build_plan, exchange_filters, journal_inbox
 
@@ -57,6 +60,31 @@ class BridgeTests(unittest.TestCase):
         self.assertTrue(self.exchange.closed)
         self.assertLessEqual(float(p["estimated_loss_including_buffer"]), 1.50)
         self.assertLessEqual(float(p["estimated_notional"]), 300)
+
+    def test_plans_cover_adverse_fills_and_both_fees(self):
+        for side in ("long", "short"):
+            with self.subTest(side=side):
+                def verifier(p, *, now):
+                    return {**verified(p, now=now), "direction": side}
+                p = build_plan({**payload(), "direction": side}, verifier=verifier,
+                               loader=self.loader, now_ms=NOW)
+                sign = 1 if side == "long" else -1
+                fill = D(p["entry"]) * (1 + sign * D("0.0005"))
+                exit_fill = D(p["stop"]) * (1 - sign * D("0.0005"))
+                loss = abs(fill - exit_fill) + (fill + exit_fill) * D("0.0006")
+                self.assertLessEqual(loss * D(p["quantity"]), D(p["estimated_loss_including_buffer"]))
+                self.assertLessEqual(D(p["estimated_loss_including_buffer"]), D("1.50"))
+                next_open = CANDLE + 300000
+                outcome = replay({**p, "closed_5m_candle_ms": next_open},
+                                 [[next_open, 100, 104, 96, 100]],
+                                 fee_rate="0.0006", slippage_rate="0.0005")
+                self.assertEqual(outcome.get("exit_reason"), "STOP")
+
+    def test_long_notional_cap_covers_adverse_entry_price(self):
+        narrow = [[b[0], 100, 100, 100, 100, 10] for b in BARS]
+        p = build_plan(payload(), verifier=verified, now_ms=NOW,
+                       loader=lambda *_: (self.exchange, market(), narrow))
+        self.assertLessEqual(D(p["quantity"]) * D("100.05"), D("300"))
 
     def test_stale_signal_never_fetches_market(self):
         p = payload()
