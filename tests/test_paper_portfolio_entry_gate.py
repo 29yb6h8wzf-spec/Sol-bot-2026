@@ -139,3 +139,37 @@ def test_minimum_notional_skips_without_open(monkeypatch, capsys):
     assert result['skip_reason']=='below_exchange_minimum'
     assert result['entry'] is None
     assert ledger.state['position'] is None
+
+
+def test_rounded_quantity_sets_gate_and_ledger_exposure(tmp_path, monkeypatch):
+    from decimal import ROUND_DOWN
+
+    states(tmp_path)
+    ledger_path = tmp_path / "paper-ledger-btc.json"
+    ledger_path.unlink()
+    monkeypatch.setenv("TRADING_MODE", "paper")
+    monkeypatch.setenv("PAPER_LEDGER", str(ledger_path))
+    monkeypatch.setenv("PAPER_START_EQUITY", "37.50")
+    monkeypatch.setenv("MAX_RISK_FRACTION", "0.01")
+    monkeypatch.setenv("LEVERAGE", "2")
+    exchange = SimpleNamespace(amount_to_precision=lambda symbol, qty:
+                               str(Decimal(qty).quantize(Decimal("0.1"), rounding=ROUND_DOWN)))
+    bar = [300000, 100, 101, 99, 100, 10]
+    monkeypatch.setattr(scanner, "closed_futures_bars", lambda *args: (exchange, {}, [bar]))
+    monkeypatch.setattr(scanner, "crossover_signal", lambda bars: "long")
+    approve = scanner.approve_paper_portfolio_entry
+    checked = []
+    def check(plan, amount, leverage):
+        checked.append(dict(plan))
+        return approve(plan, amount, leverage, tmp_path)
+    monkeypatch.setattr(scanner, "approve_paper_portfolio_entry", check)
+
+    scanner.main()
+    position = json.loads(ledger_path.read_text())["position"]
+    assert len(checked) == 1
+    assert position == {**checked[0], "signal_candle": bar[0]}
+    assert Decimal(position["quantity"]) == Decimal("0.1")
+    assert Decimal(position["margin_estimate"]) == Decimal("5")
+    # 0.1 units, 2 USDT stop distance plus fees and slippage on both legs.
+    assert Decimal(position["max_estimated_loss"]) == Decimal("0.22178")
+    assert Decimal(position["risk_budget"]) == Decimal("0.375")
