@@ -4,7 +4,7 @@ import os
 from decimal import Decimal as D
 from dotenv import load_dotenv
 from ccxt.base.errors import InvalidOrder
-from .core import Config, crossover_signal, plan_trade
+from .core import Config, crossover_signal, plan_trade, atr
 from .market import closed_futures_bars
 from .paper import PaperLedger
 from pathlib import Path
@@ -34,7 +34,7 @@ def verified_paper_equity_cap(states):
                 continue
             if event.get('event') != 'paper_exit' or opened is None:
                 raise ValueError('invalid_paper_exit_sequence')
-            if event.get('side') != opened['side'] or event.get('reason') not in ('stop', 'target'):
+            if event.get('side') != opened['side'] or event.get('reason') not in ('stop', 'target', 'time'):
                 raise ValueError('invalid_paper_exit')
             entry = D(str(opened['entry']))
             qty = D(str(opened['quantity']))
@@ -45,7 +45,7 @@ def verified_paper_equity_cap(states):
                 raise ValueError('invalid_paper_target_exit')
             direction = D('1') if opened['side'] == 'long' else D('-1')
             pnl = (exit_price-entry)*direction*qty
-            pnl -= (entry+exit_price)*qty*(D('0.0006')+D('0.0005'))
+            pnl -= (entry+exit_price)*qty*(D(str(opened.get('taker_fee', '0.0006')))+D(str(opened.get('slippage_fraction', '0.0005'))))
             if not all(v.is_finite() for v in (entry, qty, exit_price, pnl)):
                 raise ValueError('nonfinite_paper_profit')
             if min(entry, qty, exit_price) <= 0 or pnl != D(str(event['pnl'])):
@@ -101,13 +101,20 @@ def main():
                     timeframe=os.getenv('TIMEFRAME','15m'),
                     risk_fraction=D(os.getenv('MAX_RISK_FRACTION','0.01')),
                     daily_loss_fraction=D(os.getenv('MAX_DAILY_DRAWDOWN','0.05')),
-                    leverage=int(os.getenv('LEVERAGE','2')))
+                    leverage=int(os.getenv('LEVERAGE','2')),
+                    atr_period=int(os.getenv('ATR_PERIOD','14')),
+                    atr_stop_multiple=D(os.getenv('ATR_STOP_MULTIPLE','1.5')),
+                    atr_reward_multiple=D(os.getenv('ATR_REWARD_MULTIPLE','2')),
+                    max_holding_minutes=int(os.getenv('MAX_HOLDING_MINUTES','15')),
+                    taker_fee=D(os.getenv('PAPER_TAKER_FEE','0.0005')),
+                    slippage_fraction=D(os.getenv('PAPER_SLIPPAGE','0.0003')))
     config.validate()
     ledger = PaperLedger(os.getenv('PAPER_LEDGER','paper-ledger.json'), D(os.getenv('PAPER_START_EQUITY','1000')))
     exchange, market, bars = closed_futures_bars(config.symbol, config.timeframe)
     try:
         ledger.roll_day(bars[-1][0])
-        exit_event = ledger.evaluate_exit(bars, config.taker_fee, config.slippage_fraction)
+        exit_event = ledger.evaluate_exit(bars, config.taker_fee, config.slippage_fraction,
+                                          config.max_holding_minutes, int(config.timeframe[:-1]) if config.timeframe.endswith('m') else 15)
         # Keep EMA warmup stable when the exchange returns 239 or 240 closed candles.
         signal = crossover_signal(bars[-239:])
         result = {'mode':'paper','symbol':config.symbol,'timeframe':config.timeframe,
@@ -117,8 +124,11 @@ def main():
             limits = market.get('limits') or {}
             minimum = (limits.get('amount') or {}).get('min') or 0
             min_cost = (limits.get('cost') or {}).get('min') or 0
+            stop_override = (atr(bars, config.atr_period) * config.atr_stop_multiple /
+                             D(str(bars[-1][4]))) if len(bars) >= 202 else None
             raw = plan_trade(config,signal,bars[-1][4],ledger.state['equity'],
-                             ledger.state['day_start_equity'],amount_step=D('0.00000001'))
+                             ledger.state['day_start_equity'],amount_step=D('0.00000001'),
+                             stop_fraction_override=stop_override)
             try:
                 amount = D(exchange.amount_to_precision(config.symbol, raw['quantity']))
             except InvalidOrder:
@@ -137,6 +147,8 @@ def main():
                 print(json.dumps(result, ensure_ascii=False))
                 return
             raw['quantity'] = str(amount)
+            raw['taker_fee'] = str(config.taker_fee)
+            raw['slippage_fraction'] = str(config.slippage_fraction)
             approved, reason = approve_paper_portfolio_entry(raw, amount, config.leverage)
             if not approved:
                 result['portfolio_block'] = reason

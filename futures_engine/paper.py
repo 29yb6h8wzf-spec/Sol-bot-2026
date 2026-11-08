@@ -28,7 +28,7 @@ class PaperLedger:
             self.state['day_start_equity'] = self.state['equity']
             self.save()
 
-    def evaluate_exit(self, bars, fee_rate, slippage_rate):
+    def evaluate_exit(self, bars, fee_rate, slippage_rate, max_holding_minutes=None, timeframe_minutes=15):
         position = self.state['position']
         if not position:
             return None
@@ -51,16 +51,19 @@ class PaperLedger:
                 raise ValueError('invalid paper candle')
             hit_stop = low <= stop if direction > 0 else high >= stop
             hit_target = high >= target if direction > 0 else low <= target
-            if not (hit_stop or hit_target):
+            # Entry is at the signal candle close; exits use later closed candles.
+            timed_out = (max_holding_minutes is not None and
+                         bar[0] - entry_ts >= max_holding_minutes * 60000)
+            if not (hit_stop or hit_target or timed_out):
                 continue
-            exit_price = stop if hit_stop else target
+            exit_price = stop if hit_stop else target if hit_target else close
             quantity, entry = D(position['quantity']), D(position['entry'])
             pnl = (exit_price - entry) * direction * quantity
             costs = (entry + exit_price) * quantity * (fee_rate + slippage_rate)
             pnl -= costs
             self.state['equity'] = str(D(self.state['equity']) + pnl)
             event = {'event':'paper_exit','side':position['side'],'exit':str(exit_price),
-                     'reason':'stop' if hit_stop else 'target','pnl':str(pnl),'timestamp':bar[0]}
+                     'reason':'stop' if hit_stop else 'target' if hit_target else 'time','pnl':str(pnl),'timestamp':bar[0]}
             self.state['history'].append(event)
             self.state['position'] = None
             self.save()

@@ -17,10 +17,15 @@ class Config:
     reward_multiple: Decimal = D('2')
     taker_fee: Decimal = D('0.0006')
     slippage_fraction: Decimal = D('0.0005')
+    atr_period: int = 14
+    atr_stop_multiple: Decimal = D('1.5')
+    atr_reward_multiple: Decimal = D('2')
+    max_holding_minutes: int = 15
 
     def validate(self):
         numeric = (self.risk_fraction, self.daily_loss_fraction, self.stop_fraction,
-                   self.reward_multiple, self.taker_fee, self.slippage_fraction)
+                   self.reward_multiple, self.taker_fee, self.slippage_fraction,
+                   self.atr_stop_multiple, self.atr_reward_multiple)
         if any(not x.is_finite() for x in numeric):
             raise ValueError('non-finite paper risk configuration')
         if not (D('0') < self.risk_fraction <= D('0.01')):
@@ -31,6 +36,9 @@ class Config:
             raise ValueError('leverage capped at 2x for paper testing')
         if not (D('0') < self.stop_fraction <= D('0.05') and self.reward_multiple >= 1):
             raise ValueError('invalid stop/reward')
+        if not (2 <= self.atr_period <= 100 and self.atr_stop_multiple > 0 and
+                self.atr_reward_multiple >= 1 and 1 <= self.max_holding_minutes <= 1440):
+            raise ValueError('invalid ATR/time-exit configuration')
         if self.taker_fee < 0 or self.slippage_fraction < 0:
             raise ValueError('invalid execution costs')
 
@@ -78,7 +86,23 @@ def crossover_signal(closed_bars):
     return None
 
 
-def plan_trade(config, side, entry, equity, day_start_equity, minimum_amount=D('0'), amount_step=D('0.001'), min_cost=D('0')):
+def atr(closed_bars, period=14):
+    """Wilder ATR using completed OHLC candles only."""
+    if len(closed_bars) < period + 1:
+        raise ValueError('insufficient ATR candles')
+    true_ranges = []
+    for prev, bar in zip(closed_bars[:-1], closed_bars[1:]):
+        high, low, previous_close = D(str(bar[2])), D(str(bar[3])), D(str(prev[4]))
+        if not all(v.is_finite() and v > 0 for v in (high, low, previous_close)) or low > high:
+            raise ValueError('invalid ATR candle')
+        true_ranges.append(max(high-low, abs(high-previous_close), abs(low-previous_close)))
+    result = sum(true_ranges[:period], D(0)) / D(period)
+    for value in true_ranges[period:]:
+        result = (result * D(period-1) + value) / D(period)
+    return result
+
+
+def plan_trade(config, side, entry, equity, day_start_equity, minimum_amount=D('0'), amount_step=D('0.001'), min_cost=D('0'), stop_fraction_override=None):
     config.validate()
     entry, equity, day_start_equity = D(str(entry)), D(str(equity)), D(str(day_start_equity))
     if (side not in ('long', 'short') or
@@ -87,8 +111,11 @@ def plan_trade(config, side, entry, equity, day_start_equity, minimum_amount=D('
     if equity <= day_start_equity * (D(1) - config.daily_loss_fraction):
         raise ValueError('daily drawdown circuit breaker is active')
     direction = D(1) if side == 'long' else D(-1)
-    stop = entry * (D(1) - direction * config.stop_fraction)
-    target = entry * (D(1) + direction * config.stop_fraction * config.reward_multiple)
+    stop_fraction = config.stop_fraction if stop_fraction_override is None else D(str(stop_fraction_override))
+    if not stop_fraction.is_finite() or not D(0) < stop_fraction <= D('0.05'):
+        raise ValueError('ATR stop outside configured safety bounds')
+    stop = entry * (D(1) - direction * stop_fraction)
+    target = entry * (D(1) + direction * stop_fraction * (config.atr_reward_multiple if stop_fraction_override is not None else config.reward_multiple))
     loss_per_unit = abs(entry - stop) + (entry + stop) * (config.taker_fee + config.slippage_fraction)
     risk_budget = min(equity * config.risk_fraction, equity - day_start_equity * (D(1) - config.daily_loss_fraction))
     if risk_budget <= 0 or loss_per_unit <= 0:
