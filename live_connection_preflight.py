@@ -9,7 +9,7 @@ import os
 from decimal import Decimal
 
 
-SYMBOLS = ("SOL/USDT:USDT", "XRP/USDT:USDT")
+SYMBOLS = ("BTC/USDT:USDT", "ETH/USDT:USDT", "SOL/USDT:USDT", "XRP/USDT:USDT")
 
 
 def inspect(exchange):
@@ -22,9 +22,20 @@ def inspect(exchange):
         raise ValueError("unverified_live_endpoint")
     if exchange.fetch_position_mode().get("hedged") is not False:
         raise ValueError("one_way_mode_required")
-    positions = exchange.fetch_positions(list(SYMBOLS))
-    exposure = [p.get("symbol") for p in positions
-                if Decimal(str(p.get("contracts") or "0")) != 0]
+    positions = exchange.fetch_positions()  # Account-wide: reject exposure in ANY market.
+    if not isinstance(positions, list):
+        raise ValueError("invalid_account_wide_positions")
+    exposure = []
+    for p in positions:
+        contracts = Decimal(str(p.get("contracts") or "0"))
+        if not contracts.is_finite():
+            raise ValueError("invalid_position_amount")
+        if contracts != 0:
+            exposure.append(p.get("symbol"))
+    # Global ordinary order inventory: per-symbol checks alone miss other markets.
+    global_orders = exchange.fetch_open_orders()
+    if not isinstance(global_orders, list):
+        raise ValueError("invalid_global_order_inventory")
     open_orders = {symbol: len(exchange.fetch_open_orders(symbol))
                    for symbol in SYMBOLS}
     algo_orders = {}
@@ -32,11 +43,12 @@ def inspect(exchange):
         response = exchange.fapiPrivateGetOpenAlgoOrders({"symbol": exchange.market_id(symbol)})
         orders = response.get("orders", []) if isinstance(response, dict) else response
         algo_orders[symbol] = len(orders)
-    if exposure or any(open_orders.values()) or any(algo_orders.values()):
+    if exposure or global_orders or any(open_orders.values()) or any(algo_orders.values()):
         raise ValueError("existing_exposure_or_orders_requires_manual_reconciliation")
-    return {"status": "LIVE_CONNECTION_READ_ONLY_VERIFIED",
+    return {"status": "LIVE_CONNECTION_READ_ONLY_PARTIAL_SCOPE",
             "symbols_checked": list(SYMBOLS),
             "account_flat": True,
+            "account_wide_algo_inventory_verified": False,
             "conditional_algo_endpoint_readable": True,
             "execution_authorized": False,
             "orders_sent": False}
