@@ -19,11 +19,11 @@ def _check(rows, step):
 def _view(rows):
     return [{"time":r[0],"high":float(r[2]),"low":float(r[3]),"close":float(r[4]),"volume":float(r[5])} for r in rows]
 
-def evaluate(five,four,*,thresholds=(70,75,80,85),fee_rate="0.0006",slippage_rate="0.0005",max_holding_bars=48):
+def evaluate(five,four,*,thresholds=(70,75,80,85),fee_rate="0.0006",slippage_rate="0.0005",max_holding_bars=48,allowed_strategies=None):
     _check(five,300000);_check(four,14400000)
     fee,slip=D(fee_rate),D(slippage_rate)
     if fee<0 or slip<0 or not 1<=max_holding_bars<=288: raise ValueError("invalid_assumptions")
-    f=_view(five);h=_view(four);output={}
+    if allowed_strategies is not None and (not isinstance(allowed_strategies,(tuple,list,set,frozenset)) or not allowed_strategies or any(s not in ("EMA_ADX","RSI_BOLL","MACD_VOLUME") for s in allowed_strategies)):\n        raise ValueError("invalid_strategy_filter")\n    f=_view(five);h=_view(four);output={}
     for threshold in thresholds:
         if type(threshold) is not int or not 0<=threshold<=100: raise ValueError("invalid_threshold")
         trades=[];next_free=209;blocked=0
@@ -33,7 +33,7 @@ def evaluate(five,four,*,thresholds=(70,75,80,85),fee_rate="0.0006",slippage_rat
             historical=[x for x in h if x["time"]+14400000<=decision]
             if len(historical)<100:continue
             setups,_=candidates(f[max(0,i-239):i+1],historical[-240:])
-            available=sorted((x for x in setups if x["score"]>=threshold),key=lambda x:-x["score"])
+            available=sorted((x for x in setups if x["score"]>=threshold and (allowed_strategies is None or x["strategy"] in allowed_strategies)),key=lambda x:-x["score"])
             if not available:blocked+=1;continue
             signal=available[0];direction=1 if signal["direction"]=="LONG" else -1
             atr=D(str(signal["atr"]))
@@ -55,4 +55,4 @@ def evaluate(five,four,*,thresholds=(70,75,80,85),fee_rate="0.0006",slippage_rat
             trades.append({"strategy":signal["strategy"],"direction":signal["direction"],"score":signal["score"],"signal_ms":five[i][0],"exit_ms":five[exit_index][0],"reason":reason,"net_return_pct":float(net*100)})
             next_free=exit_index+1
         output[str(threshold)]={"trades":len(trades),"wins":sum(t["net_return_pct"]>0 for t in trades),"sum_net_return_pct_uncompounded":sum(t["net_return_pct"] for t in trades),"no_signal_bars":blocked,"trade_log":trades}
-    return {"status":"OFFLINE_RESEARCH_ONLY","orders_sent":False,"funding_included":False,"position_sizing_included":False,"fee_rate":str(fee),"slippage_rate":str(slip),"thresholds":output}
+    return {"status":"OFFLINE_RESEARCH_ONLY","orders_sent":False,"funding_included":False,"position_sizing_included":False,"allowed_strategies":sorted(allowed_strategies) if allowed_strategies is not None else None,"fee_rate":str(fee),"slippage_rate":str(slip),"thresholds":output}
