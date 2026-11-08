@@ -110,6 +110,27 @@ def main():
     assert_demo(exchange)
     exchange.load_markets()
 
+    # Refuse a smoke test when any other strategy or manual trade owns demo exposure.
+    positions = exchange.fetch_positions()
+    if not isinstance(positions, list):
+        raise RuntimeError("Demo account-wide position inventory invalid")
+    for position in positions:
+        amount = Decimal(str(position.get("contracts") or 0))
+        if not amount.is_finite() or amount != 0:
+            raise RuntimeError("Existing demo account-wide exposure; refusing test")
+    exchange.options.setdefault("fetchOpenOrders", {})["warnWithoutSymbol"] = False
+    orders = exchange.fetch_open_orders()
+    if not isinstance(orders, list) or orders:
+        raise RuntimeError("Existing or invalid demo account-wide ordinary orders; refusing test")
+    algo_response = exchange.fapiPrivateGetOpenAlgoOrders({})
+    if isinstance(algo_response, dict):
+        if "orders" not in algo_response:
+            raise RuntimeError("Invalid demo account-wide algo inventory")
+        all_algos = algo_response["orders"]
+    else:
+        all_algos = algo_response
+    if not isinstance(all_algos, list) or all_algos:
+        raise RuntimeError("Existing or invalid demo account-wide algo orders; refusing test")
     if exposure(exchange) != 0 or exchange.fetch_open_orders(SYMBOL) or algos(exchange):
         raise RuntimeError("Existing demo XRP exposure/orders; refusing test")
     if exchange.fetch_position_mode(SYMBOL).get("hedged") is not False:
