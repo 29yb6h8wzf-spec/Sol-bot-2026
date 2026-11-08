@@ -45,7 +45,7 @@ def verified_paper_equity_cap(states):
                 raise ValueError('invalid_paper_target_exit')
             direction = D('1') if opened['side'] == 'long' else D('-1')
             pnl = (exit_price-entry)*direction*qty
-            pnl -= (entry+exit_price)*qty*(D('0.0006')+D('0.0005'))
+            pnl -= (entry+exit_price)*qty*(D(str(opened.get('taker_fee', '0.0006')))+D(str(opened.get('slippage_fraction', '0.0005'))))
             if not all(v.is_finite() for v in (entry, qty, exit_price, pnl)):
                 raise ValueError('nonfinite_paper_profit')
             if min(entry, qty, exit_price) <= 0 or pnl != D(str(event['pnl'])):
@@ -105,7 +105,9 @@ def main():
                     atr_period=int(os.getenv('ATR_PERIOD','14')),
                     atr_stop_multiple=D(os.getenv('ATR_STOP_MULTIPLE','1.5')),
                     atr_reward_multiple=D(os.getenv('ATR_REWARD_MULTIPLE','2')),
-                    max_holding_minutes=int(os.getenv('MAX_HOLDING_MINUTES','15')))
+                    max_holding_minutes=int(os.getenv('MAX_HOLDING_MINUTES','15')),
+                    taker_fee=D(os.getenv('PAPER_TAKER_FEE','0.0005')),
+                    slippage_fraction=D(os.getenv('PAPER_SLIPPAGE','0.0003')))
     config.validate()
     ledger = PaperLedger(os.getenv('PAPER_LEDGER','paper-ledger.json'), D(os.getenv('PAPER_START_EQUITY','1000')))
     exchange, market, bars = closed_futures_bars(config.symbol, config.timeframe)
@@ -145,6 +147,8 @@ def main():
                 print(json.dumps(result, ensure_ascii=False))
                 return
             raw['quantity'] = str(amount)
+            raw['taker_fee'] = str(config.taker_fee)
+            raw['slippage_fraction'] = str(config.slippage_fraction)
             approved, reason = approve_paper_portfolio_entry(raw, amount, config.leverage)
             if not approved:
                 result['portfolio_block'] = reason
