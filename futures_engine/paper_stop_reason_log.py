@@ -79,3 +79,43 @@ def record(path, market, candle_ms, reason, subreason=None):
         if temp.exists():
             temp.unlink()
     return True
+
+def sync_ledger(path, market, ledger_state):
+    """Rebuild materialized audit from the authoritative atomic ledger commit.
+
+    Rejection counts are independent scans and preserved from the audit file.
+    A crash after ledger commit but before this write is repaired on restart.
+    """
+    path = Path(path)
+    existing = json.loads(path.read_text()) if path.exists() else {"market": market, "days": {}}
+    if existing["market"] != market:
+        raise ValueError("audit_market_mismatch")
+    days = existing.get("days", {})
+    for day, counts in ledger_state.get("scan_reason_days", {}).items():
+        prior = days.get(day, {})
+        days[day] = {
+            "data_rejected": prior.get("data_rejected", 0),
+            "data_subreasons": prior.get("data_subreasons", {k: 0 for k in sorted(SUBREASONS)}),
+            "signal": counts["signal"], "no_cross": counts["no_cross"],
+            "rsi_fail": counts["rsi_fail"],
+        }
+    output = {"market": market, "days": days,
+              "last_closed_candle": ledger_state.get("last_processed_candle")}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    import tempfile
+    fd, name = tempfile.mkstemp(prefix=path.name + '.', dir=path.parent)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as handle:
+            json.dump(output, handle, sort_keys=True)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(name, path)
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
