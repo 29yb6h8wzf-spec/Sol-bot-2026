@@ -78,6 +78,25 @@ def crossover_signal(closed_bars):
     return None
 
 
+
+def paper_trend_signal(closed_bars):
+    """Closed-candle EMA20 reclaim in EMA20/50 trend with RSI guard; paper only."""
+    if len(closed_bars) < 60:
+        raise ValueError('at least 60 closed bars required')
+    prices = [D(str(row[4])) for row in closed_bars]
+    if any(not x.is_finite() or x <= 0 for x in prices):
+        raise ValueError('invalid candle prices')
+    fast_previous = ema(prices[:-1], 20)
+    fast_now = ema(prices, 20)
+    slow_now = ema(prices, 50)
+    momentum = rsi(prices)
+    if fast_now > slow_now and prices[-2] <= fast_previous and prices[-1] > fast_now and D('45') <= momentum <= D('70'):
+        return 'long'
+    if fast_now < slow_now and prices[-2] >= fast_previous and prices[-1] < fast_now and D('30') <= momentum <= D('55'):
+        return 'short'
+    return None
+
+
 def plan_trade(config, side, entry, equity, day_start_equity, minimum_amount=D('0'), amount_step=D('0.001'), min_cost=D('0')):
     config.validate()
     entry, equity, day_start_equity = D(str(entry)), D(str(equity)), D(str(day_start_equity))
