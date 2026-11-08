@@ -3,6 +3,7 @@ No API, orders, funding, sizing or claims of profitability certification.
 Input: closed historical [open_ms,open,high,low,close,volume] candles.
 """
 from decimal import Decimal as D
+from bisect import bisect_right
 from strategies import candidates
 
 def _check(rows, step):
@@ -28,6 +29,18 @@ def evaluate(five,four,*,thresholds=(70,75,80,85),fee_rate="0.0006",slippage_rat
     if min_signal_ms is not None and (type(min_signal_ms) is not int or min_signal_ms%300000): raise ValueError("invalid_min_signal_ms")
     if max_exit_ms is not None and (type(max_exit_ms) is not int or max_exit_ms%300000): raise ValueError("invalid_max_exit_ms")
     f=_view(five);h=_view(four);output={}
+    four_close_times=[x["time"]+14400000 for x in h]
+    valid_thresholds=tuple(thresholds)
+    for threshold in valid_thresholds:
+        if type(threshold) is not int or not 0<=threshold<=100: raise ValueError("invalid_threshold")
+    # Cache strategy decisions once; exit parameters remain evaluated separately per threshold.
+    decision_cache={}
+    for i in range(209,len(five)-1):
+        decision=five[i][0]+300000
+        end=bisect_right(four_close_times,decision)
+        if end<100:continue
+        setups,_=candidates(f[max(0,i-239):i+1],h[max(0,end-240):end])
+        decision_cache[i]=setups
     for threshold in thresholds:
         if type(threshold) is not int or not 0<=threshold<=100: raise ValueError("invalid_threshold")
         trades=[];next_free=209;blocked=0
@@ -35,10 +48,8 @@ def evaluate(five,four,*,thresholds=(70,75,80,85),fee_rate="0.0006",slippage_rat
             if i<next_free:continue
             if min_signal_ms is not None and five[i][0]<min_signal_ms:continue
             if max_exit_ms is not None and five[i][0]+300000+max_holding_bars*300000>max_exit_ms:continue
-            decision=five[i][0]+300000
-            historical=[x for x in h if x["time"]+14400000<=decision]
-            if len(historical)<100:continue
-            setups,_=candidates(f[max(0,i-239):i+1],historical[-240:])
+            setups=decision_cache.get(i)
+            if setups is None:continue
             available=sorted((x for x in setups if x["score"]>=threshold and (allowed_strategies is None or x["strategy"] in allowed_strategies)),key=lambda x:-x["score"])
             if not available:blocked+=1;continue
             signal=available[0];direction=1 if signal["direction"]=="LONG" else -1
