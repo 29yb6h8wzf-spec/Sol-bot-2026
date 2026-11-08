@@ -8,7 +8,7 @@ from .core import Config, crossover_signal, plan_trade
 from .market import closed_futures_bars
 from .paper import PaperLedger
 from .paper_signal_filter_audit import explain_paper_signal
-from .paper_stop_reason_log import record, reason_for, data_subreason
+from .paper_stop_reason_log import record, reason_for, data_subreason, sync_ledger
 from pathlib import Path
 from portfolio_risk import approve
 
@@ -114,12 +114,10 @@ def main():
         record(audit_path, market_name, None, 'data_rejected', data_subreason(exc))
         raise
     try:
-        if audit_path.exists():
-            audit_state = json.loads(audit_path.read_text())
-            if audit_state.get('market') != market_name:
-                raise ValueError('audit_market_mismatch')
-            previous = audit_state.get('last_closed_candle')
-            if previous is not None and bars[-1][0] <= previous:
+        # The ledger is authoritative. Repair audit JSON before deduplication.
+        if hasattr(ledger, 'begin_scan'):
+            sync_ledger(audit_path, market_name, ledger.state)
+            if not ledger.begin_scan(bars[-1][0]):
                 print(json.dumps({'mode': 'paper', 'symbol': config.symbol,
                                   'closed_candle': bars[-1][0],
                                   'stop_reason': 'duplicate_closed_candle',
@@ -139,7 +137,7 @@ def main():
             result['signal_filter'] = explain_paper_signal(bars[-239:])
         stop_reason = ('signal' if signal else
                        reason_for(None, explain_paper_signal(bars[-239:])) if len(bars) >= 202
-                       else 'data_rejected')
+                       else 'no_cross')
         result['stop_reason'] = stop_reason
         if signal and not ledger.state['position'] and ledger.state['last_signal_candle'] != bars[-1][0]:
             limits = market.get('limits') or {}
@@ -152,32 +150,31 @@ def main():
             except InvalidOrder:
                 # A quantity below the exchange precision is not a valid paper order.
                 result['skip_reason'] = 'below_exchange_precision'
-                record(audit_path, market_name, None if stop_reason == 'data_rejected' else bars[-1][0], stop_reason,
-                       'insufficient' if stop_reason == 'data_rejected' else None)
+                (ledger.commit_scan(bars[-1][0], stop_reason), sync_ledger(audit_path, market_name, ledger.state)) if hasattr(ledger, 'commit_scan') else record(audit_path, market_name, bars[-1][0], stop_reason)
                 print(json.dumps(result, ensure_ascii=False))
                 return
             if amount <= 0:
                 result['skip_reason'] = 'below_exchange_precision'
-                record(audit_path, market_name, bars[-1][0], stop_reason)
+                (ledger.commit_scan(bars[-1][0], stop_reason), sync_ledger(audit_path, market_name, ledger.state)) if hasattr(ledger, 'commit_scan') else record(audit_path, market_name, bars[-1][0], stop_reason)
                 print(json.dumps(result, ensure_ascii=False))
                 return
             if amount > D(raw['quantity']):
                 raise ValueError('exchange precision unexpectedly increased risk')
             if amount < D(str(minimum)) or amount * D(raw['entry']) < D(str(min_cost)):
                 result['skip_reason'] = 'below_exchange_minimum'
-                record(audit_path, market_name, bars[-1][0], stop_reason)
+                (ledger.commit_scan(bars[-1][0], stop_reason), sync_ledger(audit_path, market_name, ledger.state)) if hasattr(ledger, 'commit_scan') else record(audit_path, market_name, bars[-1][0], stop_reason)
                 print(json.dumps(result, ensure_ascii=False))
                 return
             raw['quantity'] = str(amount)
             approved, reason = approve_paper_portfolio_entry(raw, amount, config.leverage)
             if not approved:
                 result['portfolio_block'] = reason
-                record(audit_path, market_name, bars[-1][0], stop_reason)
+                (ledger.commit_scan(bars[-1][0], stop_reason), sync_ledger(audit_path, market_name, ledger.state)) if hasattr(ledger, 'commit_scan') else record(audit_path, market_name, bars[-1][0], stop_reason)
                 print(json.dumps(result, ensure_ascii=False))
                 return
             ledger.open_position(raw,bars[-1][0])
             result['entry'] = raw
-        record(audit_path, market_name, bars[-1][0], stop_reason)
+        (ledger.commit_scan(bars[-1][0], stop_reason), sync_ledger(audit_path, market_name, ledger.state)) if hasattr(ledger, 'commit_scan') else record(audit_path, market_name, bars[-1][0], stop_reason)
         print(json.dumps(result,ensure_ascii=False))
     finally:
         exchange.close() if hasattr(exchange,'close') else None
