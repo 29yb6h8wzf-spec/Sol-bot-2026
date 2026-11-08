@@ -20,7 +20,7 @@ def _check(rows, step):
 def _view(rows):
     return [{"time":r[0],"high":float(r[2]),"low":float(r[3]),"close":float(r[4]),"volume":float(r[5])} for r in rows]
 
-def evaluate(five,four,*,thresholds=(70,75,80,85),fee_rate="0.0006",slippage_rate="0.0005",max_holding_bars=48,allowed_strategies=None,stop_atr="1",target_atr="1.5",min_signal_ms=None,max_exit_ms=None):
+def evaluate(five,four,*,thresholds=(70,75,80,85),fee_rate="0.0006",slippage_rate="0.0005",max_holding_bars=48,allowed_strategies=None,stop_atr="1",target_atr="1.5",min_signal_ms=None,max_exit_ms=None,min_volume_ratio=None,min_atr_pct=None):
     _check(five,300000);_check(four,14400000)
     fee,slip,stop_factor,target_factor=map(lambda v:D(str(v)),(fee_rate,slippage_rate,stop_atr,target_atr))
     if fee<0 or slip<0 or stop_factor<=0 or target_factor<=0 or not 1<=max_holding_bars<=288: raise ValueError("invalid_assumptions")
@@ -28,6 +28,8 @@ def evaluate(five,four,*,thresholds=(70,75,80,85),fee_rate="0.0006",slippage_rat
         raise ValueError("invalid_strategy_filter")
     if min_signal_ms is not None and (type(min_signal_ms) is not int or min_signal_ms%300000): raise ValueError("invalid_min_signal_ms")
     if max_exit_ms is not None and (type(max_exit_ms) is not int or max_exit_ms%300000): raise ValueError("invalid_max_exit_ms")
+    for name,value in (("min_volume_ratio",min_volume_ratio),("min_atr_pct",min_atr_pct)):
+        if value is not None and (not D(str(value)).is_finite() or D(str(value))<0): raise ValueError("invalid_"+name)
     f=_view(five);h=_view(four);output={}
     four_close_times=[x["time"]+14400000 for x in h]
     valid_thresholds=tuple(thresholds)
@@ -35,12 +37,18 @@ def evaluate(five,four,*,thresholds=(70,75,80,85),fee_rate="0.0006",slippage_rat
         if type(threshold) is not int or not 0<=threshold<=100: raise ValueError("invalid_threshold")
     # Cache strategy decisions once; exit parameters remain evaluated separately per threshold.
     decision_cache={}
+    rejection_cache={}
     for i in range(209,len(five)-1):
         decision=five[i][0]+300000
         end=bisect_right(four_close_times,decision)
         if end<100:continue
-        setups,_=candidates(f[max(0,i-239):i+1],h[max(0,end-240):end])
-        decision_cache[i]=setups
+        setups,indicators=candidates(f[max(0,i-239):i+1],h[max(0,end-240):end])
+        close=D(str(five[i][4]))
+        atr=D(str(indicators["atr"]))
+        ratio=D(str(indicators["volume"]))
+        rejected=(min_volume_ratio is not None and ratio<D(str(min_volume_ratio))) or (min_atr_pct is not None and atr/close*100<D(str(min_atr_pct)))
+        decision_cache[i]=[] if rejected else setups
+        rejection_cache[i]=bool(rejected)
     for threshold in thresholds:
         if type(threshold) is not int or not 0<=threshold<=100: raise ValueError("invalid_threshold")
         trades=[];next_free=209;blocked=0
@@ -72,4 +80,4 @@ def evaluate(five,four,*,thresholds=(70,75,80,85),fee_rate="0.0006",slippage_rat
             trades.append({"strategy":signal["strategy"],"direction":signal["direction"],"score":signal["score"],"signal_ms":five[i][0],"exit_ms":five[exit_index][0],"reason":reason,"net_return_pct":float(net*100)})
             next_free=exit_index+1
         output[str(threshold)]={"trades":len(trades),"wins":sum(t["net_return_pct"]>0 for t in trades),"sum_net_return_pct_uncompounded":sum(t["net_return_pct"] for t in trades),"no_signal_bars":blocked,"trade_log":trades}
-    return {"status":"OFFLINE_RESEARCH_ONLY","orders_sent":False,"funding_included":False,"position_sizing_included":False,"allowed_strategies":sorted(allowed_strategies) if allowed_strategies is not None else None,"fee_rate":str(fee),"slippage_rate":str(slip),"stop_atr":str(stop_factor),"target_atr":str(target_factor),"min_signal_ms":min_signal_ms,"max_exit_ms":max_exit_ms,"thresholds":output}
+    return {"status":"OFFLINE_RESEARCH_ONLY","orders_sent":False,"funding_included":False,"position_sizing_included":False,"allowed_strategies":sorted(allowed_strategies) if allowed_strategies is not None else None,"fee_rate":str(fee),"slippage_rate":str(slip),"stop_atr":str(stop_factor),"target_atr":str(target_factor),"min_volume_ratio":str(min_volume_ratio) if min_volume_ratio is not None else None,"min_atr_pct":str(min_atr_pct) if min_atr_pct is not None else None,"quality_rejected_bars":sum(rejection_cache.values()),"min_signal_ms":min_signal_ms,"max_exit_ms":max_exit_ms,"thresholds":output}
