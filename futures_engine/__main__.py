@@ -11,7 +11,7 @@ from pathlib import Path
 from portfolio_risk import approve
 
 
-def verified_paper_equity_cap(states):
+def verified_paper_equity_cap(states, initial_equity=D('37.50')):
     """Permit only profits provable from both active Paper ledgers.
 
     Unexplained account injections remain blocked. No Demo/live caller uses this.
@@ -21,7 +21,7 @@ def verified_paper_equity_cap(states):
         history = state['history']
         if not isinstance(history, list):
             raise ValueError('invalid_paper_history')
-        balance = D('75.00')
+        balance = initial_equity
         peak = balance
         opened = None
         for event in history:
@@ -72,9 +72,12 @@ def verified_paper_equity_cap(states):
 def approve_paper_portfolio_entry(raw, amount, leverage, root=Path('/opt/signalpilot')):
     """Fail closed across both active paper ledgers before any new paper entry."""
     try:
+        active_coins = tuple(x.strip() for x in os.getenv('PAPER_PORTFOLIO_COINS', 'btc,eth,sol,xrp').split(','))
+        if active_coins not in (('btc','eth','sol','xrp'), ('sol','xrp')):
+            raise ValueError('invalid_paper_portfolio_coins')
         states = [
             json.loads((root / f'paper-ledger-{coin}.json').read_text())
-            for coin in ('sol', 'xrp')
+            for coin in active_coins
         ]
         total_equity = sum((D(s['equity']) for s in states), D('0'))
         total_start = sum((D(s['day_start_equity']) for s in states), D('0'))
@@ -85,7 +88,7 @@ def approve_paper_portfolio_entry(raw, amount, leverage, root=Path('/opt/signalp
         # reconciled against the actual closed Paper trade history.
         paper_cap = D('150')
         if total_equity > paper_cap or total_start > paper_cap:
-            paper_cap = verified_paper_equity_cap(states)
+            paper_cap = verified_paper_equity_cap(states, D('75.00') if active_coins == ('sol','xrp') else D('37.50'))
         return approve(total_equity, total_start, used_margin,
                        amount * D(raw['entry']), D(raw['max_estimated_loss']),
                        leverage=leverage, open_risk=open_risk, account_cap=paper_cap)
