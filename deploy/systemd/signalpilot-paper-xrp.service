@@ -9,6 +9,7 @@ WorkingDirectory=/opt/signalpilot
 Environment=TRADING_MODE=paper
 Environment=FUTURES_SYMBOL=XRP/USDT:USDT
 Environment=TIMEFRAME=5m
+Environment=PAPER_SIGNAL_STRATEGY=trend_reclaim
 Environment=MAX_RISK_FRACTION=0.01
 Environment=MAX_DAILY_DRAWDOWN=0.05
 Environment=LEVERAGE=2
