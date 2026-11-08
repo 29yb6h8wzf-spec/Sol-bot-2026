@@ -137,7 +137,9 @@ def main():
         # and never alter portfolio sizing or execution gates.
         if signal is None and len(bars) >= 202:
             result['signal_filter'] = explain_paper_signal(bars[-239:])
-        stop_reason = reason_for(signal, explain_paper_signal(bars[-239:]))
+        stop_reason = ('signal' if signal else
+                       reason_for(None, explain_paper_signal(bars[-239:])) if len(bars) >= 202
+                       else 'data_rejected')
         result['stop_reason'] = stop_reason
         if signal and not ledger.state['position'] and ledger.state['last_signal_candle'] != bars[-1][0]:
             limits = market.get('limits') or {}
@@ -150,7 +152,8 @@ def main():
             except InvalidOrder:
                 # A quantity below the exchange precision is not a valid paper order.
                 result['skip_reason'] = 'below_exchange_precision'
-                record(audit_path, market_name, bars[-1][0], stop_reason)
+                record(audit_path, market_name, None if stop_reason == 'data_rejected' else bars[-1][0], stop_reason,
+                       'insufficient' if stop_reason == 'data_rejected' else None)
                 print(json.dumps(result, ensure_ascii=False))
                 return
             if amount <= 0:
