@@ -33,6 +33,9 @@ def inspect(exchange):
         if contracts != 0:
             exposure.append(p.get("symbol"))
     # Global ordinary order inventory: per-symbol checks alone miss other markets.
+    # CCXT blocks symbol-less Binance open-order reads unless explicitly acknowledged.
+    # This is an intentional read-only, account-wide request with a higher rate weight.
+    exchange.options.setdefault("fetchOpenOrders", {})["warnWithoutSymbol"] = False
     global_orders = exchange.fetch_open_orders()
     if not isinstance(global_orders, list):
         raise ValueError("invalid_global_order_inventory")
