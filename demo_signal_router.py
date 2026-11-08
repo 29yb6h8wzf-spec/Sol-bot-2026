@@ -121,12 +121,11 @@ def main():
     p.add_argument("--inbox", default="/opt/signalpilot/signal-inbox.sqlite3")
     p.add_argument("--journal", default="/opt/signalpilot/demo-signal-route.sqlite3")
     args = p.parse_args()
-    # Recompute signal independently from Binance Futures market data.
-    # Risk preflight is intentionally absent: no demo orders are authorized.
-    from demo_independent_verifier import verify
+    # Supply a verified identity and an indicative plan to the monitored preflight.
+    from demo_plan_bridge import verify_and_plan
     from demo_risk_adapter import load_account, preflight_with_monitor
     account = load_account()
-    for result in connect_inbox(args.inbox, args.journal, verifier=verify,
+    for result in connect_inbox(args.inbox, args.journal, verifier=verify_and_plan,
                                 preflight=preflight_with_monitor, account=account):
         print(json.dumps(result, sort_keys=True))
 
