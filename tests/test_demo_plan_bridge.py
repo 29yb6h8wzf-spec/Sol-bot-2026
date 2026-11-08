@@ -8,7 +8,9 @@ from decimal import Decimal as D
 
 from futures_engine.offline_plan_replay import replay
 
-from demo_plan_bridge import build_plan, exchange_filters, journal_inbox
+from demo_plan_bridge import build_plan, exchange_filters, journal_inbox, verify_and_plan
+from demo_risk_adapter import preflight, preflight_with_monitor
+from demo_signal_router import connect_inbox, evaluate
 
 CANDLE = 4500000
 NOW = CANDLE + 300000 + 30000
@@ -114,6 +116,43 @@ class BridgeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "independent_proof_required"):
             build_plan(payload(), verifier=invalid, loader=self.loader, now_ms=NOW)
         self.assertTrue(self.exchange.closed)
+
+    def test_router_plans_preflights_and_claims_only_once(self):
+        def independent(message, *, now):
+            return {**verified(message, now=now), "strategy": "MACD_VOLUME"}
+
+        def planner(message):
+            return verify_and_plan(message, verifier=independent, loader=self.loader, now_ms=NOW)
+
+        message = {**payload(), "entry": "999", "quantity": "999"}
+        intent = planner(message)
+        self.assertEqual(float(intent["entry"]), 100)
+        self.assertFalse(intent["execution_authorized"])
+        self.assertFalse(intent["risk_snapshot_approved"])
+        self.assertFalse(intent["orders_sent"])
+        account = {"equity": "150", "day_start": "150", "used_margin": "0", "open_risk": "0"}
+        # Leave headroom for the unbuffered stop loss, but not for its costs.
+        raw_risk = D(intent["quantity"]) * abs(D(intent["entry"]) - D(intent["stop"]))
+        headroom = (raw_risk + D(intent["estimated_loss_including_buffer"])) / 2
+        tight = {**account, "open_risk": str(D("7.5") - headroom)}
+        self.assertEqual(preflight(intent, tight), (False, "portfolio_risk_budget"))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            def monitored(v, a):
+                return preflight_with_monitor(v, a, status_path=root/"absent", now=NOW // 1000)
+            self.assertEqual(evaluate(message, verifier=planner, preflight=monitored,
+                                      account=account, now=NOW // 1000),
+                             ("REJECTED_RISK", "risk_monitor_status_missing"))
+            with sqlite3.connect(root/"inbox") as db:
+                db.execute("CREATE TABLE signals(signal_id TEXT PRIMARY KEY, payload TEXT, received_at INTEGER)")
+                for sid in ("s1", "s2"):
+                    db.execute("INSERT INTO signals VALUES(?,?,?)",
+                               (sid, json.dumps({**message, "signal_id": sid}), NOW // 1000))
+            results = connect_inbox(root/"inbox", root/"routes", verifier=planner,
+                                    preflight=preflight, account=account, now=NOW // 1000)
+            self.assertEqual([r["status"] for r in results],
+                             ["DEMO_ELIGIBLE_NOT_SUBMITTED", "REJECTED_DUPLICATE"])
+            self.assertTrue(all(r["orders_sent"] is False for r in results))
 
     def test_journal_idempotent_and_no_orders(self):
         with tempfile.TemporaryDirectory() as tmp:
