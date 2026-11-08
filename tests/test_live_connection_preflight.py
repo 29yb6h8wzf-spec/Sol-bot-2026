@@ -8,6 +8,7 @@ class Exchange:
     def __init__(self, positions=None, orders=0, algos=0, hedged=False):
         self.positions, self.orders, self.algos, self.hedged = positions or [], orders, algos, hedged
         self.calls = []
+        self.options = {}
     def load_markets(self): self.calls.append("load")
     def fetch_position_mode(self): return {"hedged": self.hedged}
     def fetch_positions(self, symbols=None): return self.positions
@@ -19,6 +20,7 @@ class Exchange:
 def test_flat_read_only_preflight():
     exchange = Exchange()
     report = inspect(exchange)
+    assert exchange.options["fetchOpenOrders"]["warnWithoutSymbol"] is False
     assert report["account_flat"]
     assert report["account_wide_algo_inventory_verified"] is False
     assert report["status"] == "LIVE_CONNECTION_READ_ONLY_PARTIAL_SCOPE"
