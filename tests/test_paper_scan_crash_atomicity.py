@@ -61,3 +61,31 @@ def test_crash_before_commit_has_no_persisted_partial_entry(tmp_path):
     assert again.begin_scan(900000) is False
     assert len(again.state["history"]) == 1
     assert again.state["position"]["signal_candle"] == 900000
+
+def test_real_child_process_termination_after_ledger_commit(tmp_path):
+    """Hard process termination, not an exception; recover from disk."""
+    import os
+    import subprocess
+    import sys
+    path = tmp_path / "child-ledger.json"
+    script = """
+import os, sys
+from decimal import Decimal
+from futures_engine.paper import PaperLedger
+ledger = PaperLedger(sys.argv[1], Decimal('37.50'))
+assert ledger.begin_scan(900000)
+ledger.open_position({'side':'long','entry':'100','stop':'99','target':'102',
+                      'quantity':'0.1','margin_estimate':'5',
+                      'max_estimated_loss':'0.1'}, 900000)
+ledger.commit_scan(900000, 'signal')
+os._exit(73)
+"""
+    env = dict(os.environ)
+    child = subprocess.run([sys.executable, "-c", script, str(path)],
+                           env=env, capture_output=True, text=True)
+    assert child.returncode == 73, child.stderr
+    recovered = PaperLedger(path, Decimal("37.50"))
+    assert recovered.begin_scan(900000) is False
+    assert recovered.state["position"]["signal_candle"] == 900000
+    assert len(recovered.state["history"]) == 1
+    assert sum(v["signal"] for v in recovered.state["scan_reason_days"].values()) == 1
