@@ -109,7 +109,7 @@ def main():
         ledger.roll_day(bars[-1][0])
         exit_event = ledger.evaluate_exit(bars, config.taker_fee, config.slippage_fraction)
         # Keep EMA warmup stable when the exchange returns 239 or 240 closed candles.
-        signal = paper_trend_signal(bars[-239:])
+        signal = (paper_trend_signal if os.getenv('PAPER_SIGNAL_STRATEGY', 'crossover') == 'trend_reclaim' else crossover_signal)(bars[-239:])
         result = {'mode':'paper','symbol':config.symbol,'timeframe':config.timeframe,
                   'closed_candle':bars[-1][0],'equity':ledger.state['equity'],
                   'signal':signal,'exit':exit_event,'entry':None}
