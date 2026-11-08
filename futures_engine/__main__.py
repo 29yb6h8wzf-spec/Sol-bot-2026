@@ -123,7 +123,7 @@ def main():
                 print(json.dumps({'mode': 'paper', 'symbol': config.symbol,
                                   'closed_candle': bars[-1][0],
                                   'stop_reason': 'duplicate_closed_candle',
-                                  'evaluated': False}, ensure_ascii=False))
+                                  'evaluated': False, 'entry': None, 'exit': None}, ensure_ascii=False))
                 return
         ledger.roll_day(bars[-1][0])
         exit_event = ledger.evaluate_exit(bars, config.taker_fee, config.slippage_fraction)
