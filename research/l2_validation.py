@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from math import isfinite
 from typing import Any
 
@@ -59,7 +59,7 @@ def snapshot_expiry(received_ms: int, ttl_seconds: int = SNAPSHOT_TTL_SECONDS) -
     """Return a BSON-compatible UTC expiry timestamp for raw snapshots."""
     if ttl_seconds <= RESEARCH_WINDOW_SECONDS:
         raise ValueError("snapshot TTL must exceed the research window")
-    return datetime.fromtimestamp(received_ms / 1000, tz=timezone.utc) + timedelta(
+    return datetime.fromtimestamp(received_ms / 1000, tz=UTC) + timedelta(
         seconds=ttl_seconds
     )
 
