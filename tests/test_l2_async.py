@@ -5,8 +5,7 @@ import pytest
 from research.core_engine_v3_8 import ResearchPipeline, retry_stream
 
 
-@pytest.mark.asyncio
-async def test_retry_after_disconnect():
+async def _async_test_retry_after_disconnect():
     stop = asyncio.Event()
     attempts = []
     received = []
@@ -29,8 +28,7 @@ async def test_retry_after_disconnect():
     assert received == [{"ok": True}]
 
 
-@pytest.mark.asyncio
-async def test_shutdown_drains_queue():
+async def _async_test_shutdown_drains_queue():
     closed = []
 
     class Source:
@@ -63,8 +61,7 @@ async def test_shutdown_drains_queue():
     assert closed == ["source", "sink"]
 
 
-@pytest.mark.asyncio
-async def test_write_failure_is_reported():
+async def _async_test_write_failure_is_reported():
     class Source:
         async def watch(self):
             yield {"bids": [[100, 3]], "asks": [[102, 1]]}
@@ -85,3 +82,15 @@ async def test_write_failure_is_reported():
     await asyncio.sleep(0.03)
     with pytest.raises(RuntimeError, match="sink writes failed"):
         await pipeline.shutdown()
+
+
+def test_retry_after_disconnect():
+    asyncio.run(_async_test_retry_after_disconnect())
+
+
+def test_shutdown_drains_queue():
+    asyncio.run(_async_test_shutdown_drains_queue())
+
+
+def test_write_failure_is_reported():
+    asyncio.run(_async_test_write_failure_is_reported())
