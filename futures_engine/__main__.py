@@ -8,6 +8,7 @@ from .core import Config, crossover_signal, plan_trade
 from .market import closed_futures_bars
 from .paper import PaperLedger
 from .paper_signal_filter_audit import explain_paper_signal
+from .paper_stop_reason_log import record, reason_for, data_subreason
 from pathlib import Path
 from portfolio_risk import approve
 
@@ -105,8 +106,25 @@ def main():
                     leverage=int(os.getenv('LEVERAGE','2')))
     config.validate()
     ledger = PaperLedger(os.getenv('PAPER_LEDGER','paper-ledger.json'), D(os.getenv('PAPER_START_EQUITY','1000')))
-    exchange, market, bars = closed_futures_bars(config.symbol, config.timeframe)
+    audit_path = Path(os.getenv('PAPER_AUDIT_PATH', str(Path(os.getenv('PAPER_LEDGER', 'paper-ledger.json')).with_suffix('.audit.json'))))
+    market_name = config.symbol.replace('/USDT:USDT', 'USDT')
     try:
+        exchange, market, bars = closed_futures_bars(config.symbol, config.timeframe)
+    except Exception as exc:
+        record(audit_path, market_name, None, 'data_rejected', data_subreason(exc))
+        raise
+    try:
+        if audit_path.exists():
+            audit_state = json.loads(audit_path.read_text())
+            if audit_state.get('market') != market_name:
+                raise ValueError('audit_market_mismatch')
+            previous = audit_state.get('last_closed_candle')
+            if previous is not None and bars[-1][0] <= previous:
+                print(json.dumps({'mode': 'paper', 'symbol': config.symbol,
+                                  'closed_candle': bars[-1][0],
+                                  'stop_reason': 'duplicate_closed_candle',
+                                  'evaluated': False}, ensure_ascii=False))
+                return
         ledger.roll_day(bars[-1][0])
         exit_event = ledger.evaluate_exit(bars, config.taker_fee, config.slippage_fraction)
         # Keep EMA warmup stable when the exchange returns 239 or 240 closed candles.
@@ -119,6 +137,8 @@ def main():
         # and never alter portfolio sizing or execution gates.
         if signal is None and len(bars) >= 202:
             result['signal_filter'] = explain_paper_signal(bars[-239:])
+        stop_reason = reason_for(signal, explain_paper_signal(bars[-239:]))
+        result['stop_reason'] = stop_reason
         if signal and not ledger.state['position'] and ledger.state['last_signal_candle'] != bars[-1][0]:
             limits = market.get('limits') or {}
             minimum = (limits.get('amount') or {}).get('min') or 0
@@ -130,26 +150,31 @@ def main():
             except InvalidOrder:
                 # A quantity below the exchange precision is not a valid paper order.
                 result['skip_reason'] = 'below_exchange_precision'
+                record(audit_path, market_name, bars[-1][0], stop_reason)
                 print(json.dumps(result, ensure_ascii=False))
                 return
             if amount <= 0:
                 result['skip_reason'] = 'below_exchange_precision'
+                record(audit_path, market_name, bars[-1][0], stop_reason)
                 print(json.dumps(result, ensure_ascii=False))
                 return
             if amount > D(raw['quantity']):
                 raise ValueError('exchange precision unexpectedly increased risk')
             if amount < D(str(minimum)) or amount * D(raw['entry']) < D(str(min_cost)):
                 result['skip_reason'] = 'below_exchange_minimum'
+                record(audit_path, market_name, bars[-1][0], stop_reason)
                 print(json.dumps(result, ensure_ascii=False))
                 return
             raw['quantity'] = str(amount)
             approved, reason = approve_paper_portfolio_entry(raw, amount, config.leverage)
             if not approved:
                 result['portfolio_block'] = reason
+                record(audit_path, market_name, bars[-1][0], stop_reason)
                 print(json.dumps(result, ensure_ascii=False))
                 return
             ledger.open_position(raw,bars[-1][0])
             result['entry'] = raw
+        record(audit_path, market_name, bars[-1][0], stop_reason)
         print(json.dumps(result,ensure_ascii=False))
     finally:
         exchange.close() if hasattr(exchange,'close') else None
