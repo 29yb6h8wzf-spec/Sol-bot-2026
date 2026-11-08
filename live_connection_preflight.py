@@ -41,7 +41,11 @@ def inspect(exchange):
     algo_orders = {}
     for symbol in SYMBOLS:
         response = exchange.fapiPrivateGetOpenAlgoOrders({"symbol": exchange.market_id(symbol)})
-        orders = response.get("orders", []) if isinstance(response, dict) else response
+        if isinstance(response, dict) and "orders" not in response:
+            raise ValueError("invalid_conditional_algo_inventory")
+        orders = response["orders"] if isinstance(response, dict) else response
+        if not isinstance(orders, list):
+            raise ValueError("invalid_conditional_algo_inventory")
         algo_orders[symbol] = len(orders)
     if exposure or global_orders or any(open_orders.values()) or any(algo_orders.values()):
         raise ValueError("existing_exposure_or_orders_requires_manual_reconciliation")
@@ -49,6 +53,8 @@ def inspect(exchange):
             "symbols_checked": list(SYMBOLS),
             "account_flat": True,
             "account_wide_algo_inventory_verified": False,
+            "all_order_inventory_verified": False,
+            "ready_for_live_trading": False,
             "conditional_algo_endpoint_readable": True,
             "execution_authorized": False,
             "orders_sent": False}

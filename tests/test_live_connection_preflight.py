@@ -21,6 +21,8 @@ def test_flat_read_only_preflight():
     report = inspect(exchange)
     assert report["account_flat"]
     assert report["account_wide_algo_inventory_verified"] is False
+    assert report["all_order_inventory_verified"] is False
+    assert report["ready_for_live_trading"] is False
     assert report["status"] == "LIVE_CONNECTION_READ_ONLY_PARTIAL_SCOPE"
     assert not report["execution_authorized"]
     assert not report["orders_sent"]
@@ -40,4 +42,11 @@ def test_preflight_rejects_demo():
     exchange = Exchange()
     exchange.urls = {"api": "https://demo-fapi.binance.com"}
     with pytest.raises(ValueError):
+        inspect(exchange)
+
+
+def test_unrecognized_algo_response_fails_closed():
+    exchange = Exchange()
+    exchange.fapiPrivateGetOpenAlgoOrders = lambda args: {"unexpected": "response"}
+    with pytest.raises(ValueError, match="invalid_conditional_algo_inventory"):
         inspect(exchange)
