@@ -1,9 +1,13 @@
+from datetime import datetime, timezone
+
 import pytest
 
 from research.l2_validation import (
+    asof_snapshot,
     find_swap_symbol,
     nearest_snapshot,
     normalize_book,
+    snapshot_expiry,
     tracking_complete,
 )
 
@@ -53,3 +57,25 @@ def test_tracking_requires_all_horizons():
     signal["performance_15m"] = {"data_status": "valid"}
     signal["performance_30m"] = {"data_status": "missing_data"}
     assert tracking_complete(signal)
+
+
+def test_snapshot_ttl_preserves_72h_research_window():
+    received_ms = 1_700_000_000_000
+    expiry = snapshot_expiry(received_ms)
+    assert expiry.tzinfo == timezone.utc
+    assert (expiry - datetime.fromtimestamp(received_ms / 1000, timezone.utc)).total_seconds() == 96 * 3600
+    with pytest.raises(ValueError, match="must exceed"):
+        snapshot_expiry(received_ms, ttl_seconds=24 * 3600)
+
+
+def test_asof_snapshot_excludes_future_observations():
+    rows = [{"venue": "okx", "asset": "SOL", "received_ms": t}
+            for t in (9900, 9990, 10001)]
+    assert asof_snapshot(rows, "okx", "SOL", 10000)["received_ms"] == 9990
+    assert asof_snapshot(rows, "okx", "SOL", 9800) is None
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), float("-inf")])
+def test_nonfinite_book_values_rejected(invalid):
+    with pytest.raises(ValueError):
+        normalize_book({"bids": [[100, invalid]], "asks": [[102, 1]]})
