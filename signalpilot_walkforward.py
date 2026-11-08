@@ -23,7 +23,9 @@ def evaluate(five,four,*,thresholds=(70,75,80,85),fee_rate="0.0006",slippage_rat
     _check(five,300000);_check(four,14400000)
     fee,slip=D(fee_rate),D(slippage_rate)
     if fee<0 or slip<0 or not 1<=max_holding_bars<=288: raise ValueError("invalid_assumptions")
-    if allowed_strategies is not None and (not isinstance(allowed_strategies,(tuple,list,set,frozenset)) or not allowed_strategies or any(s not in ("EMA_ADX","RSI_BOLL","MACD_VOLUME") for s in allowed_strategies)):\n        raise ValueError("invalid_strategy_filter")\n    f=_view(five);h=_view(four);output={}
+    if allowed_strategies is not None and (not isinstance(allowed_strategies,(tuple,list,set,frozenset)) or not allowed_strategies or any(s not in ("EMA_ADX","RSI_BOLL","MACD_VOLUME") for s in allowed_strategies)):
+        raise ValueError("invalid_strategy_filter")
+    f=_view(five);h=_view(four);output={}
     for threshold in thresholds:
         if type(threshold) is not int or not 0<=threshold<=100: raise ValueError("invalid_threshold")
         trades=[];next_free=209;blocked=0
