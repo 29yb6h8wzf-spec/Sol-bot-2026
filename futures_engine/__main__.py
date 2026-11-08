@@ -4,7 +4,7 @@ import os
 from decimal import Decimal as D
 from dotenv import load_dotenv
 from ccxt.base.errors import InvalidOrder
-from .core import Config, crossover_signal, plan_trade
+from .core import Config, crossover_signal, paper_trend_signal, plan_trade
 from .market import closed_futures_bars
 from .paper import PaperLedger
 from pathlib import Path
@@ -109,7 +109,7 @@ def main():
         ledger.roll_day(bars[-1][0])
         exit_event = ledger.evaluate_exit(bars, config.taker_fee, config.slippage_fraction)
         # Keep EMA warmup stable when the exchange returns 239 or 240 closed candles.
-        signal = crossover_signal(bars[-239:])
+        signal = paper_trend_signal(bars[-239:])
         result = {'mode':'paper','symbol':config.symbol,'timeframe':config.timeframe,
                   'closed_candle':bars[-1][0],'equity':ledger.state['equity'],
                   'signal':signal,'exit':exit_event,'entry':None}
