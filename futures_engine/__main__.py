@@ -12,7 +12,7 @@ from portfolio_risk import approve
 
 
 def verified_paper_equity_cap(states):
-    """Permit only profits provable from all four existing Paper ledgers.
+    """Permit only profits provable from both active Paper ledgers.
 
     Unexplained account injections remain blocked. No Demo/live caller uses this.
     """
@@ -21,7 +21,7 @@ def verified_paper_equity_cap(states):
         history = state['history']
         if not isinstance(history, list):
             raise ValueError('invalid_paper_history')
-        balance = D('37.50')
+        balance = D('75.00')
         peak = balance
         opened = None
         for event in history:
@@ -70,11 +70,11 @@ def verified_paper_equity_cap(states):
 
 
 def approve_paper_portfolio_entry(raw, amount, leverage, root=Path('/opt/signalpilot')):
-    """Fail closed across all four paper ledgers before any new paper entry."""
+    """Fail closed across both active paper ledgers before any new paper entry."""
     try:
         states = [
             json.loads((root / f'paper-ledger-{coin}.json').read_text())
-            for coin in ('btc', 'eth', 'sol', 'xrp')
+            for coin in ('sol', 'xrp')
         ]
         total_equity = sum((D(s['equity']) for s in states), D('0'))
         total_start = sum((D(s['day_start_equity']) for s in states), D('0'))
@@ -97,7 +97,7 @@ def main():
     load_dotenv()
     if os.getenv('TRADING_MODE', 'paper').lower() != 'paper':
         raise SystemExit('LIVE TRADING DISABLED: only TRADING_MODE=paper is implemented')
-    config = Config(symbol=os.getenv('FUTURES_SYMBOL','BTC/USDT:USDT'),
+    config = Config(symbol=os.getenv('FUTURES_SYMBOL','SOL/USDT:USDT'),
                     timeframe=os.getenv('TIMEFRAME','15m'),
                     risk_fraction=D(os.getenv('MAX_RISK_FRACTION','0.01')),
                     daily_loss_fraction=D(os.getenv('MAX_DAILY_DRAWDOWN','0.05')),
