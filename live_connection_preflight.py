@@ -41,21 +41,25 @@ def inspect(exchange):
         raise ValueError("invalid_global_order_inventory")
     open_orders = {symbol: len(exchange.fetch_open_orders(symbol))
                    for symbol in SYMBOLS}
-    algo_orders = {}
-    for symbol in SYMBOLS:
-        response = exchange.fapiPrivateGetOpenAlgoOrders({"symbol": exchange.market_id(symbol)})
-        if isinstance(response, dict) and "orders" not in response:
-            raise ValueError("invalid_conditional_algo_inventory")
-        orders = response["orders"] if isinstance(response, dict) else response
-        algo_orders[symbol] = len(orders)
-    if exposure or global_orders or any(open_orders.values()) or any(algo_orders.values()):
+    # Binance USDT-M openAlgoOrders supports omitting symbol for account-wide inventory.
+    # Fail closed if the endpoint returns an unrecognized or truncated shape.
+    response = exchange.fapiPrivateGetOpenAlgoOrders({})
+    if isinstance(response, dict):
+        if "orders" not in response:
+            raise ValueError("invalid_account_wide_algo_inventory")
+        algo_orders = response["orders"]
+    else:
+        algo_orders = response
+    if not isinstance(algo_orders, list):
+        raise ValueError("invalid_account_wide_algo_inventory")
+    if exposure or global_orders or any(open_orders.values()) or algo_orders:
         raise ValueError("existing_exposure_or_orders_requires_manual_reconciliation")
-    return {"status": "LIVE_CONNECTION_READ_ONLY_PARTIAL_SCOPE",
+    return {"status": "LIVE_CONNECTION_READ_ONLY_FULL_INVENTORY",
             "symbols_checked": list(SYMBOLS),
             "account_flat": True,
-            "account_wide_algo_inventory_verified": False,
+            "account_wide_algo_inventory_verified": True,
             "conditional_algo_endpoint_readable": True,
-            "all_order_inventory_verified": False,
+            "all_order_inventory_verified": True,
             "ready_for_live_trading": False,
             "execution_authorized": False,
             "orders_sent": False}
