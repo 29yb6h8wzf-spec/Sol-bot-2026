@@ -1,7 +1,10 @@
 import pytest
 
 from research.l2_validation import (
-    find_swap_symbol, nearest_snapshot, normalize_book, tracking_complete,
+    find_swap_symbol,
+    nearest_snapshot,
+    normalize_book,
+    tracking_complete,
 )
 
 
