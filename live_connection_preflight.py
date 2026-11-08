@@ -58,7 +58,7 @@ def credential_pair(secret):
     """Accept known secret naming conventions without exposing any values."""
     if not isinstance(secret, dict):
         raise ValueError("invalid_secret_structure")
-    for key_name, secret_name in (("apiKey", "secret"), ("api_key", "api_secret"),
+    for key_name, secret_name in (("apiKey", "secret"), ("Api", "Secret"), ("api_key", "api_secret"),
                                   ("API_KEY", "API_SECRET"), ("BINANCE_API_KEY", "BINANCE_API_SECRET")):
         key, token = secret.get(key_name), secret.get(secret_name)
         if isinstance(key, str) and key.strip() and isinstance(token, str) and token.strip():
