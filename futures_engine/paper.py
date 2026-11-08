@@ -1,6 +1,7 @@
 """Persistent paper ledger. No live broker or create_order capability."""
 import json
 import os
+import tempfile
 from decimal import Decimal as D
 from pathlib import Path
 from .core import utc_day
@@ -16,10 +17,45 @@ class PaperLedger:
                           'position':None,'last_signal_candle':None,'history':[]}
 
     def save(self):
+        if getattr(self, '_defer_save', False):
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        temp = self.path.with_suffix('.tmp')
-        temp.write_text(json.dumps(self.state, indent=2))
-        os.replace(temp, self.path)
+        fd, name = tempfile.mkstemp(prefix=self.path.name + '.', dir=self.path.parent)
+        try:
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, 'w') as handle:
+                json.dump(self.state, handle, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(name, self.path)
+            directory = os.open(self.path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            if os.path.exists(name):
+                os.unlink(name)
+
+    def begin_scan(self, candle):
+        """Stage all ledger changes until a single durable scan commit."""
+        if self.state.get('last_processed_candle') is not None and candle <= self.state['last_processed_candle']:
+            return False
+        self._defer_save = True
+        return True
+
+    def commit_scan(self, candle, reason):
+        """Ledger state and canonical reason counters commit in ONE atomic file."""
+        if reason not in ('signal', 'no_cross', 'rsi_fail'):
+            raise ValueError('invalid_scan_reason')
+        from .core import utc_day
+        counters = self.state.setdefault('scan_reason_days', {})
+        counts = counters.setdefault(utc_day(candle), {'signal': 0, 'no_cross': 0, 'rsi_fail': 0})
+        counts[reason] += 1
+        self.state['last_processed_candle'] = candle
+        self._defer_save = False
+        self.save()
+
 
     def roll_day(self, timestamp):
         day = utc_day(timestamp)
