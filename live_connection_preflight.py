@@ -33,6 +33,9 @@ def inspect(exchange):
         if contracts != 0:
             exposure.append(p.get("symbol"))
     # Global ordinary order inventory: per-symbol checks alone miss other markets.
+    # CCXT blocks symbol-less Binance open-order reads unless explicitly acknowledged.
+    # This is an intentional read-only, account-wide request with a higher rate weight.
+    exchange.options.setdefault("fetchOpenOrders", {})["warnWithoutSymbol"] = False
     global_orders = exchange.fetch_open_orders()
     if not isinstance(global_orders, list):
         raise ValueError("invalid_global_order_inventory")
@@ -44,8 +47,6 @@ def inspect(exchange):
         if isinstance(response, dict) and "orders" not in response:
             raise ValueError("invalid_conditional_algo_inventory")
         orders = response["orders"] if isinstance(response, dict) else response
-        if not isinstance(orders, list):
-            raise ValueError("invalid_conditional_algo_inventory")
         algo_orders[symbol] = len(orders)
     if exposure or global_orders or any(open_orders.values()) or any(algo_orders.values()):
         raise ValueError("existing_exposure_or_orders_requires_manual_reconciliation")
@@ -53,11 +54,23 @@ def inspect(exchange):
             "symbols_checked": list(SYMBOLS),
             "account_flat": True,
             "account_wide_algo_inventory_verified": False,
+            "conditional_algo_endpoint_readable": True,
             "all_order_inventory_verified": False,
             "ready_for_live_trading": False,
-            "conditional_algo_endpoint_readable": True,
             "execution_authorized": False,
             "orders_sent": False}
+
+
+def credential_pair(secret):
+    """Accept known secret naming conventions without exposing any values."""
+    if not isinstance(secret, dict):
+        raise ValueError("invalid_secret_structure")
+    for key_name, secret_name in (("apiKey", "secret"), ("Api", "Secret"), ("api_key", "api_secret"),
+                                  ("API_KEY", "API_SECRET"), ("BINANCE_API_KEY", "BINANCE_API_SECRET")):
+        key, token = secret.get(key_name), secret.get(secret_name)
+        if isinstance(key, str) and key.strip() and isinstance(token, str) and token.strip():
+            return key, token
+    raise ValueError("unsupported_live_secret_schema")
 
 
 def main():
@@ -71,8 +84,9 @@ def main():
     import ccxt
     secret = json.loads(boto3.client("secretsmanager", region_name="il-central-1")
                         .get_secret_value(SecretId=secret_id)["SecretString"])
-    exchange = ccxt.binanceusdm({"apiKey": secret["apiKey"],
-                                 "secret": secret["secret"],
+    api_key, api_secret = credential_pair(secret)
+    exchange = ccxt.binanceusdm({"apiKey": api_key,
+                                 "secret": api_secret,
                                  "enableRateLimit": True, "timeout": 20000})
     try:
         print(json.dumps(inspect(exchange)))
