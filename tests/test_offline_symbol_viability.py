@@ -31,5 +31,24 @@ def test_rejects_higher_leverage_or_risk():
 
 def test_never_rounds_up_to_exchange_minimum():
     result = size_for_stop("75920.20", ".001", ".001", "50", ".003")
-    assert result["quantity"] == "0.000"
+    assert D(result["quantity"]) == 0
     assert result["rejection"] == "below_exchange_minimum"
+
+@pytest.mark.parametrize("price,step,minqty,minnotional,stop", [
+    ("2237.99", ".001", ".001", "20", ".005"),
+    ("89.53", ".01", ".01", "5", ".02"),
+    ("1.1628", ".1", ".1", "5", ".02"),
+])
+def test_viability_matches_canonical_plan_trade(price, step, minqty, minnotional, stop):
+    from futures_engine.core import Config, plan_trade
+    result = size_for_stop(price, step, minqty, minnotional, stop)
+    plan = plan_trade(Config(stop_fraction=D(stop)), "long", price,
+                      D("37.50"), D("37.50"), minimum_amount=D(minqty),
+                      amount_step=D(step), min_cost=D(minnotional))
+    assert D(result["quantity"]) == D(plan["quantity"])
+    assert D(result["max_estimated_loss_including_costs"]) == D(plan["max_estimated_loss"])
+
+def test_cost_ratio_exceeds_15_percent_for_short_stops():
+    for stop in (".003", ".005", ".01"):
+        result = size_for_stop("89.53", ".01", ".01", "5", stop)
+        assert D(result["round_trip_cost_fraction"]) / D(stop) > D(".15")
