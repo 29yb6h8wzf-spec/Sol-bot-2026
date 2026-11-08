@@ -9,7 +9,7 @@ def test_research_only():
     assert all(v["trades"]==0 for v in result["thresholds"].values())
 
 def test_gap_rejected():
-    f=bars(250,300000,14400000*200);f[30][0]+=1
+    f=bars(250,300000,14400000*200);f[30][0]+=300000
     with pytest.raises(ValueError,match="gapped_candles"):evaluate(f,bars(250,14400000,0))
 
 def test_invalid_cost_rejected():
