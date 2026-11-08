@@ -4,6 +4,7 @@ Scores are heuristic conditions, not verified execution authorization.
 No SQS publication, exchange credentials, or order placement.
 """
 import json
+import os
 from futures_engine.market import closed_futures_bars
 from futures_engine.verified_candidate_audit import SYMBOLS, audit_candidate
 from strategies import candidates
@@ -78,7 +79,10 @@ def evaluate(symbol, *, loader=closed_futures_bars, now_ms=None):
 
 
 def main():
-    for symbol in SYMBOLS:
+    active = tuple(x.strip() for x in os.getenv("SIGNALPILOT_ACTIVE_SYMBOLS", "SOL/USDT:USDT,XRP/USDT:USDT").split(",") if x.strip())
+    if not active or len(active) != len(set(active)) or any(x not in SYMBOLS for x in active):
+        raise ValueError("invalid_active_symbols")
+    for symbol in active:
         try:
             result = evaluate(symbol)
             record(result)
