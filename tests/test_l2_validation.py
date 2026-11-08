@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -62,8 +62,8 @@ def test_tracking_requires_all_horizons():
 def test_snapshot_ttl_preserves_72h_research_window():
     received_ms = 1_700_000_000_000
     expiry = snapshot_expiry(received_ms)
-    assert expiry.tzinfo == timezone.utc
-    assert (expiry - datetime.fromtimestamp(received_ms / 1000, timezone.utc)).total_seconds() == 96 * 3600
+    assert expiry.tzinfo == UTC
+    assert (expiry - datetime.fromtimestamp(received_ms / 1000, UTC)).total_seconds() == 96 * 3600
     with pytest.raises(ValueError, match="must exceed"):
         snapshot_expiry(received_ms, ttl_seconds=24 * 3600)
 
