@@ -42,7 +42,7 @@ def exchange_filters(market):
     return dict(tick=tick, step=step, min_qty=min_qty, min_cost=min_cost)
 
 
-def build_plan(payload, *, verifier=verify, loader=closed_futures_bars, now_ms=None):
+def _verified_plan(payload, verifier, loader, now_ms):
     now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     if not isinstance(payload, dict) or type(payload.get("timestamp")) is not int:
         raise ValueError("invalid_signal")
@@ -89,7 +89,18 @@ def build_plan(payload, *, verifier=verify, loader=closed_futures_bars, now_ms=N
     result["risk_snapshot_approved"] = False
     result["execution_authorized"] = False
     result["orders_sent"] = False
+    return verified, result
+
+
+def build_plan(payload, *, verifier=verify, loader=closed_futures_bars, now_ms=None):
+    _, result = _verified_plan(payload, verifier, loader, now_ms)
     return result
+
+
+def verify_and_plan(payload, *, verifier=verify, loader=closed_futures_bars, now_ms=None):
+    """Keep the independently computed event identity for router deduplication."""
+    verified, result = _verified_plan(payload, verifier, loader, now_ms)
+    return {**verified, **result}
 
 
 def journal_inbox(inbox_path, journal_path, *, planner=build_plan, now_ms=None):
