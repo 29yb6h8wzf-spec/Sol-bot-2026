@@ -1,34 +1,47 @@
-"""Read-only offline symbol viability with strict downward LOT_SIZE rounding.
-
-Inputs are an explicitly dated public exchangeInfo snapshot and a separate
-dated price snapshot. This module does not contact an exchange or place orders.
-"""
-from decimal import Decimal as D, ROUND_DOWN
+"""Offline symbol viability, using the exact Paper engine risk and cost model."""
+from decimal import Decimal as D
+from futures_engine.core import Config, plan_trade
 
 
 def size_for_stop(price, step, min_qty, min_notional, stop_fraction,
                   allocation=D("37.50"), leverage=D("2"), risk_fraction=D("0.01")):
-    values = [D(str(x)) for x in (price, step, min_qty, min_notional, stop_fraction,
-                                 allocation, leverage, risk_fraction)]
+    values = [D(str(x)) for x in (price, step, min_qty, min_notional,
+                                 stop_fraction, allocation, leverage, risk_fraction)]
     price, step, min_qty, min_notional, stop_fraction, allocation, leverage, risk_fraction = values
     if any(not v.is_finite() or v <= 0 for v in values):
         raise ValueError("invalid_symbol_sizing_input")
-    if leverage > 2 or risk_fraction > D("0.01"):
+    if leverage > 2 or risk_fraction > D("0.01") or leverage != leverage.to_integral_value():
         raise ValueError("risk_limit_exceeded")
+    config = Config(stop_fraction=stop_fraction, leverage=int(leverage),
+                    risk_fraction=risk_fraction)
+    config.validate()
     risk_budget = allocation * risk_fraction
-    leverage_notional_cap = allocation * leverage
-    raw_quantity = min(risk_budget / (price * stop_fraction), leverage_notional_cap / price)
-    quantity = (raw_quantity / step).to_integral_value(rounding=ROUND_DOWN) * step
+    cap = allocation * leverage
+    try:
+        plan = plan_trade(config, "long", price, allocation, allocation,
+                          minimum_amount=min_qty, amount_step=step,
+                          min_cost=min_notional)
+        quantity = D(plan["quantity"])
+        rejection = None
+        estimated_loss = D(plan["max_estimated_loss"])
+    except ValueError as exc:
+        if str(exc) != "insufficient balance or dust amount after rounding":
+            raise
+        # Do not infer a tradable quantity from a rejected plan.
+        quantity = D("0")
+        rejection = "below_exchange_minimum"
+        estimated_loss = D("0")
     notional = quantity * price
-    tradable = quantity >= min_qty and notional >= min_notional
     return {
         "quantity": str(quantity),
         "notional": str(notional),
         "stop_risk_before_fees": str(notional * stop_fraction),
-        "tradable": tradable,
-        "rejection": None if tradable else "below_exchange_minimum",
+        "max_estimated_loss_including_costs": str(estimated_loss),
+        "tradable": rejection is None,
+        "rejection": rejection,
         "risk_budget": str(risk_budget),
-        "leverage_notional_cap": str(leverage_notional_cap),
+        "leverage_notional_cap": str(cap),
+        "round_trip_cost_fraction": str(config.taker_fee * 2 + config.slippage_fraction * 2),
     }
 
 
