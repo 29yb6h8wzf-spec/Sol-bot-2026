@@ -1,0 +1,23 @@
+[Unit]
+Description=SignalPilot Binance Futures paper scan (no live orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/signalpilot
+Environment=TRADING_MODE=paper
+Environment=FUTURES_SYMBOL=XRP/USDT:USDT
+Environment=TIMEFRAME=5m
+Environment=MAX_RISK_FRACTION=0.01
+Environment=MAX_DAILY_DRAWDOWN=0.05
+Environment=LEVERAGE=2
+Environment=PAPER_START_EQUITY=75.00
+Environment=PAPER_LEDGER=/opt/signalpilot/paper-ledger-xrp.json
+ExecStartPre=/opt/signalpilot/.venv/bin/python /opt/signalpilot/portfolio_paper_gate.py
+ExecStart=/usr/bin/flock -w 60 /run/signalpilot-paper-portfolio.lock /opt/signalpilot/.venv/bin/python -m futures_engine
+User=root
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
