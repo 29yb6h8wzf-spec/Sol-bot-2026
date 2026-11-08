@@ -1,0 +1,66 @@
+"""Binance USDT-M LIVE connection preflight: read-only and fail-closed.
+
+Does NOT submit orders, change leverage/margin, or enable live trading.
+Supply BINANCE_LIVE_SECRET_ID only in a supervised environment with a dedicated
+least-privilege secret. Never log keys or account balances.
+"""
+import json
+import os
+from decimal import Decimal
+
+
+SYMBOLS = ("SOL/USDT:USDT", "XRP/USDT:USDT")
+
+
+def inspect(exchange):
+    """Inspect existing positions, ordinary orders and conditional algo orders."""
+    exchange.load_markets()
+    urls = str(exchange.urls["api"])
+    if "demo-fapi.binance.com" in urls or "testnet" in urls:
+        raise ValueError("not_live_endpoint")
+    if "fapi.binance.com" not in urls:
+        raise ValueError("unverified_live_endpoint")
+    if exchange.fetch_position_mode().get("hedged") is not False:
+        raise ValueError("one_way_mode_required")
+    positions = exchange.fetch_positions(list(SYMBOLS))
+    exposure = [p.get("symbol") for p in positions
+                if Decimal(str(p.get("contracts") or "0")) != 0]
+    open_orders = {symbol: len(exchange.fetch_open_orders(symbol))
+                   for symbol in SYMBOLS}
+    algo_orders = {}
+    for symbol in SYMBOLS:
+        response = exchange.fapiPrivateGetOpenAlgoOrders({"symbol": exchange.market_id(symbol)})
+        orders = response.get("orders", []) if isinstance(response, dict) else response
+        algo_orders[symbol] = len(orders)
+    if exposure or any(open_orders.values()) or any(algo_orders.values()):
+        raise ValueError("existing_exposure_or_orders_requires_manual_reconciliation")
+    return {"status": "LIVE_CONNECTION_READ_ONLY_VERIFIED",
+            "symbols_checked": list(SYMBOLS),
+            "account_flat": True,
+            "conditional_algo_endpoint_readable": True,
+            "execution_authorized": False,
+            "orders_sent": False}
+
+
+def main():
+    if os.getenv("LIVE_READONLY_PREFLIGHT") != "YES":
+        print(json.dumps({"status": "DISABLED", "orders_sent": False}))
+        return 0
+    secret_id = os.getenv("BINANCE_LIVE_SECRET_ID")
+    if not secret_id:
+        raise SystemExit("BINANCE_LIVE_SECRET_ID required; no live API call made")
+    import boto3
+    import ccxt
+    secret = json.loads(boto3.client("secretsmanager", region_name="il-central-1")
+                        .get_secret_value(SecretId=secret_id)["SecretString"])
+    exchange = ccxt.binanceusdm({"apiKey": secret["apiKey"],
+                                 "secret": secret["secret"],
+                                 "enableRateLimit": True, "timeout": 20000})
+    try:
+        print(json.dumps(inspect(exchange)))
+    finally:
+        exchange.close() if hasattr(exchange, "close") else None
+
+
+if __name__ == "__main__":
+    main()
