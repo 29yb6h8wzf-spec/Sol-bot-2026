@@ -54,6 +54,18 @@ def inspect(exchange):
             "orders_sent": False}
 
 
+def credential_pair(secret):
+    """Accept known secret naming conventions without exposing any values."""
+    if not isinstance(secret, dict):
+        raise ValueError("invalid_secret_structure")
+    for key_name, secret_name in (("apiKey", "secret"), ("api_key", "api_secret"),
+                                  ("API_KEY", "API_SECRET"), ("BINANCE_API_KEY", "BINANCE_API_SECRET")):
+        key, token = secret.get(key_name), secret.get(secret_name)
+        if isinstance(key, str) and key.strip() and isinstance(token, str) and token.strip():
+            return key, token
+    raise ValueError("unsupported_live_secret_schema")
+
+
 def main():
     if os.getenv("LIVE_READONLY_PREFLIGHT") != "YES":
         print(json.dumps({"status": "DISABLED", "orders_sent": False}))
@@ -65,8 +77,9 @@ def main():
     import ccxt
     secret = json.loads(boto3.client("secretsmanager", region_name="il-central-1")
                         .get_secret_value(SecretId=secret_id)["SecretString"])
-    exchange = ccxt.binanceusdm({"apiKey": secret["apiKey"],
-                                 "secret": secret["secret"],
+    api_key, api_secret = credential_pair(secret)
+    exchange = ccxt.binanceusdm({"apiKey": api_key,
+                                 "secret": api_secret,
                                  "enableRateLimit": True, "timeout": 20000})
     try:
         print(json.dumps(inspect(exchange)))
