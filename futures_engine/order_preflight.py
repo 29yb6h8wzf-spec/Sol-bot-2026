@@ -14,5 +14,10 @@ def check(intent, account):
         if intent['side']=='long' and not stop<entry<target: return False,'invalid_long_brackets'
         if intent['side']=='short' and not target<entry<stop: return False,'invalid_short_brackets'
         risk=qty*abs(entry-stop)
+        if "estimated_loss_including_buffer" in intent:
+            buffered = D(str(intent["estimated_loss_including_buffer"]))
+            if not buffered.is_finite() or buffered < risk:
+                return False, "invalid_buffered_risk"
+            risk = buffered
         return approve(account['equity'],account['day_start'],account['used_margin'],entry*qty,risk,leverage=account.get('leverage',2),open_risk=account.get('open_risk',0))
     except (KeyError,TypeError,ValueError,InvalidOperation): return False,'malformed_order_intent'
