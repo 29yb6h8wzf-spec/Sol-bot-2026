@@ -4,15 +4,15 @@ import os
 from decimal import Decimal as D
 from dotenv import load_dotenv
 from ccxt.base.errors import InvalidOrder
-from .core import Config, crossover_signal, plan_trade
+from .core import Config, crossover_signal, paper_trend_signal, plan_trade
 from .market import closed_futures_bars
 from .paper import PaperLedger
 from pathlib import Path
 from portfolio_risk import approve
 
 
-def verified_paper_equity_cap(states):
-    """Permit only profits provable from all four existing Paper ledgers.
+def verified_paper_equity_cap(states, initial_equity=D('37.50')):
+    """Permit only profits provable from both active Paper ledgers.
 
     Unexplained account injections remain blocked. No Demo/live caller uses this.
     """
@@ -21,7 +21,7 @@ def verified_paper_equity_cap(states):
         history = state['history']
         if not isinstance(history, list):
             raise ValueError('invalid_paper_history')
-        balance = D('37.50')
+        balance = initial_equity
         peak = balance
         opened = None
         for event in history:
@@ -70,11 +70,14 @@ def verified_paper_equity_cap(states):
 
 
 def approve_paper_portfolio_entry(raw, amount, leverage, root=Path('/opt/signalpilot')):
-    """Fail closed across all four paper ledgers before any new paper entry."""
+    """Fail closed across both active paper ledgers before any new paper entry."""
     try:
+        active_coins = tuple(x.strip() for x in os.getenv('PAPER_PORTFOLIO_COINS', 'btc,eth,sol,xrp').split(','))
+        if active_coins not in (('btc','eth','sol','xrp'), ('sol','xrp')):
+            raise ValueError('invalid_paper_portfolio_coins')
         states = [
             json.loads((root / f'paper-ledger-{coin}.json').read_text())
-            for coin in ('btc', 'eth', 'sol', 'xrp')
+            for coin in active_coins
         ]
         total_equity = sum((D(s['equity']) for s in states), D('0'))
         total_start = sum((D(s['day_start_equity']) for s in states), D('0'))
@@ -85,7 +88,7 @@ def approve_paper_portfolio_entry(raw, amount, leverage, root=Path('/opt/signalp
         # reconciled against the actual closed Paper trade history.
         paper_cap = D('150')
         if total_equity > paper_cap or total_start > paper_cap:
-            paper_cap = verified_paper_equity_cap(states)
+            paper_cap = verified_paper_equity_cap(states, D('75.00') if active_coins == ('sol','xrp') else D('37.50'))
         return approve(total_equity, total_start, used_margin,
                        amount * D(raw['entry']), D(raw['max_estimated_loss']),
                        leverage=leverage, open_risk=open_risk, account_cap=paper_cap)
@@ -97,7 +100,7 @@ def main():
     load_dotenv()
     if os.getenv('TRADING_MODE', 'paper').lower() != 'paper':
         raise SystemExit('LIVE TRADING DISABLED: only TRADING_MODE=paper is implemented')
-    config = Config(symbol=os.getenv('FUTURES_SYMBOL','BTC/USDT:USDT'),
+    config = Config(symbol=os.getenv('FUTURES_SYMBOL','SOL/USDT:USDT'),
                     timeframe=os.getenv('TIMEFRAME','15m'),
                     risk_fraction=D(os.getenv('MAX_RISK_FRACTION','0.01')),
                     daily_loss_fraction=D(os.getenv('MAX_DAILY_DRAWDOWN','0.05')),
@@ -109,7 +112,7 @@ def main():
         ledger.roll_day(bars[-1][0])
         exit_event = ledger.evaluate_exit(bars, config.taker_fee, config.slippage_fraction)
         # Keep EMA warmup stable when the exchange returns 239 or 240 closed candles.
-        signal = crossover_signal(bars[-239:])
+        signal = (paper_trend_signal if os.getenv('PAPER_SIGNAL_STRATEGY', 'crossover') == 'trend_reclaim' else crossover_signal)(bars[-239:])
         result = {'mode':'paper','symbol':config.symbol,'timeframe':config.timeframe,
                   'closed_candle':bars[-1][0],'equity':ledger.state['equity'],
                   'signal':signal,'exit':exit_event,'entry':None}
