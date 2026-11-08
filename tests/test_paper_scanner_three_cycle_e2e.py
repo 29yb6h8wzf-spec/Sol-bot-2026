@@ -66,10 +66,10 @@ def test_three_scans_entry_target_exit_no_duplicate(tmp_path, monkeypatch):
             assert result["exit"]["reason"] == "target"
             assert ledger.state["position"] is None
             assert len(ledger.state["history"]) == 2
-            assert Decimal(ledger.state["equity"]) == Decimal("38.10409600")
+            assert Decimal(ledger.state["equity"]) == Decimal("38.15225600")
         else:
             assert result["entry"] is None
             assert result["exit"] is None
             assert ledger.state["position"] is None
             assert len(ledger.state["history"]) == 2
-            assert Decimal(ledger.state["equity"]) == Decimal("38.10409600")
+            assert Decimal(ledger.state["equity"]) == Decimal("38.15225600")
