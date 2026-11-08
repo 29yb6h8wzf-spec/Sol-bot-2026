@@ -12,7 +12,7 @@ def _check(rows, step):
         if len(row)!=6 or type(row[0]) is not int or row[0]%step: raise ValueError("invalid_candle")
         _,o,h,l,c,v=row
         a=list(map(lambda x:D(str(x)),(o,h,l,c,v)))
-        if not all(x.is_finite() for x in a) or min(a[:4])<=0 or a[4]<0 or a[2]<max(a[0],a[3]) or a[1]>min(a[0],a[3]): raise ValueError("invalid_ohlcv")
+        if not all(x.is_finite() for x in a) or min(a[:4])<=0 or a[4]<0 or a[1]<max(a[0],a[3]) or a[2]>min(a[0],a[3]): raise ValueError("invalid_ohlcv")
         if prev is not None and row[0]!=prev+step: raise ValueError("gapped_candles")
         prev=row[0]
 
