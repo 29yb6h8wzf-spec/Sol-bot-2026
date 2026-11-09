@@ -24,6 +24,19 @@ def replay_scanner_candidate(scan, *, quantity, entry_mid, stop, target,
         raise TypeError("missing candidate verification")
     if type(candidate.get("score")) is not int or candidate["score"] < 85:
         raise ValueError("score below scanner threshold")
+    verification = candidate["verification"]
+    if (verification.get("status") != "RECALCULATED_RESEARCH_CANDIDATE"
+            or verification.get("score_verified_independently") is not True
+            or verification.get("execution_authorized") is not False
+            or verification.get("orders_sent") is not False
+            or verification.get("sqs_sent") is not False
+            or verification.get("symbol") != scan.get("symbol")
+            or verification.get("candle_ms") != scan.get("closed_5m_candle_ms")
+            or verification.get("strategy") != candidate.get("strategy")
+            or verification.get("direction") != candidate.get("direction")
+            or verification.get("score") != candidate.get("score")
+            or not str(verification.get("signal_id", "")).startswith("research-")):
+        raise ValueError("unverified research candidate")
     side = candidate.get("direction")
     if side not in ("LONG", "SHORT"):
         raise ValueError("invalid candidate direction")
