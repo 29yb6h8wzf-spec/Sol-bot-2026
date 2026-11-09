@@ -5,6 +5,7 @@ No network, exchange access, or production writes.
 """
 import argparse
 import json
+from decimal import Decimal
 from itertools import pairwise
 from pathlib import Path
 
@@ -25,7 +26,9 @@ def replay_saved_scan(scan, candles, *, database_path, candidate_index=0,
     signal = [b for b in candles if b.get("open_ms") == signal_ms]
     if len(signal) != 1 or signal[0].get("confirmed_closed") is not True:
         raise ValueError("missing unique confirmed signal candle")
-    signal_close = signal[0].get("close")
+    signal_close = Decimal(str(signal[0].get("close")))
+    if not signal_close.is_finite() or signal_close <= 0:
+        raise ValueError("invalid signal close")
     future = [b for b in candles if b.get("open_ms", -1) >= signal_ms + 300000]
     if not future:
         raise ValueError("no future candles")
@@ -33,11 +36,27 @@ def replay_saved_scan(scan, candles, *, database_path, candidate_index=0,
     # replay: the first replay candle must immediately follow the signal.
     if future[0]["open_ms"] != signal_ms + 300000:
         raise ValueError("gap after signal candle")
+    # The entry is the OPEN of the first candle after the verified signal.
+    # Using the signal CLOSE assumes an unavailable fill and hides price gaps.
+    first = future[0]
+    if first.get("confirmed_closed") is not True:
+        raise ValueError("entry candle must be confirmed closed")
+    if "open" not in first:
+        raise ValueError("next candle open required for honest paper fill")
+    next_open = Decimal(str(first["open"]))
+    low, high = Decimal(str(first["low"])), Decimal(str(first["high"]))
+    if (not next_open.is_finite() or not low.is_finite()
+            or not high.is_finite() or not 0 < low <= next_open <= high):
+        raise ValueError("invalid next candle open")
+    # A large gap is a missed fill, not permission to chase the market.
+    if abs(next_open / signal_close - 1) > Decimal("0.005"):
+        raise ValueError("entry gap exceeds 0.5 percent; skip paper entry")
     for previous, current in pairwise(future):
         if current["open_ms"] != previous["open_ms"] + 300000:
             raise ValueError("gap in future candle series")
     return replay_sized_candidate(
-        scan, signal_close=signal_close, future_bars=future,
+        scan, signal_close=signal_close, entry_mid=next_open,
+        future_bars=future,
         database_path=database_path, candidate_index=candidate_index,
     )
 
