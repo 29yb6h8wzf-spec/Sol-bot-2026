@@ -28,4 +28,4 @@ def apply_closed_bar(store: DurablePaperOrders, uid: str, bar: ClosedBar, observ
         raise ValueError("candle overlaps pre-entry period")
     if not (Decimal(0) < bar.low <= bar.close <= bar.high):
         raise ValueError("invalid OHLC candle")
-    return store.update(uid, bar.high, bar.low, bar.close, bar.close_ms // 1000)
+    return store.update(uid, bar.high, bar.low, bar.close, (bar.close_ms + 1) // 1000)
