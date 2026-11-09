@@ -22,6 +22,13 @@ def sample():
     provenance = {"source": "binance_demo_order_provenance_read_only",
                   "observed_at": NOW - 4, "status": "AUDIT_ONLY_NOT_EXECUTABLE",
                   "total_fills": 4, "verified_signalpilot_fills": 0,
+                  "verified_realized_pnl_usdt": "0",
+                  "verified_commissions_usdt": "0",
+                  "unique_orders": 4,
+                  "orders": [{"order_fingerprint": "old" + str(i),
+                              "fill_count": 1, "classification": "EXTERNAL_OR_UNTAGGED",
+                              "ownership_proven": False, "symbol": "XRP/USDT:USDT"}
+                             for i in range(4)],
                   "unattributed_fills": 4,
                   "order_classifications": {"EXTERNAL_OR_UNTAGGED": 4},
                   "execution_authorized": False}
