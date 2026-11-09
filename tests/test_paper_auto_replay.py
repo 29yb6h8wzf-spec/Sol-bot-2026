@@ -109,3 +109,53 @@ def test_auto_replay_uses_next_open_not_signal_close(tmp_path):
             five_history=[{}], four_history=[{}],
         )
     assert result["paper_plan"]["entry_mid"] == "100.4"
+
+
+def test_delayed_capture_skips_unavailable_first_candle(tmp_path):
+    bars = candles()
+    # The first post-signal bar hits the hypothetical stop. A capture that
+    # happened after this bar opened must NOT claim that retroactive loss.
+    bars[1]["low"] = "90"
+    bars.append({
+        "open_ms": 1700000700000, "close_ms": 1700000999999,
+        "open": "100.4", "high": "100.8", "low": "100.1",
+        "close": "100.6", "confirmed_closed": True,
+    })
+    with patch("research.paper_auto_replay.verify_saved_scan"):
+        result = replay_saved_scan(
+            scan(), bars, database_path=str(tmp_path / "paper.db"),
+            five_history=[{}], four_history=[{}],
+            entry_open_ms=1700000700000,
+        )
+    assert result["trade"]["status"] == "OPEN"
+    assert result["trade"]["opened_at"] == 1700000700
+    assert result["bars_processed"] == 1
+    assert result["paper_plan"]["entry_mid"] == "100.4"
+
+
+def test_delayed_capture_waits_for_eligible_closed_candle(tmp_path):
+    with (patch("research.paper_auto_replay.verify_saved_scan"),
+          pytest.raises(ValueError, match="entry candle not yet closed or missing")):
+        replay_saved_scan(
+            scan(), candles(), database_path=str(tmp_path / "paper.db"),
+            five_history=[{}], four_history=[{}],
+            entry_open_ms=1700000700000,
+        )
+    assert not (tmp_path / "paper.db").exists()
+
+
+def test_delayed_capture_rejects_missing_intermediate_candle(tmp_path):
+    bars = candles()
+    bars.append({
+        "open_ms": 1700001000000, "close_ms": 1700001299999,
+        "open": "100", "high": "101", "low": "99", "close": "100",
+        "confirmed_closed": True,
+    })
+    with (patch("research.paper_auto_replay.verify_saved_scan"),
+          pytest.raises(ValueError, match="gap in future candle series")):
+        replay_saved_scan(
+            scan(), bars, database_path=str(tmp_path / "paper.db"),
+            five_history=[{}], four_history=[{}],
+            entry_open_ms=1700001000000,
+        )
+    assert not (tmp_path / "paper.db").exists()
