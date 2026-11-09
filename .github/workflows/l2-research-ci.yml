@@ -27,3 +27,28 @@ jobs:
         run: python -m pytest -q tests/test_l2_validation.py tests/test_l2_async.py tests/test_l2_v39.py tests/test_ensemble_lab.py tests/test_l2_adapters.py tests/test_l2_capacity.py tests/test_l2_ingestion.py tests/test_paper_order_manager.py tests/test_paper_order_store.py tests/test_paper_closed_bar.py tests/test_paper_order_concurrency.py tests/test_paper_recovery_uat.py tests/test_paper_market_replay.py tests/test_paper_real_sol_candles.py tests/test_paper_signal_adapter.py tests/test_paper_replay_chronology.py tests/test_paper_risk_plan.py tests/test_paper_auto_replay.py tests/test_paper_verified_xrp_history.py tests/test_paper_forward_capture.py
       - name: Historical XRP paper evidence (offline, no exchange orders)
         run: python -m research.paper_snapshot_replay --input tests/fixtures/xrpusdt_verified_20261109.json --db /tmp/xrpusdt-historical-paper.sqlite3
+
+  public-forward-snapshot:
+    name: Public SOL/XRP forward snapshot (read-only)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install public market data client only
+        run: python -m pip install 'ccxt>=4,<5'
+      - name: Attempt one live public candle capture (NO ORDERS)
+        run: |
+          mkdir -p forward-evidence/snapshots
+          python -m research.paper_forward_once --snapshot-dir forward-evidence/snapshots --db forward-evidence/paper.sqlite3 > forward-evidence/report.json
+          cat forward-evidence/report.json
+      - name: Retain immutable research evidence for inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-forward-snapshot-${{ github.run_id }}
+          path: forward-evidence/
+          retention-days: 7
