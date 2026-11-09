@@ -1,6 +1,7 @@
 """Read-only forward capture is idempotent and never places a trade."""
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -170,3 +171,35 @@ def test_followup_blocks_tampered_capture_time(tmp_path):
     )
     assert outcomes[0]["status"] == "BLOCKED"
     assert "forward capture timestamp" in outcomes[0]["reason"]
+
+
+def test_delayed_capture_never_fills_at_already_open_candle(tmp_path):
+    data, loader = _inputs()
+    capture_ms = data["asof_ms"] + 10000
+    saved = capture_scan(
+        data["symbol"], output_dir=tmp_path, loader=loader,
+        now_ms=capture_ms,
+    )
+    bundle = json.loads(Path(saved["snapshot_path"]).read_text(encoding="utf-8"))
+    with patch("research.paper_forward_followup.replay_saved_scan",
+               return_value={"trade": {"status": "OPEN"}}) as replay:
+        replay_captured_bundle(
+            bundle, data["future"], database_path=str(tmp_path / "paper.db"),
+            observed_at_ms=data["future"][-1][0] + 300000,
+        )
+    assert replay.call_args.kwargs["entry_open_ms"] == data["asof_ms"] + 300000
+
+
+def test_delayed_capture_waits_for_second_future_candle(tmp_path):
+    data, loader = _inputs()
+    saved = capture_scan(
+        data["symbol"], output_dir=tmp_path, loader=loader,
+        now_ms=data["asof_ms"] + 10000,
+    )
+    assert saved["status"] == "RECORDED"
+    observed = data["asof_ms"] + 300000
+    outcomes = process_pending(
+        snapshot_dir=tmp_path, database_path=str(tmp_path / "paper.db"),
+        loader=loader, now_ms=observed,
+    )
+    assert outcomes[0]["status"] == "WAITING_NEXT_BAR"
