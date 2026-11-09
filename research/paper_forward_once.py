@@ -64,7 +64,7 @@ def process_pending(*, snapshot_dir, database_path, loader=None, now_ms=None):
                     "status": trade["status"], "net_pnl": trade["net_pnl"],
                     "paper_only": True,
                 })
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - isolate failed public feeds
             results.append({
                 "snapshot": path.name, "status": "BLOCKED",
                 "reason": f"{type(exc).__name__}: {exc}",
@@ -85,7 +85,7 @@ def run_once(*, snapshot_dir, database_path, symbols=SYMBOLS,
                 symbol, output_dir=snapshot_dir,
                 loader=loader, now_ms=observed,
             ))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - isolate failed public feeds
             captures.append({
                 "symbol": symbol, "status": "BLOCKED",
                 "reason": f"{type(exc).__name__}: {exc}",
