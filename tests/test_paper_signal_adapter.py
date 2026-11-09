@@ -12,7 +12,15 @@ def scan():
         "symbol": "SOL/USDT:USDT", "closed_5m_candle_ms": 1700000100000,
         "candidates_85_plus": [
             {"strategy": "EMA_ADX", "direction": "LONG", "score": 90,
-             "verification": {"checked": True}}
+             "verification": {
+                 "status": "RECALCULATED_RESEARCH_CANDIDATE",
+                 "score_verified_independently": True,
+                 "execution_authorized": False, "orders_sent": False,
+                 "sqs_sent": False, "symbol": "SOL/USDT:USDT",
+                 "candle_ms": 1700000100000, "strategy": "EMA_ADX",
+                 "direction": "LONG", "score": 90,
+                 "signal_id": "research-testfixture"
+             }}
         ],
     }
 
@@ -61,4 +69,18 @@ def test_rejects_scanner_that_sent_orders(tmp_path):
     result = scan()
     result["orders_sent"] = True
     with pytest.raises(ValueError, match="read-only"):
+        run(result, tmp_path)
+
+
+def test_rejects_forged_verification(tmp_path):
+    result = scan()
+    result["candidates_85_plus"][0]["verification"]["execution_authorized"] = True
+    with pytest.raises(ValueError, match="unverified research candidate"):
+        run(result, tmp_path)
+
+
+def test_rejects_mismatched_signal_candle(tmp_path):
+    result = scan()
+    result["candidates_85_plus"][0]["verification"]["candle_ms"] += 300000
+    with pytest.raises(ValueError, match="unverified research candidate"):
         run(result, tmp_path)
