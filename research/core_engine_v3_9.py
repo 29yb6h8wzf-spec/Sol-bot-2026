@@ -163,7 +163,13 @@ class ResearchWriter:
 
 
 __all__ = [
-    "ResearchConfig", "ResearchWriter", "PersistenceError",
-    "evaluate_horizon", "historical_query", "normalize_book",
-    "find_swap_symbol", "snapshot_expiry", "tracking_complete",
+    "PersistenceError",
+    "ResearchConfig",
+    "ResearchWriter",
+    "evaluate_horizon",
+    "find_swap_symbol",
+    "historical_query",
+    "normalize_book",
+    "snapshot_expiry",
+    "tracking_complete",
 ]
