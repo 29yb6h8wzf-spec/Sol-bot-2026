@@ -84,7 +84,7 @@ class CcxtOrderBookSource:
                 await exchange.load_markets()
                 from research.l2_validation import find_swap_symbol
 
-                symbol = find_swap_symbol(exchange.markets.values(), self.asset)
+                symbol = find_swap_symbol(list(exchange.markets.values()), self.asset)
                 while not self._closed:
                     book = await exchange.watch_order_book(symbol, self.limit)
                     delay = 1.0
