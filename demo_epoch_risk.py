@@ -118,7 +118,8 @@ def reconcile(epoch, sol, xrp, provenance, risk, *, now=None):
     # separate Demo-only executor must still validate fresh price/qty/SL/TP.
     return {
         "source": "signalpilot_demo_epoch_reconciler",
-        "status": "APPROVED",
+        "status": "EPOCH_RISK_RECONCILED",
+        "risk_preflight_eligible": True,
         "observed_at": now,
         "baseline_sha256": epoch["baseline_sha256"],
         "epoch_started_at": epoch["epoch_started_at"],
