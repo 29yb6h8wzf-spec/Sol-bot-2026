@@ -1,6 +1,5 @@
 """Offline concurrency acceptance tests for durable paper orders."""
 from concurrent.futures import ThreadPoolExecutor
-from decimal import Decimal as D
 
 from research.paper_order_store import DurablePaperOrders
 
