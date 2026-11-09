@@ -43,7 +43,7 @@ def run_snapshot(snapshot, *, database_path):
     def paper_bar(row):
         return {
             "open_ms": row[0], "close_ms": row[0] + 299999,
-            "high": row[2], "low": row[3], "close": row[4],
+            "open": row[1], "high": row[2], "low": row[3], "close": row[4],
             "confirmed_closed": True,
         }
 
