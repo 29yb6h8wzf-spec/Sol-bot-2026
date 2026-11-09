@@ -1,0 +1,24 @@
+name: L2 Public Market Staging 720s
+on:
+  pull_request:
+    paths:
+      - 'research/public_market_staging.py'
+      - '.github/workflows/l2-public-staging.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-market-staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read-only public market probe 720 seconds
+        run: python research/public_market_staging.py
+      - name: Upload probe evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: l2-public-market-720s
+          path: staging-results/public-market-720s.json
+          if-no-files-found: warn
