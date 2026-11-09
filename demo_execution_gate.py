@@ -12,6 +12,7 @@ from verified_signal_identity import verified_event_key
 
 SYMBOLS = frozenset({"SOL/USDT:USDT", "XRP/USDT:USDT"})
 MAX_LEVERAGE = 2
+MAX_CAPITAL_USDT = Decimal("150")
 MAX_MARGIN_FRACTION = Decimal("0.05")
 MAX_RISK_USDT = Decimal("1.50")
 MAX_DAILY_LOSS_FRACTION = Decimal("0.05")
@@ -88,7 +89,8 @@ def validate(signal, verified, route, plan, account, *, now=None):
     wallet = dec(account.get("wallet_usdt"), "wallet")
     available = dec(account.get("available_usdt"), "available")
     daily_pnl = dec(account.get("realized_pnl_today_usdt"), "daily_pnl")
-    if wallet <= 0 or available <= 0 or daily_pnl <= -wallet * MAX_DAILY_LOSS_FRACTION:
+    capital = min(wallet, MAX_CAPITAL_USDT)
+    if wallet <= 0 or available <= 0 or daily_pnl <= -capital * MAX_DAILY_LOSS_FRACTION:
         raise DemoGateBlocked("daily_loss_or_balance_guard")
     qty = dec(plan.get("quantity"), "quantity")
     entry = dec(plan.get("entry"), "entry")
@@ -104,7 +106,7 @@ def validate(signal, verified, route, plan, account, *, now=None):
     notional = qty * entry
     if notional < min_notional:
         raise DemoGateBlocked("below_exchange_minimum")
-    if notional > wallet * MAX_MARGIN_FRACTION * MAX_LEVERAGE:
+    if notional > capital * MAX_MARGIN_FRACTION * MAX_LEVERAGE:
         raise DemoGateBlocked("margin_allocation_exceeded")
     if notional / MAX_LEVERAGE > available:
         raise DemoGateBlocked("insufficient_available_margin")
@@ -139,6 +141,11 @@ def reserve(db_path, signal, verified, route, plan, account, *, now=None):
         if existing:
             db.execute("ROLLBACK")
             raise DemoGateBlocked("already_reserved_" + existing[0])
+        outstanding = db.execute("SELECT signal_id FROM demo_execution_reservations WHERE state NOT IN (?, ?) LIMIT 1",
+                                 ("CLOSED_VERIFIED", "CANCELLED_NO_ORDERS")).fetchone()
+        if outstanding:
+            db.execute("ROLLBACK")
+            raise DemoGateBlocked("outstanding_reservation_requires_reconciliation")
         duplicate_event = db.execute("SELECT signal_id FROM demo_execution_reservations WHERE event_key=?",
                                      (intent["event_key"],)).fetchone()
         if duplicate_event:
