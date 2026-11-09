@@ -61,7 +61,8 @@ def audit_historical_outcomes(five, four, *, symbol, asof_ms):
                 history_five = five[:index + 1]
                 history_four = four[:n_four]
 
-                def loader(requested_symbol, timeframe):
+                def loader(requested_symbol, timeframe, history_five=history_five,
+                           history_four=history_four):
                     if requested_symbol != symbol:
                         raise ValueError("unexpected research symbol")
                     return _OfflineExchange(), {}, (
