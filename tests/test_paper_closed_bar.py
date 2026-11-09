@@ -35,7 +35,7 @@ def test_six_closed_5m_bars_expire_paper_at_exact_30_minutes(tmp_path):
     for index in range(6):
         start = index * 300000
         bar = ClosedBar(
-            start, start + 299999, D("101"), D("99"), D("100"), True,
+            start, start + 299999, D(101), D(99), D(100), True,
         )
         result = apply_closed_bar(store, "expiry", bar, bar.close_ms)
         assert result.status == ("EXPIRED" if index == 5 else "OPEN")
