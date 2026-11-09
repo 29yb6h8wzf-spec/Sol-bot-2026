@@ -1,0 +1,39 @@
+{
+  "source": "Binance public USDT-M futures exchangeInfo and symbol price ticker via connected read-only API",
+  "exchangeInfo_serverTime_ms": 1793963920886,
+  "price_ticker_observed_time_ms": {
+    "BTCUSDT": 1794142408855,
+    "ETHUSDT": 1794142406821,
+    "SOLUSDT": 1794142408380,
+    "XRPUSDT": 1794142405149
+  },
+  "allocation_USDT": "37.50",
+  "max_leverage": "2",
+  "risk_fraction": "0.01",
+  "symbols": {
+    "BTCUSDT": {
+      "price": "75920.20",
+      "stepSize": "0.001",
+      "minQty": "0.001",
+      "minNotional": "50"
+    },
+    "ETHUSDT": {
+      "price": "2237.99",
+      "stepSize": "0.001",
+      "minQty": "0.001",
+      "minNotional": "20"
+    },
+    "SOLUSDT": {
+      "price": "89.5300",
+      "stepSize": "0.01",
+      "minQty": "0.01",
+      "minNotional": "5"
+    },
+    "XRPUSDT": {
+      "price": "1.1628",
+      "stepSize": "0.1",
+      "minQty": "0.1",
+      "minNotional": "5"
+    }
+  }
+}
