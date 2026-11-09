@@ -114,3 +114,30 @@ def test_entrypoint_scanner_excludes_system_python_path():
         "&& python -m futures_engine.verified_strategy_scan")
     assert mods == ["futures_engine.verified_strategy_scan"]
     assert scripts == []
+
+
+def test_installed_dropin_cannot_silently_pass_reproducibility(tmp_path):
+    name = "signalpilot-sandbox-publisher.service"
+    unit(tmp_path, name, "/opt/signalpilot/.venv/bin/python -m futures_engine")
+    tracked = {"deploy/systemd/" + name, "futures_engine/__main__.py"}
+    assert AUDIT.audit_service_units(tmp_path, tracked, [name])["units_with_gaps"] == 0
+    dropin = tmp_path / (name + ".d")
+    dropin.mkdir()
+    (dropin / "override.conf").write_text(
+        "[Service]\nExecStart=\nExecStart=/usr/bin/python3 -m missing.module "
+        "--token secret-fixture\n")
+    result = AUDIT.audit_service_units(tmp_path, tracked, [name])
+    assert result["units_with_gaps"] == 1
+    assert result["services"][0]["dropins_present"] is True
+    assert "secret-fixture" not in str(result)
+
+
+def test_non_conf_file_does_not_trigger_dropin_gap(tmp_path):
+    name = "signalpilot-checker.service"
+    unit(tmp_path, name, "/usr/bin/python3 ./tracked.py")
+    folder = tmp_path / (name + ".d")
+    folder.mkdir()
+    (folder / "README").write_text("not a systemd drop-in")
+    result = AUDIT.audit_service_units(
+        tmp_path, {"deploy/systemd/" + name, "tracked.py"}, [name])
+    assert result["units_with_gaps"] == 0
