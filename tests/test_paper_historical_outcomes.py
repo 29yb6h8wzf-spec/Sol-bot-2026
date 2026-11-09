@@ -29,7 +29,7 @@ def test_real_sol_xrp_historical_candidates_have_honest_outcome_labels():
             assert trade["orders_sent"] is False
             if "net_pnl_usd" in trade:
                 assert trade["status"] in ("EXECUTED_SL", "EXECUTED_TP", "EXPIRED")
-                assert Decimal(trade["estimated_risk_usd"]) <= Decimal("1.50")
+                assert Decimal(trade["estimated_risk_usd"]) <= Decimal("0.375")
                 assert Decimal(trade["net_pnl_usd"]).is_finite()
         print(json.dumps(result, sort_keys=True))
 
