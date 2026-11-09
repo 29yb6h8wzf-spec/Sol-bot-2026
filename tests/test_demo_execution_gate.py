@@ -13,6 +13,7 @@ def evidence():
     verified = {
         "signal_id": "s-demo-001", "symbol": "SOL/USDT:USDT",
         "direction": "long", "score": 89, "source": "verified_85_score_engine",
+        "strategy": "EMA_ADX", "closed_5m_candle_ms": 1794265800000,
         "verification": {"status": "RECALCULATED_RESEARCH_CANDIDATE",
                          "score_verified_independently": True,
                          "execution_authorized": False},
@@ -95,6 +96,16 @@ def test_exactly_once_reservation(tmp_path):
         reserve(db, *args, now=NOW)
     with sqlite3.connect(db) as con:
         assert con.execute("SELECT state FROM demo_execution_reservations").fetchone() == ("RESERVED_NO_ORDERS",)
+
+
+def test_same_verified_event_cannot_be_reserved_with_another_signal_id(tmp_path):
+    db = tmp_path / "reservations.sqlite3"
+    args = evidence()
+    reserve(db, *args, now=NOW)
+    for item in args[:4]:
+        item["signal_id"] = "s-demo-002"
+    with pytest.raises(DemoGateBlocked, match="verified_event_already_reserved"):
+        reserve(db, *args, now=NOW)
 
 
 def test_missing_directory_is_blocked(tmp_path):
