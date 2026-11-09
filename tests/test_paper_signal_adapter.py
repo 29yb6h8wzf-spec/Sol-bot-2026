@@ -1,9 +1,22 @@
 """Offline scanner-to-paper integration: no exchange calls or credentials."""
+import hashlib
+import json
 from decimal import Decimal
 
 import pytest
 
 from research.paper_signal_adapter import replay_scanner_candidate
+
+
+def _fixture_signal_id():
+    fields = {
+        "symbol": "SOL/USDT:USDT", "strategy": "EMA_ADX",
+        "direction": "LONG", "score": 90,
+        "candle_ms": 1700000100000,
+    }
+    return "research-" + hashlib.sha256(
+        json.dumps(fields, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()[:32]
 
 
 def scan():
@@ -19,7 +32,7 @@ def scan():
                  "sqs_sent": False, "symbol": "SOL/USDT:USDT",
                  "candle_ms": 1700000100000, "strategy": "EMA_ADX",
                  "direction": "LONG", "score": 90,
-                 "signal_id": "research-testfixture"
+                 "signal_id": _fixture_signal_id()
              }}
         ],
     }
