@@ -203,3 +203,21 @@ def test_delayed_capture_waits_for_second_future_candle(tmp_path):
         loader=loader, now_ms=observed,
     )
     assert outcomes[0]["status"] == "WAITING_NEXT_BAR"
+
+
+def test_restricted_public_market_feed_is_explicitly_blocked(tmp_path):
+    def restricted_loader(_symbol, _timeframe):
+        raise RuntimeError("public Binance 451 restricted location")
+
+    result = run_once(
+        snapshot_dir=tmp_path / "snapshots",
+        database_path=str(tmp_path / "paper.db"),
+        loader=restricted_loader,
+        now_ms=1794255800706,
+    )
+    assert result["status"] == "BLOCKED_MARKET_DATA"
+    assert len(result["captures"]) == 2
+    assert all(item["status"] == "BLOCKED" for item in result["captures"])
+    assert result["followups"] == []
+    assert result["orders_sent"] is False
+    assert not (tmp_path / "paper.db").exists()
