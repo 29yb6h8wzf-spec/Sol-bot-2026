@@ -70,6 +70,8 @@ def replay_scanner_candidate(scan, *, quantity, entry_mid, stop, target,
     opened_at = entry_open_ms // 1000
     if any(int(b["open_ms"]) < opened_at * 1000 for b in bars):
         raise ValueError("replay contains signal or earlier candle")
+    if int(bars[0]["open_ms"]) != entry_open_ms:
+        raise ValueError("paper replay must start at eligible entry candle")
     identity = json.dumps(
         [scan.get("symbol"), candle_ms, candidate.get("strategy"), side],
         separators=(",", ":"), ensure_ascii=True,
