@@ -76,6 +76,7 @@ class CcxtOrderBookSource:
         self.max_backoff_s = max_backoff_s
         self._exchange: Any = None
         self._closed = False
+        self._close_lock = asyncio.Lock()
 
     async def watch(self) -> AsyncIterator[dict[str, Any]]:
         delay = 1.0
@@ -103,12 +104,15 @@ class CcxtOrderBookSource:
                 delay = min(delay * 2, self.max_backoff_s)
             finally:
                 if exchange is not None:
-                    await exchange.close()
-                if self._exchange is exchange:
-                    self._exchange = None
+                    await self._close_exchange(exchange)
+
+    async def _close_exchange(self, exchange: Any) -> None:
+        async with self._close_lock:
+            if self._exchange is exchange:
+                self._exchange = None
+                await exchange.close()
 
     async def close(self) -> None:
         self._closed = True
         if self._exchange is not None:
-            await self._exchange.close()
-            self._exchange = None
+            await self._close_exchange(self._exchange)
