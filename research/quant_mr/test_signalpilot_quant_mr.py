@@ -16,11 +16,12 @@ def test_15m_signals_use_previous_20_closed_bars():
                      price, 10])
     bars.append([20 * bot.INTERVAL_MS, 100, 101, 99, 100, 16])
     ex.fetch_ohlcv.return_value = bars
+    ex.fetch_time.return_value = 1000
     now_ms = 21 * bot.INTERVAL_MS + 2500
-    ex.fapiPublicGetPremiumIndex.return_value = {"markPrice": "97"}
+    ex.fapiPublicGetPremiumIndex.return_value = {"markPrice": "97", "time": 1000}
     result = bot.calculate_signal(ex, "SOL/USDT:USDT", now_ms)
     assert result[1] == "LONG"
-    ex.fapiPublicGetPremiumIndex.return_value = {"markPrice": "103"}
+    ex.fapiPublicGetPremiumIndex.return_value = {"markPrice": "103", "time": 1000}
     assert bot.calculate_signal(ex, "SOL/USDT:USDT", now_ms)[1] == "SHORT"
     bars[-1][-1] = 14
     assert bot.calculate_signal(ex, "SOL/USDT:USDT", now_ms)[1] is None
