@@ -6,6 +6,7 @@ Writes only to an explicitly provided isolated audit path, never /opt/signalpilo
 import argparse
 import json
 import os
+import tempfile
 from pathlib import Path
 
 from demo_account_snapshot import demo_client_from_aws, read_snapshot
@@ -35,7 +36,23 @@ def trusted_baseline(path):
     return epoch
 
 
-def run(mode, path):
+def save_risk_status(path, status):
+    path = isolated_path(path)
+    fd, temp = tempfile.mkstemp(prefix=".demo-epoch-risk-", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(status, stream, sort_keys=True)
+            stream.write("\\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temp, 0o600)
+        os.replace(temp, path)
+    finally:
+        if os.path.exists(temp):
+            os.unlink(temp)
+
+
+def run(mode, path, *, status_path=None):
     path = isolated_path(path)
     exchange = demo_client_from_aws()
     try:
@@ -55,6 +72,10 @@ def run(mode, path):
         if mode == "reconcile":
             epoch = trusted_baseline(path)
             status = reconcile(epoch, sol, xrp, provenance, risk)
+            if status_path is not None:
+                if isolated_path(status_path) == path:
+                    raise EpochBlocked("status_must_not_overwrite_baseline")
+                save_risk_status(status_path, status)
             return {"mode": "DEMO_ONLY", "status": status["status"],
                     "post_epoch_unattributed_fills": status["post_epoch_unattributed_fills"],
                     "risk_preflight_eligible": status["risk_preflight_eligible"],
@@ -69,8 +90,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("mode", choices=("capture", "reconcile"))
     parser.add_argument("--baseline", required=True)
+    parser.add_argument("--status", default=None)
     args = parser.parse_args()
-    result = run(args.mode, args.baseline)
+    result = run(args.mode, args.baseline, status_path=args.status)
     print(json.dumps(result, sort_keys=True))
 
 
