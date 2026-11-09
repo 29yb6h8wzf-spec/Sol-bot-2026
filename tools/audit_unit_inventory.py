@@ -65,7 +65,7 @@ def audit_service_units(installed_dir, tracked, unit_names=None):
                            "unit_tracked": tracked_unit,
                            "entrypoints": []})
             continue
-        commands = [line.split("=", 1)[1] for line in
+        # A drop-in may reset/replace ExecStart or alter execution context.\n        # Without evaluating the effective unit, never claim reproducibility.\n        dropin_dir = installed_dir / (name + ".d")\n        dropins_present = dropin_dir.is_dir() and any(dropin_dir.glob("*.conf"))\n        commands = [line.split("=", 1)[1] for line in
                     unit_file.read_text().splitlines()
                     if line.startswith("ExecStart=")]
         entrypoints = []
@@ -83,7 +83,7 @@ def audit_service_units(installed_dir, tracked, unit_names=None):
         report.append({"unit": name, "installed": True,
                        "unit_tracked": tracked_unit,
                        "entrypoints": entrypoints})
-    missing = sum((not item["installed"] or not item["unit_tracked"] or
+    missing = sum((not item["installed"] or not item["unit_tracked"] or\n                   item.get("dropins_present", False) or
                    any(not entry["tracked"] for entry in item["entrypoints"]))
                   for item in report)
     return {"units_checked": len(report), "units_with_gaps": missing,
