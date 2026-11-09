@@ -44,6 +44,7 @@ def candles():
         {"open_ms": 1700000100000, "close_ms": 1700000399999,
          "high": "101", "low": "99", "close": "100", "confirmed_closed": True},
         {"open_ms": 1700000400000, "close_ms": 1700000699999,
+         "open": "100",
          "high": "103", "low": "99", "close": "102", "confirmed_closed": True},
     ]
 
@@ -75,3 +76,36 @@ def test_auto_replay_rejects_missing_candle(tmp_path):
 def test_auto_replay_rejects_missing_independent_history(tmp_path):
     with pytest.raises(ValueError, match="independent 5m and 4h"):
         replay_saved_scan(scan(), candles(), database_path=str(tmp_path / "paper.db"))
+
+
+def test_auto_replay_rejects_missing_next_open(tmp_path):
+    bars = candles()
+    del bars[1]["open"]
+    with (patch("research.paper_auto_replay.verify_saved_scan"),
+          pytest.raises(ValueError, match="next candle open required")):
+        replay_saved_scan(
+            scan(), bars, database_path=str(tmp_path / "paper.db"),
+            five_history=[{}], four_history=[{}],
+        )
+
+
+def test_auto_replay_rejects_oversized_entry_gap(tmp_path):
+    bars = candles()
+    bars[1]["open"] = "101"
+    with (patch("research.paper_auto_replay.verify_saved_scan"),
+          pytest.raises(ValueError, match="entry gap exceeds")):
+        replay_saved_scan(
+            scan(), bars, database_path=str(tmp_path / "paper.db"),
+            five_history=[{}], four_history=[{}],
+        )
+
+
+def test_auto_replay_uses_next_open_not_signal_close(tmp_path):
+    bars = candles()
+    bars[1]["open"] = "100.4"
+    with patch("research.paper_auto_replay.verify_saved_scan"):
+        result = replay_saved_scan(
+            scan(), bars, database_path=str(tmp_path / "paper.db"),
+            five_history=[{}], four_history=[{}],
+        )
+    assert result["paper_plan"]["entry_mid"] == "100.4"
