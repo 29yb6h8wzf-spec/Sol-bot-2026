@@ -11,7 +11,8 @@ from research.paper_market_replay import replay
 
 
 def replay_scanner_candidate(scan, *, quantity, entry_mid, stop, target,
-                             bars, database_path, candidate_index=0):
+                             bars, database_path, candidate_index=0,
+                             entry_open_ms=None):
     if scan.get("status") != "RESEARCH_ONLY":
         raise ValueError("not a research scanner result")
     if scan.get("orders_sent") is not False or scan.get("sqs_sent") is not False:
@@ -60,13 +61,21 @@ def replay_scanner_candidate(scan, *, quantity, entry_mid, stop, target,
         raise ValueError("future closed candles required")
     # The scanner timestamps the candle OPEN; the next 5m candle is the first
     # eligible simulated fill. Never replay the signal-forming candle.
-    opened_at = (candle_ms + 300000) // 1000
+    first_eligible = candle_ms + 300000
+    if entry_open_ms is None:
+        entry_open_ms = first_eligible
+    if (type(entry_open_ms) is not int or entry_open_ms < first_eligible
+            or entry_open_ms % 300000):
+        raise ValueError("invalid paper entry candle")
+    opened_at = entry_open_ms // 1000
     if any(int(b["open_ms"]) < opened_at * 1000 for b in bars):
         raise ValueError("replay contains signal or earlier candle")
     identity = json.dumps(
         [scan.get("symbol"), candle_ms, candidate.get("strategy"), side],
         separators=(",", ":"), ensure_ascii=True,
     )
+    if entry_open_ms != first_eligible:
+        identity += f":{entry_open_ms}"
     uid = "paper-" + hashlib.sha256(identity.encode()).hexdigest()[:24]
     payload = {
         "symbol": scan["symbol"], "signal_uid": uid, "side": side,
