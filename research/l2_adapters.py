@@ -5,8 +5,12 @@ Importing this module does not connect to external services. No trade API.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator, Callable
 from typing import Any
+
+
+logger = logging.getLogger(__name__)
 
 
 class AtlasResearchStore:
@@ -92,7 +96,8 @@ class CcxtOrderBookSource:
                            "book": book, "contract_size": exchange.market(symbol).get("contractSize", 1)}
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 - third-party exchange exceptions vary
+                logger.warning("L2 stream disconnected for %s/%s: %s", self.venue, self.asset, type(exc).__name__)
                 if self._closed:
                     break
                 await asyncio.sleep(delay)
