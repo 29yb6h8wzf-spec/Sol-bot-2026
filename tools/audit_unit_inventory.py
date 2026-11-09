@@ -11,7 +11,7 @@ import subprocess
 from pathlib import Path
 
 PY_MODULE = re.compile(r"(?:^|\s)-m\s+([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)")
-PY_SCRIPT = re.compile(r"(?<![\w.])((?:/opt/signalpilot/|\./)?[\w./-]+\.py)\b")
+PY_SCRIPT = re.compile(r"(?<![\w.])((?:/opt/signalpilot/|\./)?[\w./-]+\.(?:py|sh))\b")
 
 
 def git_tracked_paths(repo):
