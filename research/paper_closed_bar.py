@@ -1,6 +1,7 @@
 """Fail-closed closed-candle adapter for offline paper position updates."""
 from dataclasses import dataclass
 from decimal import Decimal
+
 from research.paper_order_store import DurablePaperOrders
 
 
