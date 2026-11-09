@@ -4,8 +4,8 @@ The scanner signal is not synthesized. If there is no verified candidate, fail.
 No network, exchange access, or production writes.
 """
 import argparse
-from itertools import pairwise
 import json
+from itertools import pairwise
 from pathlib import Path
 
 from research.paper_risk_plan import replay_sized_candidate
