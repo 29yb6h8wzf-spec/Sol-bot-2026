@@ -9,14 +9,24 @@ import os
 import tempfile
 from pathlib import Path
 
-from futures_engine.verified_strategy_scan import evaluate
+from futures_engine.verified_strategy_scan import evaluate, to_strategy_candles
+from research.paper_independent_verifier import verify_saved_scan
 
 
 def capture_scan(symbol, *, output_dir, loader=None, now_ms=None):
-    kwargs = {"now_ms": now_ms}
-    if loader is not None:
-        kwargs["loader"] = loader
-    scan = evaluate(symbol, **kwargs)
+    # Retain exactly the candles used by the scanner, not a later fetch.
+    # A bare scan JSON is insufficient to independently verify its signal.
+    observed = {}
+    if loader is None:
+        from futures_engine.market import closed_futures_bars
+        loader = closed_futures_bars
+
+    def capturing_loader(requested_symbol, timeframe):
+        exchange, market, rows = loader(requested_symbol, timeframe)
+        observed[timeframe] = rows
+        return exchange, market, rows
+
+    scan = evaluate(symbol, loader=capturing_loader, now_ms=now_ms)
     if (scan.get("status") != "RESEARCH_ONLY"
             or scan.get("orders_sent") is not False
             or scan.get("sqs_sent") is not False):
@@ -24,11 +34,25 @@ def capture_scan(symbol, *, output_dir, loader=None, now_ms=None):
     candle_ms = scan["closed_5m_candle_ms"]
     if type(candle_ms) is not int or candle_ms < 0 or candle_ms % 300000:
         raise ValueError("invalid closed 5m timestamp")
+    five = observed.get("5m")
+    four = observed.get("4h")
+    if not isinstance(five, list) or not isinstance(four, list):
+        raise ValueError("missing scanner candle history")
+    for index in range(len(scan["candidates_85_plus"])):
+        verify_saved_scan(
+            scan, to_strategy_candles(five), to_strategy_candles(four),
+            candidate_index=index,
+        )
+    # No future candles are stored in this immutable signal-time bundle.
+    bundle = {
+        "schema_version": 1, "symbol": symbol, "scan": scan,
+        "five": five, "four": four,
+    }
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
     name = f"{symbol.replace('/USDT:USDT', 'USDT')}-{candle_ms}.json"
     destination = directory / name
-    payload = json.dumps(scan, sort_keys=True, separators=(",", ":"))
+    payload = json.dumps(bundle, sort_keys=True, separators=(",", ":"))
     temp_path = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -53,6 +77,7 @@ def capture_scan(symbol, *, output_dir, loader=None, now_ms=None):
         "closed_5m_candle_ms": candle_ms,
         "candidate_count": len(scan["candidates_85_plus"]),
         "snapshot_path": str(destination),
+        "history_candles_5m": len(five), "history_candles_4h": len(four),
         "orders_sent": False, "paper_trade_opened": False,
     }
 
