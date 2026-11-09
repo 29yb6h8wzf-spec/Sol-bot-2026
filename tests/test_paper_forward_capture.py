@@ -221,3 +221,28 @@ def test_restricted_public_market_feed_is_explicitly_blocked(tmp_path):
     assert result["followups"] == []
     assert result["orders_sent"] is False
     assert not (tmp_path / "paper.db").exists()
+
+
+def test_real_xrp_delayed_capture_blocks_unavailable_gap_fill(tmp_path):
+    data, loader = _inputs()
+    snapshots = tmp_path / "snapshots"
+    saved = capture_scan(
+        data["symbol"], output_dir=snapshots, loader=loader,
+        now_ms=data["asof_ms"] + 10000,
+    )
+    assert saved["candidate_count"] >= 1
+
+    def later_loader(symbol, timeframe):
+        assert symbol == data["symbol"] and timeframe == "5m"
+        return _Exchange(), {}, data["five"] + data["future"]
+
+    db = tmp_path / "paper.db"
+    outcomes = process_pending(
+        snapshot_dir=snapshots, database_path=str(db),
+        loader=later_loader,
+        now_ms=data["future"][-1][0] + 300000,
+    )
+    assert len(outcomes) == 1
+    assert outcomes[0]["status"] == "BLOCKED"
+    assert "entry gap exceeds 0.5 percent" in outcomes[0]["reason"]
+    assert not db.exists()
