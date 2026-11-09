@@ -41,7 +41,9 @@ def process_pending(*, snapshot_dir, database_path, loader=None, now_ms=None):
             if not scan["candidates_85_plus"]:
                 results.append({"snapshot": path.name, "status": "NO_SIGNAL"})
                 continue
-            if observed < signal_ms + 600000:
+            entry_open_ms = (signal_ms + 300000 if captured == signal_ms + 300000
+                             else signal_ms + 600000)
+            if observed < entry_open_ms + 300000:
                 results.append({"snapshot": path.name, "status": "WAITING_NEXT_BAR"})
                 continue
             rows = _load_closed(loader, bundle["symbol"])
