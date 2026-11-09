@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 
 from futures_engine.verified_strategy_scan import evaluate, to_strategy_candles
@@ -14,6 +15,7 @@ from research.paper_independent_verifier import verify_saved_scan
 
 
 def capture_scan(symbol, *, output_dir, loader=None, now_ms=None):
+    capture_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
     # Retain exactly the candles used by the scanner, not a later fetch.
     # A bare scan JSON is insufficient to independently verify its signal.
     observed = {}
@@ -26,7 +28,7 @@ def capture_scan(symbol, *, output_dir, loader=None, now_ms=None):
         observed[timeframe] = rows
         return exchange, market, rows
 
-    scan = evaluate(symbol, loader=capturing_loader, now_ms=now_ms)
+    scan = evaluate(symbol, loader=capturing_loader, now_ms=capture_ms)
     if (scan.get("status") != "RESEARCH_ONLY"
             or scan.get("orders_sent") is not False
             or scan.get("sqs_sent") is not False):
@@ -48,6 +50,11 @@ def capture_scan(symbol, *, output_dir, loader=None, now_ms=None):
         "schema_version": 1, "symbol": symbol, "scan": scan,
         "five": five, "four": four,
     }
+    # Reject retrospective captures masquerading as forward signals: the
+    # next candle must not have closed when the signal was recorded.
+    if not candle_ms + 300000 <= capture_ms < candle_ms + 600000:
+        raise ValueError("snapshot outside forward capture window")
+    bundle["captured_at_ms"] = capture_ms
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
     name = f"{symbol.replace('/USDT:USDT', 'USDT')}-{candle_ms}.json"
