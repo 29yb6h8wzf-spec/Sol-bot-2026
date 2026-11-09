@@ -78,8 +78,9 @@ def run():
     print(json.dumps(report, indent=2))
     if elapsed < DURATION_SECONDS:
         raise RuntimeError("staging duration too short")
-    if not any(item["success"] for item in report["streams"].values()):
-        raise RuntimeError("no public exchange connection succeeded")
+    missing = [name for name in URLS if report["streams"].get(name, {}).get("success", 0) == 0]
+    if missing:
+        raise RuntimeError("public REST staging missing successful data for: " + ", ".join(missing))
 
 
 if __name__ == "__main__":
