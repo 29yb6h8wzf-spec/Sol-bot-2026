@@ -1,5 +1,4 @@
 """Crash/restart and duplicate-signal acceptance tests for SQLite paper store."""
-from decimal import Decimal as D
 import pytest
 
 from research.paper_order_store import DurablePaperOrders
@@ -22,7 +21,7 @@ def test_restart_preserves_open_and_closed_state(tmp_path):
 
 def test_invalid_update_rolls_back_without_corrupting_state(tmp_path):
     store = DurablePaperOrders(tmp_path / "paper.sqlite3")
-    opened = store.open("uid-2", "SHORT", D("2"), "100", "102", "96", 100)
+    opened = store.open("uid-2", "SHORT", 2, "100", "102", "96", 100)
     with pytest.raises(ValueError):
         store.update("uid-2", "90", "110", "100", 101)
     assert DurablePaperOrders(tmp_path / "paper.sqlite3").get("uid-2") == opened
