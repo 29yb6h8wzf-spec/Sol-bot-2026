@@ -158,7 +158,8 @@ def test_ccxt_cancel_closes_connection():
         source = CcxtOrderBookSource(lambda: exchange, "SOL", venue="fake")
         gen = source.watch()
         await anext(gen)
-        await gen.athrow(asyncio.CancelledError())
+        with pytest.raises(asyncio.CancelledError):
+            await gen.athrow(asyncio.CancelledError())
         assert exchange.close_count == 1
 
     asyncio.run(scenario())
