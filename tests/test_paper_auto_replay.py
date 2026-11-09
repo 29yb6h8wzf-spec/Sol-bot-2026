@@ -42,9 +42,9 @@ def scan():
 def candles():
     return [
         {"open_ms": 1700000100000, "close_ms": 1700000399999,
-         "high": "101", "low": "99", "close": "100", "confirmed_closed": True},
+         "open": "100", "high": "101", "low": "99", "close": "100", "confirmed_closed": True},
         {"open_ms": 1700000400000, "close_ms": 1700000699999,
-         "high": "103", "low": "99", "close": "102", "confirmed_closed": True},
+         "open": "102", "high": "103", "low": "99", "close": "102", "confirmed_closed": True},
     ]
 
 
@@ -52,6 +52,8 @@ def test_auto_replay_sized_paper_trade(tmp_path):
     with patch("research.paper_auto_replay.verify_saved_scan"):
         result = replay_saved_scan(scan(), candles(), database_path=str(tmp_path / "paper.db"), five_history=[{}], four_history=[{}])
     assert result["trade"]["status"] == "EXECUTED_SL"
+    assert result["paper_plan"]["entry_mid"] == "102"
+    assert result["trade"]["entry"] == "102.0204"
     assert result["paper_plan"]["paper_only"] is True
     assert result["provenance"]["live_authorized"] is False
 
@@ -75,3 +77,47 @@ def test_auto_replay_rejects_missing_candle(tmp_path):
 def test_auto_replay_rejects_missing_independent_history(tmp_path):
     with pytest.raises(ValueError, match="independent 5m and 4h"):
         replay_saved_scan(scan(), candles(), database_path=str(tmp_path / "paper.db"))
+
+
+@pytest.mark.parametrize("bad_open", [None, "NaN", "0", "-1", "105"])
+def test_rejects_missing_or_invalid_next_open_before_db_write(tmp_path, bad_open):
+    bars = candles()
+    bars[1]["open"] = bad_open
+    db = tmp_path / "invalid-open.sqlite3"
+    with (patch("research.paper_auto_replay.verify_saved_scan"),
+          pytest.raises(ValueError, match="future candle")):
+        replay_saved_scan(
+            scan(), bars, database_path=str(db),
+            five_history=[{}], four_history=[{}],
+        )
+    assert not db.exists()
+
+
+def test_rejects_unconfirmed_next_bar_before_db_write(tmp_path):
+    bars = candles()
+    bars[1]["confirmed_closed"] = False
+    db = tmp_path / "unclosed.sqlite3"
+    with (patch("research.paper_auto_replay.verify_saved_scan"),
+          pytest.raises(ValueError, match="confirmed 5m")):
+        replay_saved_scan(
+            scan(), bars, database_path=str(db),
+            five_history=[{}], four_history=[{}],
+        )
+    assert not db.exists()
+
+
+def test_rejects_gap_in_later_future_bars_before_db_write(tmp_path):
+    bars = candles()
+    bars.append({
+        "open_ms": 1700001000000, "close_ms": 1700001299999,
+        "open": "102", "high": "103", "low": "101", "close": "102",
+        "confirmed_closed": True,
+    })
+    db = tmp_path / "gap.sqlite3"
+    with (patch("research.paper_auto_replay.verify_saved_scan"),
+          pytest.raises(ValueError, match="gap in future")):
+        replay_saved_scan(
+            scan(), bars, database_path=str(db),
+            five_history=[{}], four_history=[{}],
+        )
+    assert not db.exists()

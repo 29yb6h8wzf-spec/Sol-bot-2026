@@ -1,10 +1,12 @@
 """Offline replay from scanner output and actual saved closed 5m candles.
 
 The scanner signal is not synthesized. If there is no verified candidate, fail.
+Paper entry is the first post-signal candle OPEN; no signal-close fills.
 No network, exchange access, or production writes.
 """
 import argparse
 import json
+from decimal import Decimal, InvalidOperation
 from itertools import pairwise
 from pathlib import Path
 
@@ -25,19 +27,34 @@ def replay_saved_scan(scan, candles, *, database_path, candidate_index=0,
     signal = [b for b in candles if b.get("open_ms") == signal_ms]
     if len(signal) != 1 or signal[0].get("confirmed_closed") is not True:
         raise ValueError("missing unique confirmed signal candle")
-    signal_close = signal[0].get("close")
     future = [b for b in candles if b.get("open_ms", -1) >= signal_ms + 300000]
     if not future:
         raise ValueError("no future candles")
-    # Never silently ignore a missing or malformed candle between signal and
-    # replay: the first replay candle must immediately follow the signal.
+    # The simulated entry is the next 5m candle's OPEN, never the signal
+    # candle's CLOSE. Validate the entire series before writing any trade.
     if future[0]["open_ms"] != signal_ms + 300000:
         raise ValueError("gap after signal candle")
     for previous, current in pairwise(future):
         if current["open_ms"] != previous["open_ms"] + 300000:
             raise ValueError("gap in future candle series")
+    for bar in future:
+        start = bar["open_ms"]
+        if (bar.get("confirmed_closed") is not True
+                or bar.get("close_ms") != start + 299999):
+            raise ValueError("future candle must be a confirmed 5m bar")
+        try:
+            opening, high, low, closing = (
+                Decimal(str(bar[field])) for field in ("open", "high", "low", "close")
+            )
+        except (KeyError, InvalidOperation, TypeError) as exc:
+            raise ValueError("future candle must contain valid open/high/low/close") from exc
+        if (not all(x.is_finite() and x > 0 for x in (opening, high, low, closing))
+                or not low <= opening <= high
+                or not low <= closing <= high):
+            raise ValueError("future candle has invalid OHLC prices")
+    entry_mid = Decimal(str(future[0]["open"]))
     return replay_sized_candidate(
-        scan, signal_close=signal_close, future_bars=future,
+        scan, entry_mid=entry_mid, future_bars=future,
         database_path=database_path, candidate_index=candidate_index,
     )
 
