@@ -130,7 +130,10 @@ def reconcile(epoch, sol, xrp, provenance, risk, *, now=None):
         "account_day_loss_cap_usdt": str(DAILY_CAP),
         "capital_allocation_usdt": str(min(amount(sol["wallet_usdt"]), Decimal("150"))),
         "allocation_ledger_reconciled": True,
-        "execution_authorized": True,
+        "equity": str(min(Decimal("150"), Decimal("150") + amount(sol["realized_pnl_today_usdt"]))),
+        "day_start": "150",
+        "used_margin": "0", "open_risk": "0", "leverage": 2,
+        "execution_authorized": False,
         "mode": "DEMO_ONLY",
         "orders_sent": False,
     }
