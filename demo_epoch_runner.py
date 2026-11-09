@@ -14,6 +14,8 @@ from demo_epoch_baseline import capture, inspect, persist_once, EpochBlocked
 from demo_epoch_risk import reconcile
 from demo_provenance_observer import inspect as inspect_provenance
 from demo_virtual_allocation import trusted_json
+from demo_risk_monitor import assess as assess_account_risk
+import time
 
 
 def isolated_path(raw):
@@ -52,14 +54,45 @@ def save_risk_status(path, status):
             os.unlink(temp)
 
 
+def fresh_risk_from_authenticated_snapshot(snap, provenance):
+    """Re-evaluate existing latched monitor risk without writing production."""
+    now = int(time.time())
+    root = Path("/opt/signalpilot")
+    prior = trusted_json(root, "demo-risk-monitor-state.json")
+    reconciliation = trusted_json(root, "demo-reconciliation-status.json")
+    stamp = reconciliation.get("observed_at")
+    if type(stamp) is not int or not 0 <= now - stamp <= 900:
+        raise EpochBlocked("reconciliation_monitoring_gap")
+    if (reconciliation.get("monitoring_gap_unresolved") is not False
+            or reconciliation.get("prior_day_exposure_unresolved") is not False):
+        raise EpochBlocked("unresolved_monitoring_or_prior_day_exposure")
+    common = {"observed_at": snap["observed_at"], "orders_sent": False}
+    pnl = {**common, "source": "binance_demo_account_wide_income_read_only",
+           "day_start_utc_ms": (now // 86400) * 86400000,
+           "net_income_usdt": snap["realized_pnl_today_usdt"]}
+    exposure = {**common, "source": "binance_demo_account_wide_unrealized_read_only",
+                "unrealized_pnl_usdt": "0", "open_position_count": snap["positions_count"],
+                "exposed_symbols": [], "allocation_ledger_reconciled": False}
+    account = {**common, "source": "binance_demo_observation_only",
+               "exposed_symbols": [], "open_orders": {"ALL": snap["orders_count"]},
+               "open_algo_orders": {"ALL": snap["algo_orders_count"]}}
+    risk, _ = assess_account_risk(pnl, exposure, account, prior, now=now)
+    if provenance.get("unattributed_fills", 0) and risk["reason"] != "DAILY_LOSS_KILL_SWITCH":
+        risk["reason"] = "UNATTRIBUTED_DEMO_FILLS"
+    risk["observed_at"] = now
+    risk["monitoring_gap_unresolved"] = False
+    risk["prior_day_exposure_unresolved"] = False
+    return risk
+
+
 def run(mode, path, *, status_path=None):
     path = isolated_path(path)
     exchange = demo_client_from_aws()
     try:
+        provenance = inspect_provenance(exchange)
         snapshots = read_snapshots(exchange)
         sol, xrp = snapshots["SOLUSDT"], snapshots["XRPUSDT"]
-        provenance = inspect_provenance(exchange)
-        risk = trusted_json(Path("/opt/signalpilot"), "demo-risk-monitor-status.json")
+        risk = fresh_risk_from_authenticated_snapshot(sol, provenance)
         if mode == "capture":
             reconciliation = trusted_json(
                 Path("/opt/signalpilot"), "demo-reconciliation-status.json")
