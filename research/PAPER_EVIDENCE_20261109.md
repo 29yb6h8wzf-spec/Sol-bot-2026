@@ -36,7 +36,11 @@ profitability. Source: `tests/fixtures/forward_connector_snapshot_20261109_2023u
 **Total: 7 candidates, 6 simulated closed trades, 5 stop exits, 1
 positive timed expiry, 1 skipped overlap; net -1.69041669 USD.**
 
-The earlier $1.50/trade research run was superseded by the stricter\napproved per-market 1% ($0.375) cap. All numbers above use the stricter\ncap and replace the earlier -$6.80 simulated figure.\n\nThe six trades are an extremely small, selected in-sample set. Do not
+The earlier $1.50/trade research run was superseded by the stricter
+approved per-market 1% ($0.375) cap. All numbers above use the stricter
+cap and replace the earlier -$6.80 simulated figure.
+
+The six trades are an extremely small, selected in-sample set. Do not
 extrapolate the win rate, expectancy, or any live profit/loss. Stop risk is
 an *estimated* model cap, not a guarantee against gap/slippage risk.
 
