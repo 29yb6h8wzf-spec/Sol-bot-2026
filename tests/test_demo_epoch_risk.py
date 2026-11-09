@@ -129,3 +129,26 @@ def test_epoch_status_not_order_authorization():
     status = reconcile(*prepared(), now=NOW + 3)
     assert status["orders_sent"] is False
     assert status["execution_authorized"] is False
+
+
+def test_fresh_authenticated_risk_reassessment_preserves_monitor_latch(monkeypatch):
+    from datetime import datetime, timezone
+    import demo_epoch_runner as runner
+    old = sample()
+    snap, provenance = old[0], old[2]
+    snap["observed_at"] = NOW + 2
+    prior = {"day_utc": datetime.fromtimestamp(NOW, timezone.utc).date().isoformat(),
+             "peak_net_usdt": "0", "worst_drawdown_usdt": "0.01762774",
+             "latched": False}
+    monitor = {"observed_at": NOW, "monitoring_gap_unresolved": False,
+               "prior_day_exposure_unresolved": False}
+    monkeypatch.setattr(runner.time, "time", lambda: NOW + 3)
+    monkeypatch.setattr(runner, "trusted_json",
+                        lambda root, name: prior if name == "demo-risk-monitor-state.json" else monitor)
+    risk = runner.fresh_risk_from_authenticated_snapshot(snap, provenance)
+    assert risk["status"] == "BLOCKED"
+    assert risk["reason"] == "UNATTRIBUTED_DEMO_FILLS"
+    assert risk["account_wide_realized_net_usdt"] == "-0.01762774"
+    prior["latched"] = True
+    blocked = runner.fresh_risk_from_authenticated_snapshot(snap, provenance)
+    assert blocked["reason"] == "DAILY_LOSS_KILL_SWITCH"
