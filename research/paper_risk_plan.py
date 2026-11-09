@@ -14,11 +14,19 @@ from research.paper_signal_adapter import replay_scanner_candidate
 D = Decimal
 
 
-def paper_plan(entry_mid, side, *, capital="150", leverage="2",
-               risk_usd="1.50", stop_fraction="0.005",
+def paper_plan(entry_mid, side, *, capital=None, leverage="2",
+               risk_usd=None, stop_fraction="0.005",
                reward_multiple="2", quantity_step=None, symbol=None):
-    price, equity, lev, risk = map(D, (entry_mid, capital, leverage, risk_usd))
     rules = research_exchange_rules(symbol) if symbol is not None else None
+    # Current approved allocation: $37.50 per symbol and 1% ($0.375)
+    # risk per trade. Generic synthetic tests retain the old broad limits.
+    if capital is None:
+        capital = "37.50" if rules is not None else "150"
+    if risk_usd is None:
+        risk_usd = "0.375" if rules is not None else "1.50"
+    price, equity, lev, risk = map(D, (entry_mid, capital, leverage, risk_usd))
+    if rules is not None and (equity > D("37.50") or risk > D("0.375")):
+        raise ValueError("per-market 1 percent risk or allocation exceeded")
     if (rules is not None and quantity_step is not None
             and D(str(quantity_step)) != D(rules["step_size"])):
         raise ValueError("quantity step conflicts with exchange rules")
