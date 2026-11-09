@@ -74,9 +74,11 @@ def _amount(value, label):
     return result
 
 
-def read_snapshot(exchange, symbol, *, now=None):
-    """Read account-wide exposure plus symbol filters and UTC daily trading PnL."""
-    if symbol not in ("SOLUSDT", "XRPUSDT"):
+def read_snapshots(exchange, symbols=("SOLUSDT", "XRPUSDT"), *, now=None):
+    """Read both symbols from ONE account-wide authenticated GET batch."""
+    if (not isinstance(symbols, (tuple, list)) or not symbols
+            or len(set(symbols)) != len(symbols)
+            or any(s not in ("SOLUSDT", "XRPUSDT") for s in symbols)):
         raise DemoSnapshotError("unsupported_symbol")
     now = int(time.time()) if now is None else int(now)
     # The exchange must have a transport-level GET-only Demo guard installed.
@@ -94,10 +96,6 @@ def read_snapshot(exchange, symbol, *, now=None):
     if not positions:
         raise DemoSnapshotError("empty_position_inventory")
     active = sum(_amount(p.get("positionAmt"), "position_amt") != 0 for p in positions)
-    matching = [p for p in positions if p.get("symbol") == symbol]
-    if len(matching) != 1:
-        raise DemoSnapshotError("symbol_position_inventory_missing")
-    position = matching[0]
     orders = _list(exchange.fapiPrivateGetOpenOrders(), "orders")
     algos = exchange.fapiPrivateGetOpenAlgoOrders()
     if isinstance(algos, dict):
@@ -109,15 +107,6 @@ def read_snapshot(exchange, symbol, *, now=None):
     info = exchange.fapiPublicGetExchangeInfo()
     if not isinstance(info, dict):
         raise DemoSnapshotError("invalid_exchange_info")
-    markets = [s for s in _list(info.get("symbols"), "markets") if s.get("symbol") == symbol]
-    if len(markets) != 1 or markets[0].get("status") != "TRADING":
-        raise DemoSnapshotError("symbol_not_trading")
-    filters = {f.get("filterType"): f for f in _list(markets[0].get("filters"), "filters")}
-    if "MIN_NOTIONAL" not in filters:
-        raise DemoSnapshotError("min_notional_missing")
-    min_notional = _amount(filters["MIN_NOTIONAL"].get("notional"), "min_notional")
-    if min_notional <= 0:
-        raise DemoSnapshotError("invalid_min_notional")
     # No pagination: fail closed if the full day cannot be proven complete.
     start_ms = int(datetime.fromtimestamp(now, timezone.utc).replace(
         hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
@@ -133,21 +122,42 @@ def read_snapshot(exchange, symbol, *, now=None):
     observed_at = int(time.time())
     if abs(observed_at - now) > 10:
         raise DemoSnapshotError("account_snapshot_clock_skew")
-    return {
-        "endpoint": "https://" + DEMO_HOST,
-        "authenticated": True,
-        "one_way": str(mode["dualSidePosition"]).lower() == "false",
-        "observed_at": observed_at,
-        "positions_count": active,
-        "orders_count": len(orders),
-        "algo_orders_count": len(algos),
-        "margin_type": str(position.get("marginType", "")).lower(),
-        "leverage": int(position.get("leverage", 0)),
-        "wallet_usdt": str(wallet),
-        "available_usdt": str(available),
-        "realized_pnl_today_usdt": str(realized),
-        "min_notional_usdt": str(min_notional),
-    }
+    snapshots = {}
+    markets = _list(info.get("symbols"), "markets")
+    for symbol in symbols:
+        matching = [p for p in positions if p.get("symbol") == symbol]
+        if len(matching) != 1:
+            raise DemoSnapshotError("symbol_position_inventory_missing")
+        position = matching[0]
+        selected = [s for s in markets if s.get("symbol") == symbol]
+        if len(selected) != 1 or selected[0].get("status") != "TRADING":
+            raise DemoSnapshotError("symbol_not_trading")
+        filters = {f.get("filterType"): f for f in _list(selected[0].get("filters"), "filters")}
+        if "MIN_NOTIONAL" not in filters:
+            raise DemoSnapshotError("min_notional_missing")
+        min_notional = _amount(filters["MIN_NOTIONAL"].get("notional"), "min_notional")
+        if min_notional <= 0:
+            raise DemoSnapshotError("invalid_min_notional")
+        snapshots[symbol] = {
+            "endpoint": "https://" + DEMO_HOST,
+            "authenticated": True,
+            "one_way": str(mode["dualSidePosition"]).lower() == "false",
+            "observed_at": observed_at,
+            "positions_count": active,
+            "orders_count": len(orders),
+            "algo_orders_count": len(algos),
+            "margin_type": str(position.get("marginType", "")).lower(),
+            "leverage": int(position.get("leverage", 0)),
+            "wallet_usdt": str(wallet),
+            "available_usdt": str(available),
+            "realized_pnl_today_usdt": str(realized),
+            "min_notional_usdt": str(min_notional),
+        }
+    return snapshots
+
+
+def read_snapshot(exchange, symbol, *, now=None):
+    return read_snapshots(exchange, (symbol,), now=now)[symbol]
 
 
 def main():
