@@ -163,3 +163,26 @@ def test_ccxt_cancel_closes_connection():
         assert exchange.close_count == 1
 
     asyncio.run(scenario())
+
+
+def test_ccxt_exponential_backoff_is_capped(monkeypatch):
+    async def scenario():
+        attempts = [FakeExchange() for _ in range(5)]
+        delays = []
+
+        async def broken_watch(symbol, limit):
+            raise ConnectionError("simulated disconnect")
+
+        async def no_wait(seconds):
+            delays.append(seconds)
+
+        for exchange in attempts[:4]:
+            exchange.watch_order_book = broken_watch
+        monkeypatch.setattr("research.l2_adapters.asyncio.sleep", no_wait)
+        source = CcxtOrderBookSource(lambda: attempts.pop(0), "SOL", venue="fake", max_backoff_s=2.0)
+        generator = source.watch()
+        assert (await anext(generator))["asset"] == "SOL"
+        assert delays == [1.0, 2.0, 2.0, 2.0]
+        await generator.aclose()
+
+    asyncio.run(scenario())
