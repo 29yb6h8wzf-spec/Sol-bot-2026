@@ -120,3 +120,32 @@ def test_no_broker_or_order_imports():
     assert "import ccxt" not in source
     assert "create_order(" not in source
     assert "fapiPrivatePost" not in source
+
+
+def test_demo_wallet_above_allocation_does_not_increase_margin_budget():
+    args = evidence()
+    args[4]["wallet_usdt"] = "4500"
+    args[4]["available_usdt"] = "4500"
+    args[3]["quantity"] = "0.2"  # $20 notional > $150 * 5% * 2
+    with pytest.raises(DemoGateBlocked, match="margin_allocation_exceeded"):
+        validate(*args, now=NOW)
+
+
+def test_demo_wallet_above_allocation_does_not_increase_daily_loss_budget():
+    args = evidence()
+    args[4]["wallet_usdt"] = "4500"
+    args[4]["available_usdt"] = "4500"
+    args[4]["realized_pnl_today_usdt"] = "-8"
+    with pytest.raises(DemoGateBlocked, match="daily_loss_or_balance_guard"):
+        validate(*args, now=NOW)
+
+
+def test_distinct_event_blocked_while_previous_reservation_outstanding(tmp_path):
+    db = tmp_path / "reservations.sqlite3"
+    args = evidence()
+    reserve(db, *args, now=NOW)
+    for item in args[:4]:
+        item["signal_id"] = "s-demo-003"
+    args[1]["closed_5m_candle_ms"] += 300000
+    with pytest.raises(DemoGateBlocked, match="outstanding_reservation"):
+        reserve(db, *args, now=NOW)
