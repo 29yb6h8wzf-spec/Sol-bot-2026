@@ -24,8 +24,8 @@ def test_pinned_binance_filters_and_exact_stop_loss(symbol, step, tick, side):
     assert Decimal(plan["stop"]) % Decimal(tick) == 0
     assert Decimal(plan["target"]) % Decimal(tick) == 0
     assert Decimal(plan["estimated_risk_usd"]) <= Decimal("1.50")
-    assert Decimal(plan["estimated_notional"]) <= Decimal("300")
-    assert Decimal(plan["quantity"]) * Decimal(price) >= Decimal("5")
+    assert Decimal(plan["estimated_notional"]) <= Decimal(300)
+    assert Decimal(plan["quantity"]) * Decimal(price) >= Decimal(5)
     manager = PaperOrderManager()
     manager.open(
         "exchange-rule-risk", side, plan["quantity"], plan["entry_mid"],
