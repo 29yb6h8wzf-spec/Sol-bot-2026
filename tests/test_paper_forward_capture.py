@@ -6,6 +6,7 @@ import pytest
 
 from research.paper_forward_capture import capture_scan
 from research.paper_forward_followup import replay_captured_bundle
+from research.paper_forward_once import process_pending, run_once
 
 FIXTURE = Path(__file__).parent / "fixtures" / "xrpusdt_verified_20261109.json"
 
@@ -106,3 +107,66 @@ def test_followup_rejects_tampered_saved_scan(tmp_path):
             bundle, data["future"], database_path=str(tmp_path / "paper.db"),
             observed_at_ms=data["future"][-1][0] + 300000,
         )
+
+
+def test_one_shot_capture_waits_then_replays_real_xrp_forward_bundle(tmp_path):
+    data, loader = _inputs()
+    snapshots = tmp_path / "snapshots"
+    db = str(tmp_path / "paper.db")
+    first = run_once(
+        snapshot_dir=snapshots, database_path=db,
+        symbols=(data["symbol"],), loader=loader,
+        now_ms=data["asof_ms"],
+    )
+    assert first["status"] == "RESEARCH_PAPER_ONLY"
+    assert first["orders_sent"] is False
+    assert first["captures"][0]["status"] == "RECORDED"
+    assert first["followups"][0]["status"] == "WAITING_NEXT_BAR"
+
+    def later_loader(symbol, timeframe):
+        assert symbol == data["symbol"]
+        if timeframe != "5m":
+            raise AssertionError("followup should only fetch 5m")
+        return _Exchange(), {}, data["five"] + data["future"]
+
+    now = data["future"][-1][0] + 300000
+    followups = process_pending(
+        snapshot_dir=snapshots, database_path=db,
+        loader=later_loader, now_ms=now,
+    )
+    assert len(followups) == 1
+    assert followups[0]["status"] == "EXECUTED_SL"
+    assert followups[0]["paper_only"] is True
+    assert float(followups[0]["net_pnl"]) >= -1.50
+    assert process_pending(
+        snapshot_dir=snapshots, database_path=db,
+        loader=later_loader, now_ms=now,
+    ) == followups
+
+
+def test_capture_rejects_retroactive_signal_snapshot(tmp_path):
+    data, loader = _inputs()
+    with pytest.raises(ValueError, match="unfinished candle|stale candles|forward capture"):
+        capture_scan(
+            data["symbol"], output_dir=tmp_path, loader=loader,
+            now_ms=data["asof_ms"] + 600000,
+        )
+    assert not list(tmp_path.glob("*.json"))
+
+
+def test_followup_blocks_tampered_capture_time(tmp_path):
+    data, loader = _inputs()
+    first = capture_scan(
+        data["symbol"], output_dir=tmp_path, loader=loader,
+        now_ms=data["asof_ms"],
+    )
+    path = Path(first["snapshot_path"])
+    bundle = json.loads(path.read_text(encoding="utf-8"))
+    bundle["captured_at_ms"] = data["asof_ms"] + 600000
+    path.write_text(json.dumps(bundle), encoding="utf-8")
+    outcomes = process_pending(
+        snapshot_dir=tmp_path, database_path=str(tmp_path / "paper.db"),
+        loader=loader, now_ms=data["asof_ms"] + 900000,
+    )
+    assert outcomes[0]["status"] == "BLOCKED"
+    assert "forward capture timestamp" in outcomes[0]["reason"]
