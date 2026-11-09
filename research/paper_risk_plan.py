@@ -46,7 +46,7 @@ def paper_plan(entry_mid, side, *, capital="150", leverage="2",
 
 
 def replay_sized_candidate(scan, *, signal_close, future_bars, entry_mid=None,
-                           database_path, candidate_index=0, **risk):
+                           database_path, candidate_index=0, entry_open_ms=None, **risk):
     candidates = scan.get("candidates_85_plus", [])
     if not isinstance(candidates, list) or not 0 <= candidate_index < len(candidates):
         raise ValueError("no eligible scanner candidate")
@@ -58,7 +58,7 @@ def replay_sized_candidate(scan, *, signal_close, future_bars, entry_mid=None,
         scan, quantity=plan["quantity"], entry_mid=plan["entry_mid"],
         stop=plan["stop"], target=plan["target"],
         bars=future_bars, database_path=database_path,
-        candidate_index=candidate_index,
+        candidate_index=candidate_index, entry_open_ms=entry_open_ms,
     )
     result["paper_plan"] = plan
     return result
