@@ -2,6 +2,8 @@ name: L2 Research CI
 on:
   pull_request:
     branches: [main, research/l2-ci-gate-20261109]
+  push:
+    branches: [fix/l2-staging-gates-20261109]
   workflow_dispatch:
 
 permissions:
