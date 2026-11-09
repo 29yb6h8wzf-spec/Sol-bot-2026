@@ -36,6 +36,7 @@ def _scanner(data):
 def _replay_bar(row):
     return {
         "open_ms": row[0], "close_ms": row[0] + 300000 - 1,
+        "open": row[1],
         "high": row[2], "low": row[3], "close": row[4],
         "confirmed_closed": True,
     }
@@ -70,6 +71,7 @@ def test_real_xrp_history_independently_verifies_and_replays(tmp_path):
         five_history=five, four_history=four,
     )
     assert result["trade"] == repeat["trade"]
+    assert Decimal(result["paper_plan"]["entry_mid"]) == Decimal(str(data["future"][0][1]))
     assert result["trade"]["status"] == "EXECUTED_SL"
     assert Decimal(result["trade"]["net_pnl"]) >= Decimal("-1.50")
     assert result["paper_plan"]["paper_only"] is True
