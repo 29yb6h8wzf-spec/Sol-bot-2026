@@ -141,16 +141,16 @@ def reserve(db_path, signal, verified, route, plan, account, *, now=None):
         if existing:
             db.execute("ROLLBACK")
             raise DemoGateBlocked("already_reserved_" + existing[0])
-        outstanding = db.execute("SELECT signal_id FROM demo_execution_reservations WHERE state NOT IN (?, ?) LIMIT 1",
-                                 ("CLOSED_VERIFIED", "CANCELLED_NO_ORDERS")).fetchone()
-        if outstanding:
-            db.execute("ROLLBACK")
-            raise DemoGateBlocked("outstanding_reservation_requires_reconciliation")
         duplicate_event = db.execute("SELECT signal_id FROM demo_execution_reservations WHERE event_key=?",
                                      (intent["event_key"],)).fetchone()
         if duplicate_event:
             db.execute("ROLLBACK")
             raise DemoGateBlocked("verified_event_already_reserved")
+        outstanding = db.execute("SELECT signal_id FROM demo_execution_reservations WHERE state NOT IN (?, ?) LIMIT 1",
+                                 ("CLOSED_VERIFIED", "CANCELLED_NO_ORDERS")).fetchone()
+        if outstanding:
+            db.execute("ROLLBACK")
+            raise DemoGateBlocked("outstanding_reservation_requires_reconciliation")
         db.execute("INSERT INTO demo_execution_reservations VALUES (?,?,?,?,?)",
                    (intent["signal_id"], intent["event_key"], "RESERVED_NO_ORDERS",
                     json.dumps(intent, sort_keys=True), int(time.time())))
