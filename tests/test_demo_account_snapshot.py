@@ -4,7 +4,7 @@ from urllib.parse import urlsplit
 import pytest
 
 from demo_account_snapshot import (
-    DemoSnapshotError, install_get_only_guard, read_snapshot,
+    DemoSnapshotError, install_get_only_guard, read_snapshot, read_snapshots,
 )
 
 
@@ -121,3 +121,21 @@ def test_missing_flat_position_row_fails_closed():
          "marginType": "isolated", "leverage": "2"}]
     with pytest.raises(DemoSnapshotError, match="symbol_position_inventory_missing"):
         read_snapshot(ex, "SOLUSDT")
+
+
+def test_atomic_pair_uses_one_authenticated_account_inventory():
+    ex = install_get_only_guard(FakeExchange())
+    counts = {"account": 0}
+    original = ex.fapiPrivateV3GetAccount
+    def counted():
+        counts["account"] += 1
+        return original()
+    ex.fapiPrivateV3GetAccount = counted
+    ex.fapiPublicGetExchangeInfo = lambda: {"symbols": [
+        {"symbol": s, "status": "TRADING",
+         "filters": [{"filterType": "MIN_NOTIONAL", "notional": "5"}]}
+        for s in ("SOLUSDT", "XRPUSDT")]}
+    snapshots = read_snapshots(ex)
+    assert counts["account"] == 1
+    assert snapshots["SOLUSDT"]["observed_at"] == snapshots["XRPUSDT"]["observed_at"]
+    assert snapshots["SOLUSDT"]["wallet_usdt"] == snapshots["XRPUSDT"]["wallet_usdt"]
