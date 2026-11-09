@@ -42,7 +42,7 @@ def save_risk_status(path, status):
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump(status, stream, sort_keys=True)
-            stream.write("\\n")
+            stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
         os.chmod(temp, 0o600)
