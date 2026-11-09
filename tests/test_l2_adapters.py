@@ -19,7 +19,6 @@ class FakeCollection:
 
     async def find_one(self, filt, **kw):
         self.query = (filt, kw)
-        return None
 
 
 class FakeClient:
