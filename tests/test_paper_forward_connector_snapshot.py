@@ -17,6 +17,14 @@ class _Exchange:
         pass
 
 
+def _make_loader(symbol, five, four):
+    def loader(requested_symbol, timeframe):
+        assert requested_symbol == symbol
+        return _Exchange(), {}, five if timeframe == "5m" else four
+
+    return loader
+
+
 def test_forward_connector_snapshot_closed_and_independently_scannable():
     payload = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
     assert payload["schema_version"] == 1
@@ -33,11 +41,9 @@ def test_forward_connector_snapshot_closed_and_independently_scannable():
         assert all(row[0] + 14400000 <= capture for row in four)
         assert five[-1][0] + 300000 <= capture < five[-1][0] + 600000
 
-        def loader(requested_symbol, timeframe):
-            assert requested_symbol == symbol
-            return _Exchange(), {}, five if timeframe == "5m" else four
-
-        scan = evaluate(symbol, loader=loader, now_ms=capture)
+        scan = evaluate(
+            symbol, loader=_make_loader(symbol, five, four), now_ms=capture,
+        )
         assert scan["status"] == "RESEARCH_ONLY"
         assert scan["orders_sent"] is False
         for index in range(len(scan["candidates_85_plus"])):
