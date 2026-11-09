@@ -70,7 +70,8 @@ def test_real_xrp_history_independently_verifies_and_replays(tmp_path):
         five_history=five, four_history=four,
     )
     assert result["trade"] == repeat["trade"]
-    assert result["trade"]["status"] in {"EXECUTED_SL", "EXECUTED_TP", "EXPIRED"}
+    assert result["trade"]["status"] == "EXECUTED_SL"
+    assert Decimal(result["trade"]["net_pnl"]) >= Decimal("-1.50")
     assert result["paper_plan"]["paper_only"] is True
     assert Decimal(result["paper_plan"]["estimated_risk_usd"]) <= Decimal("1.50")
     assert Decimal(result["paper_plan"]["estimated_notional"]) <= 300
