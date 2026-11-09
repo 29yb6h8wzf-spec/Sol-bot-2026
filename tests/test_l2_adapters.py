@@ -123,3 +123,42 @@ def test_ccxt_shutdown_does_not_double_close():
         await gen.aclose()
         assert exch.close_count == 1
     asyncio.run(scenario())
+
+
+def test_ccxt_reconnect_after_stream_error(monkeypatch):
+    async def scenario():
+        first = FakeExchange()
+        second = FakeExchange()
+        attempts = [first, second]
+        delays = []
+
+        async def broken_watch(symbol, limit):
+            raise ConnectionError("simulated disconnect")
+
+        async def no_wait(seconds):
+            delays.append(seconds)
+
+        first.watch_order_book = broken_watch
+        monkeypatch.setattr("research.l2_adapters.asyncio.sleep", no_wait)
+        source = CcxtOrderBookSource(lambda: attempts.pop(0), "SOL", venue="fake")
+        gen = source.watch()
+        msg = await anext(gen)
+        assert msg["asset"] == "SOL"
+        assert delays == [1.0]
+        assert first.close_count == 1
+        await gen.aclose()
+        assert second.close_count == 1
+
+    asyncio.run(scenario())
+
+
+def test_ccxt_cancel_closes_connection():
+    async def scenario():
+        exchange = FakeExchange()
+        source = CcxtOrderBookSource(lambda: exchange, "SOL", venue="fake")
+        gen = source.watch()
+        await anext(gen)
+        await gen.athrow(asyncio.CancelledError())
+        assert exchange.close_count == 1
+
+    asyncio.run(scenario())
