@@ -97,3 +97,12 @@ def test_rejects_mismatched_signal_candle(tmp_path):
     result["candidates_85_plus"][0]["verification"]["candle_ms"] += 300000
     with pytest.raises(ValueError, match="unverified research candidate"):
         run(result, tmp_path)
+
+
+def test_rejects_replay_starting_after_claimed_entry(tmp_path):
+    delayed = bars()
+    delayed[0]["open_ms"] += 300000
+    delayed[0]["close_ms"] += 300000
+    with pytest.raises(ValueError, match="start at eligible entry candle"):
+        run(scan(), tmp_path, delayed)
+    assert not (tmp_path / "paper.sqlite3").exists()
