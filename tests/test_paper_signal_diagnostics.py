@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
-from research.paper_signal_diagnostics import diagnose_snapshot
-from research.paper_filter_audit import audit_filters
 from futures_engine.verified_strategy_scan import to_strategy_candles
+from research.paper_filter_audit import audit_filters
+from research.paper_signal_diagnostics import diagnose_snapshot
 
 SNAPSHOT = Path(__file__).parent / "fixtures" / "forward_connector_snapshot_20261109_2023utc.json"
 
