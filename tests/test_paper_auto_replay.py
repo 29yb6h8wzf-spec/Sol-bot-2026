@@ -5,6 +5,7 @@ import json
 import pytest
 
 from research.paper_auto_replay import replay_saved_scan
+from unittest.mock import patch
 
 
 def _fixture_signal_id():
@@ -48,7 +49,8 @@ def candles():
 
 
 def test_auto_replay_sized_paper_trade(tmp_path):
-    result = replay_saved_scan(scan(), candles(), database_path=str(tmp_path / "paper.db"))
+    with patch("research.paper_auto_replay.verify_saved_scan"):
+        result = replay_saved_scan(scan(), candles(), database_path=str(tmp_path / "paper.db"), five_history=[{}], four_history=[{}])
     assert result["trade"]["status"] == "EXECUTED_SL"
     assert result["paper_plan"]["paper_only"] is True
     assert result["provenance"]["live_authorized"] is False
@@ -57,12 +59,19 @@ def test_auto_replay_sized_paper_trade(tmp_path):
 def test_auto_replay_requires_actual_candidate(tmp_path):
     result = scan()
     result["candidates_85_plus"] = []
-    with pytest.raises(ValueError, match="no eligible"):
-        replay_saved_scan(result, candles(), database_path=str(tmp_path / "paper.db"))
+    with patch("research.paper_auto_replay.verify_saved_scan", side_effect=ValueError("no eligible scanner candidate")):
+        with pytest.raises(ValueError, match="no eligible"):
+            replay_saved_scan(result, candles(), database_path=str(tmp_path / "paper.db"), five_history=[{}], four_history=[{}])
 
 
 def test_auto_replay_rejects_missing_candle(tmp_path):
     bars = candles()
     bars[1]["open_ms"] += 300000
-    with pytest.raises(ValueError, match="gap after signal"):
-        replay_saved_scan(scan(), bars, database_path=str(tmp_path / "paper.db"))
+    with patch("research.paper_auto_replay.verify_saved_scan"):
+        with pytest.raises(ValueError, match="gap after signal"):
+            replay_saved_scan(scan(), bars, database_path=str(tmp_path / "paper.db"), five_history=[{}], four_history=[{}])
+
+
+def test_auto_replay_rejects_missing_independent_history(tmp_path):
+    with pytest.raises(ValueError, match="independent 5m and 4h"):
+        replay_saved_scan(scan(), candles(), database_path=str(tmp_path / "paper.db"))
