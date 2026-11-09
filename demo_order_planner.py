@@ -5,7 +5,9 @@ exchange prices, margin, fees, account PnL and risk must be revalidated.
 """
 from decimal import Decimal as D, ROUND_DOWN, ROUND_UP
 
-MAX_MARGIN_FRACTION = D("0.05")\n\nSYMBOLS = frozenset(("BTC/USDT:USDT", "ETH/USDT:USDT",
+MAX_MARGIN_FRACTION = D("0.05")
+
+SYMBOLS = frozenset(("BTC/USDT:USDT", "ETH/USDT:USDT",
                      "SOL/USDT:USDT", "XRP/USDT:USDT"))
 
 
