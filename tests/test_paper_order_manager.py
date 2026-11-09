@@ -1,6 +1,8 @@
 """Offline acceptance tests for the paper-only order manager."""
 from decimal import Decimal as D
+
 import pytest
+
 from research.paper_order_manager import PaperOrderManager
 
 
