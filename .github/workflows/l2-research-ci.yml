@@ -1,7 +1,7 @@
 name: L2 Research CI
 on:
   pull_request:
-    branches: [main]
+    branches: [main, research/l2-ci-gate-20261109]
   push:
     branches: [research/paper-order-manager-20261109]
   workflow_dispatch:
