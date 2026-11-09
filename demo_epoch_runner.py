@@ -9,7 +9,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from demo_account_snapshot import demo_client_from_aws, read_snapshot
+from demo_account_snapshot import demo_client_from_aws, read_snapshots
 from demo_epoch_baseline import capture, inspect, persist_once, EpochBlocked
 from demo_epoch_risk import reconcile
 from demo_provenance_observer import inspect as inspect_provenance
@@ -56,8 +56,8 @@ def run(mode, path, *, status_path=None):
     path = isolated_path(path)
     exchange = demo_client_from_aws()
     try:
-        sol = read_snapshot(exchange, "SOLUSDT")
-        xrp = read_snapshot(exchange, "XRPUSDT")
+        snapshots = read_snapshots(exchange)
+        sol, xrp = snapshots["SOLUSDT"], snapshots["XRPUSDT"]
         provenance = inspect_provenance(exchange)
         risk = trusted_json(Path("/opt/signalpilot"), "demo-risk-monitor-status.json")
         if mode == "capture":
