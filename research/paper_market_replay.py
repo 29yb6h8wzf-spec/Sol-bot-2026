@@ -24,6 +24,25 @@ def replay(payload: dict, database_path: str) -> dict:
         raise ValueError("missing replay input")
     if not isinstance(payload["bars"], list) or not payload["bars"]:
         raise ValueError("at least one candle required")
+    # Preflight EVERY candle before any SQLite write. An unclosed or
+    # malformed late candle must never leave a phantom OPEN paper trade.
+    previous_close = -1
+    opened_ms = int(payload["opened_at"]) * 1000
+    for item in payload["bars"]:
+        start, end = int(item["open_ms"]), int(item["close_ms"])
+        if start < 0 or start >= end or start <= previous_close:
+            raise ValueError("non-monotonic or overlapping paper candles")
+        if start < opened_ms:
+            raise ValueError("paper candle precedes trade entry")
+        if item.get("confirmed_closed") is not True:
+            raise ValueError("unconfirmed paper candle")
+        high = Decimal(str(item["high"]))
+        low = Decimal(str(item["low"]))
+        close = Decimal(str(item["close"]))
+        if (not all(x.is_finite() for x in (high, low, close))
+                or not 0 < low <= close <= high):
+            raise ValueError("invalid paper OHLC candle")
+        previous_close = end
     store = DurablePaperOrders(database_path)
     uid = payload["signal_uid"]
     trade = store.open(uid, payload["side"], payload["quantity"],
