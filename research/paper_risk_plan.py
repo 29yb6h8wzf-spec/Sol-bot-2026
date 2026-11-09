@@ -2,8 +2,9 @@
 
 This is a deterministic simulation helper, not a live trading approval.
 """
-from decimal import ROUND_DOWN, Decimal
+from decimal import ROUND_DOWN, ROUND_UP, Decimal
 
+from research.paper_exchange_rules import check_paper_exchange_plan, research_exchange_rules
 from research.paper_order_manager import PaperOrderManager
 from research.paper_signal_adapter import replay_scanner_candidate
 
@@ -12,9 +13,15 @@ D = Decimal
 
 def paper_plan(entry_mid, side, *, capital="150", leverage="2",
                risk_usd="1.50", stop_fraction="0.005",
-               reward_multiple="2", quantity_step="0.001"):
+               reward_multiple="2", quantity_step=None, symbol=None):
     price, equity, lev, risk = map(D, (entry_mid, capital, leverage, risk_usd))
-    distance, reward, step = map(D, (stop_fraction, reward_multiple, quantity_step))
+    rules = research_exchange_rules(symbol) if symbol is not None else None
+    if rules is not None and quantity_step is not None:
+        if D(str(quantity_step)) != D(rules["step_size"]):
+            raise ValueError("quantity step conflicts with exchange rules")
+    resolved_step = (rules["step_size"] if rules is not None
+                     else "0.001" if quantity_step is None else quantity_step)
+    distance, reward, step = map(D, (stop_fraction, reward_multiple, resolved_step))
     if side not in ("LONG", "SHORT"):
         raise ValueError("invalid side")
     if not (price > 0 and equity > 0 and 0 < lev <= 2 and
@@ -24,6 +31,16 @@ def paper_plan(entry_mid, side, *, capital="150", leverage="2",
     sign = D(1) if side == "LONG" else D(-1)
     stop = price * (1 - sign * distance)
     target = price * (1 + sign * distance * reward)
+    if rules is not None:
+        tick = D(rules["tick_size"])
+        # Round stop farther away and target closer for conservative Paper
+        # risk/reward. Recompute quantity against the rounded stop.
+        stop = (stop / tick).to_integral_value(
+            rounding=ROUND_DOWN if side == "LONG" else ROUND_UP
+        ) * tick
+        target = (target / tick).to_integral_value(
+            rounding=ROUND_DOWN if side == "LONG" else ROUND_UP
+        ) * tick
     # Use the SAME fee/slippage arithmetic as PaperOrderManager, not a
     # rounded friction approximation. A stop must never exceed risk_usd.
     friction = PaperOrderManager()
@@ -36,13 +53,17 @@ def paper_plan(entry_mid, side, *, capital="150", leverage="2",
     quantity = (max_qty / step).to_integral_value(rounding=ROUND_DOWN) * step
     if quantity <= 0:
         raise ValueError("paper quantity below step size")
-    return {
+    plan = {
         "entry_mid": str(price), "quantity": str(quantity),
         "stop": str(stop), "target": str(target),
         "estimated_risk_usd": str(quantity * unit_risk),
         "estimated_notional": str(quantity * entry_fill),
         "paper_only": True,
     }
+    if rules is not None:
+        check_paper_exchange_plan(symbol, plan)
+        plan["exchange_rules"] = "PINNED_RESEARCH_2026-11-09"
+    return plan
 
 
 def replay_sized_candidate(scan, *, signal_close, future_bars, entry_mid=None,
@@ -52,7 +73,8 @@ def replay_sized_candidate(scan, *, signal_close, future_bars, entry_mid=None,
         raise ValueError("no eligible scanner candidate")
     plan = paper_plan(
         signal_close if entry_mid is None else entry_mid,
-        candidates[candidate_index]["direction"], **risk,
+        candidates[candidate_index]["direction"], symbol=scan.get("symbol"),
+        **risk,
     )
     result = replay_scanner_candidate(
         scan, quantity=plan["quantity"], entry_mid=plan["entry_mid"],
