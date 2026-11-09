@@ -7,8 +7,8 @@ import json
 from pathlib import Path
 
 from futures_engine.verified_strategy_scan import evaluate, to_strategy_candles
-from research.paper_independent_verifier import verify_saved_scan
 from research.paper_forward_once import run_from_connector_snapshot
+from research.paper_independent_verifier import verify_saved_scan
 
 SNAPSHOT = Path(__file__).parent / "fixtures" / "forward_connector_snapshot_20261109_2023utc.json"
 
