@@ -68,6 +68,8 @@ class State:
                         "status TEXT, entry_id TEXT, sl_id TEXT, tp_id TEXT)")
         self.db.execute("CREATE TABLE IF NOT EXISTS daily (day TEXT PRIMARY KEY, "
                         "opening_wallet TEXT NOT NULL)")
+        self.db.execute("CREATE TABLE IF NOT EXISTS daily_halts ("
+                        "day TEXT PRIMARY KEY, reason TEXT NOT NULL)")
 
     def mark_seen(self, symbol: str, candle_ms: int) -> bool:
         cursor = self.db.execute("INSERT OR IGNORE INTO seen VALUES (?, ?)",
@@ -92,7 +94,12 @@ class State:
         opening = decimal(self.db.execute(
             "SELECT opening_wallet FROM daily WHERE day=?", (day,)
         ).fetchone()[0])
+        if self.db.execute("SELECT 1 FROM daily_halts WHERE day=?", (day,)).fetchone():
+            raise SafetyError("Daily 5% loss circuit breaker latched until next UTC day")
         if min(wallet, equity) <= opening * (1 - MAX_DAILY_WALLET_DRAWDOWN):
+            self.db.execute("INSERT OR IGNORE INTO daily_halts VALUES (?, ?)",
+                            (day, "5% wallet/equity drawdown"))
+            LOG.critical("Daily 5%% loss cap breached; persisted halt day=%s", day)
             raise SafetyError("Daily 5% wallet/equity drawdown circuit breaker active")
 
 
@@ -221,10 +228,11 @@ def mark_price(ex, symbol: str) -> Decimal:
     mark = decimal(result["markPrice"])
     if mark <= 0:
         raise SafetyError("Invalid mark price")
-    if result.get("time") is not None:
-        server_ms = ex.fetch_time()
-        if server_ms is None or abs(int(server_ms) - int(result["time"])) > 10000:
-            raise SafetyError("Stale Binance mark price")
+    if result.get("time") is None:
+        raise SafetyError("Missing Binance mark price timestamp")
+    server_ms = ex.fetch_time()
+    if server_ms is None or abs(int(server_ms) - int(result["time"])) > 10000:
+        raise SafetyError("Stale Binance mark price")
     return mark
 
 
@@ -295,7 +303,9 @@ def entry_quantity(ex, symbol: str, wallet: Decimal, free: Decimal,
     notional_cap = margin * LEVERAGE
     if free < margin * D("1.02"):
         raise SafetyError("Not enough free margin for order and fee buffer")
-    qty = floor_step(notional_cap / mark, step)
+    # A conservative entry-price buffer reduces avoidable post-fill 5% cap
+    # breaches caused by market-order slippage. Final fill is rechecked.
+    qty = floor_step(notional_cap / (mark * D("1.005")), step)
     if qty < min_qty or qty > max_qty or qty * mark < min_notional:
         raise SafetyError("Order below Binance minimum or above maximum after rounding")
     if qty * mark > notional_cap:
@@ -369,19 +379,40 @@ def reconcile(ex, state: State, positions: dict):
             LOG.critical("Pending entry after restart; flattening %s", symbol)
             emergency_flatten(ex, symbol)
             cancel_owned_algos(ex, symbol)
-            state.clear_managed(symbol)
-            continue
-        actual_algos = own_algos(ex, symbol)
+            # Keep PENDING after flatten. A timed-out MARKET can fill later.
+            raise SafetyError(f"Unresolved pending MARKET entry: {symbol}; "
+                              "emergency flatten attempted; manual reconciliation required")
+        all_algos = open_algos(ex, symbol)
+        actual_algos = [a for a in all_algos
+                        if str(a.get("clientAlgoId", "")).startswith(ALGO_PREFIX)]
         actual_ids = {str(a["algoId"]) for a in actual_algos}
         expected_ids = {managed["sl_id"], managed["tp_id"]}
-        invalid_protection = any(
-            str(a.get("type", a.get("orderType", ""))) !=
-            ("STOP_MARKET" if str(a["algoId"]) == managed["sl_id"]
-             else "TAKE_PROFIT_MARKET")
-            or str(a.get("closePosition", "")).lower() != "true"
-            or a.get("workingType") != "MARK_PRICE"
-            or a.get("positionSide", "BOTH") != "BOTH"
-            for a in actual_algos
+        expected_side = "SELL" if pos["amount"] > 0 else "BUY"
+        direction = "LONG" if pos["amount"] > 0 else "SHORT"
+        _, _, _, tick, _ = market_filters(ex, symbol)
+        expected_stop, expected_take = protection_prices(pos["entry"], direction, tick)
+
+        def matches_expected_algo(a):
+            try:
+                order_id = str(a["algoId"])
+                is_stop = order_id == managed["sl_id"]
+                expected_kind = "STOP_MARKET" if is_stop else "TAKE_PROFIT_MARKET"
+                expected_trigger = expected_stop if is_stop else expected_take
+                return (
+                    str(a.get("type", a.get("orderType", ""))) == expected_kind
+                    and str(a.get("closePosition", "")).lower() == "true"
+                    and a.get("workingType") == "MARK_PRICE"
+                    and a.get("positionSide", "BOTH") == "BOTH"
+                    and a.get("side") == expected_side
+                    and decimal(a.get("triggerPrice", "0")) == expected_trigger
+                )
+            except (ValueError, ArithmeticError, TypeError, KeyError, SafetyError):
+                LOG.exception("Malformed Binance Algo protection: %s", symbol)
+                return False
+
+        invalid_protection = (
+            len(all_algos) != len(actual_algos)
+            or any(not matches_expected_algo(a) for a in actual_algos)
         )
         if actual_ids != expected_ids or invalid_protection:
             LOG.critical("Missing/extra protective Algo Order for %s: %s vs %s",
