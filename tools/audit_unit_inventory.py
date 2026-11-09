@@ -11,7 +11,7 @@ import subprocess
 from pathlib import Path
 
 PY_MODULE = re.compile(r"(?:^|\s)-m\s+([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)")
-PY_SCRIPT = re.compile(r"(?<![\w.])((?:/opt/signalpilot/|\./)?[\w./-]+\.py)\b")
+PY_SCRIPT = re.compile(r"(?<![\w.])((?:/opt/signalpilot/|\./)?[\w./-]+\.(?:py|sh))\b")
 
 
 def git_tracked_paths(repo):
@@ -24,7 +24,7 @@ def git_tracked_paths(repo):
 
 
 def entrypoint_paths(execstart_line):
-    """Best-effort Python entrypoint discovery (never return command secrets)."""
+    """Best-effort Python and shell entrypoint discovery (no command secrets)."""
     modules = [m.group(1) for m in PY_MODULE.finditer(execstart_line)]
     scripts = []
     for match in PY_SCRIPT.finditer(execstart_line):
