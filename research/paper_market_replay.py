@@ -24,6 +24,14 @@ def replay(payload: dict, database_path: str) -> dict:
         raise ValueError("missing replay input")
     if not isinstance(payload["bars"], list) or not payload["bars"]:
         raise ValueError("at least one candle required")
+    # Validate the complete series before any durable state is written.
+    # Duplicate, overlapping, or out-of-order bars must fail closed.
+    previous_close = -1
+    for item in payload["bars"]:
+        start, end = int(item["open_ms"]), int(item["close_ms"])
+        if start < 0 or start >= end or start <= previous_close:
+            raise ValueError("non-monotonic or overlapping paper candles")
+        previous_close = end
     store = DurablePaperOrders(database_path)
     uid = payload["signal_uid"]
     trade = store.open(uid, payload["side"], payload["quantity"],
