@@ -124,8 +124,8 @@ def test_installed_dropin_cannot_silently_pass_reproducibility(tmp_path):
     dropin = tmp_path / (name + ".d")
     dropin.mkdir()
     (dropin / "override.conf").write_text(
-        "[Service]\\nExecStart=\\nExecStart=/usr/bin/python3 -m missing.module "
-        "--token secret-fixture\\n")
+        "[Service]\nExecStart=\nExecStart=/usr/bin/python3 -m missing.module "
+        "--token secret-fixture\n")
     result = AUDIT.audit_service_units(tmp_path, tracked, [name])
     assert result["units_with_gaps"] == 1
     assert result["services"][0]["dropins_present"] is True
