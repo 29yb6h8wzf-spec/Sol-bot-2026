@@ -1,0 +1,51 @@
+name: Quant MR 15m Offline Safety CI
+
+on:
+  pull_request:
+    paths:
+      - "research/quant_mr/**"
+      - ".github/workflows/quant-mr-offline-ci.yml"
+  push:
+    branches:
+      - "research/quant-mr-15m-20261109"
+    paths:
+      - "research/quant_mr/**"
+      - ".github/workflows/quant-mr-offline-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  offline-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: research/quant_mr
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned-range CCXT and pytest
+        run: python -m pip install -r requirements.txt
+      - name: Verify exact Binance USD-M CCXT private Algo methods exist
+        run: |
+          python - <<'PY'
+          import ccxt
+          ex = ccxt.binanceusdm({"enableRateLimit": True})
+          for method in (
+              "fapiPrivatePostMarginType",
+              "fapiPrivatePostLeverage",
+              "fapiPrivatePostAlgoOrder",
+              "fapiPrivateGetOpenAlgoOrders",
+              "fapiPrivateDeleteAlgoOrder",
+          ):
+              assert callable(getattr(ex, method, None)), method
+          print("CCXT", ccxt.__version__, "USD-M method signatures present; NO API CALLS")
+          ex.close()
+          PY
+      - name: Compile
+        run: python -m compileall -q signalpilot_quant_mr.py backtest_signalpilot_quant_mr.py
+      - name: Offline safety, failure recovery and portfolio backtest tests
+        run: python -m pytest -q test_signalpilot_quant_mr.py test_quant_mr_safety_integration.py test_backtest_signalpilot_quant_mr.py
