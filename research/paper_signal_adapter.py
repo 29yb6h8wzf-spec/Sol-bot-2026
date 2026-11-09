@@ -37,6 +37,19 @@ def replay_scanner_candidate(scan, *, quantity, entry_mid, stop, target,
             or verification.get("score") != candidate.get("score")
             or not str(verification.get("signal_id", "")).startswith("research-")):
         raise ValueError("unverified research candidate")
+    # Match the verifier's deterministic signal identity. This detects
+    # altered candidate fields, but is NOT proof that a strategy ran:
+    # full independent verification still requires historical 5m/4h data.
+    digest_input = {
+        "symbol": scan["symbol"], "strategy": candidate["strategy"],
+        "direction": candidate["direction"], "score": candidate["score"],
+        "candle_ms": scan["closed_5m_candle_ms"],
+    }
+    expected_id = "research-" + hashlib.sha256(
+        json.dumps(digest_input, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()[:32]
+    if verification["signal_id"] != expected_id:
+        raise ValueError("research signal identity mismatch")
     side = candidate.get("direction")
     if side not in ("LONG", "SHORT"):
         raise ValueError("invalid candidate direction")
