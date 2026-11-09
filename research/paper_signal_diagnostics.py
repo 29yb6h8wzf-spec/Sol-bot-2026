@@ -9,6 +9,7 @@ from itertools import pairwise
 from pathlib import Path
 
 from futures_engine.verified_strategy_scan import to_strategy_candles
+from research.paper_filter_audit import audit_filters
 from strategies import candidates
 
 THRESHOLDS = (70, 75, 80, 85)
@@ -37,12 +38,15 @@ def diagnose_snapshot(payload):
                 raise ValueError("stale, unclosed, or noncontiguous market candles")
         if not five[-1][0] + 300000 <= observed < five[-1][0] + 600000:
             raise ValueError("snapshot outside forward signal window")
-        setups, indicators = candidates(
-            to_strategy_candles(five), to_strategy_candles(four),
-        )
+        five_candles = to_strategy_candles(five)
+        four_candles = to_strategy_candles(four)
+        setups, indicators = candidates(five_candles, four_candles)
+        filters = audit_filters(five_candles, four_candles)
         reports.append({
             "symbol": symbol, "signal_candle_ms": five[-1][0],
             "indicators": indicators,
+            "filter_audit": filters,
+            "filter_pass_count": sum(row["passed"] for row in filters),
             "max_setup_score": max((s["score"] for s in setups), default=None),
             "raw_setup_count": len(setups),
             "counts_by_threshold": {
