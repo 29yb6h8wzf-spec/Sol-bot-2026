@@ -4,6 +4,7 @@ The scanner signal is not synthesized. If there is no verified candidate, fail.
 No network, exchange access, or production writes.
 """
 import argparse
+from itertools import pairwise
 import json
 from pathlib import Path
 
@@ -25,7 +26,7 @@ def replay_saved_scan(scan, candles, *, database_path, candidate_index=0):
     # replay: the first replay candle must immediately follow the signal.
     if future[0]["open_ms"] != signal_ms + 300000:
         raise ValueError("gap after signal candle")
-    for previous, current in zip(future, future[1:]):
+    for previous, current in pairwise(future):
         if current["open_ms"] != previous["open_ms"] + 300000:
             raise ValueError("gap in future candle series")
     return replay_sized_candidate(
