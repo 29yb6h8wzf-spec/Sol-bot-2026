@@ -21,7 +21,7 @@ def replay_scanner_candidate(scan, *, quantity, entry_mid, stop, target,
         raise ValueError("no eligible scanner candidate")
     candidate = candidates[candidate_index]
     if not isinstance(candidate.get("verification"), dict):
-        raise ValueError("missing candidate verification")
+        raise TypeError("missing candidate verification")
     if type(candidate.get("score")) is not int or candidate["score"] < 85:
         raise ValueError("score below scanner threshold")
     side = candidate.get("direction")
