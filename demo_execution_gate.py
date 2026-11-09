@@ -8,6 +8,7 @@ import sqlite3
 import time
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from verified_signal_identity import verified_event_key
 
 SYMBOLS = frozenset({"SOL/USDT:USDT", "XRP/USDT:USDT"})
 MAX_LEVERAGE = 2
@@ -110,7 +111,11 @@ def validate(signal, verified, route, plan, account, *, now=None):
     estimated_loss = qty * (abs(entry - stop) + entry * FEE_SLIPPAGE_RESERVE)
     if estimated_loss > MAX_RISK_USDT:
         raise DemoGateBlocked("trade_risk_exceeded")
-    return {"signal_id": sid, "symbol": symbol, "direction": side,
+    try:
+        event_key = verified_event_key(verified)
+    except (ValueError, KeyError, TypeError):
+        raise DemoGateBlocked("invalid_verified_event_identity") from None
+    return {"signal_id": sid, "event_key": event_key, "symbol": symbol, "direction": side,
             "quantity": str(qty), "entry": str(entry), "stop": str(stop),
             "target": str(target), "notional": str(notional),
             "estimated_loss_with_buffer": str(estimated_loss),
@@ -126,7 +131,7 @@ def reserve(db_path, signal, verified, route, plan, account, *, now=None):
     with sqlite3.connect(str(path), timeout=5, isolation_level=None) as db:
         db.execute("PRAGMA busy_timeout=5000")
         db.execute("""CREATE TABLE IF NOT EXISTS demo_execution_reservations (
-            signal_id TEXT PRIMARY KEY, state TEXT NOT NULL,
+            signal_id TEXT PRIMARY KEY, event_key TEXT NOT NULL UNIQUE, state TEXT NOT NULL,
             intent_json TEXT NOT NULL, created_at INTEGER NOT NULL)""")
         db.execute("BEGIN IMMEDIATE")
         existing = db.execute("SELECT state FROM demo_execution_reservations WHERE signal_id=?",
@@ -134,8 +139,13 @@ def reserve(db_path, signal, verified, route, plan, account, *, now=None):
         if existing:
             db.execute("ROLLBACK")
             raise DemoGateBlocked("already_reserved_" + existing[0])
-        db.execute("INSERT INTO demo_execution_reservations VALUES (?,?,?,?)",
-                   (intent["signal_id"], "RESERVED_NO_ORDERS",
+        duplicate_event = db.execute("SELECT signal_id FROM demo_execution_reservations WHERE event_key=?",
+                                     (intent["event_key"],)).fetchone()
+        if duplicate_event:
+            db.execute("ROLLBACK")
+            raise DemoGateBlocked("verified_event_already_reserved")
+        db.execute("INSERT INTO demo_execution_reservations VALUES (?,?,?,?,?)",
+                   (intent["signal_id"], intent["event_key"], "RESERVED_NO_ORDERS",
                     json.dumps(intent, sort_keys=True), int(time.time())))
         db.execute("COMMIT")
     return intent
