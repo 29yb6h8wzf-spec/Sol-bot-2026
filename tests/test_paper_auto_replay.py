@@ -42,9 +42,9 @@ def scan():
 def candles():
     return [
         {"open_ms": 1700000100000, "close_ms": 1700000399999,
-         "high": "101", "low": "99", "close": "100", "confirmed_closed": True},
+         "open": "100", "high": "101", "low": "99", "close": "100", "confirmed_closed": True},
         {"open_ms": 1700000400000, "close_ms": 1700000699999,
-         "high": "103", "low": "99", "close": "102", "confirmed_closed": True},
+         "open": "102", "high": "103", "low": "99", "close": "102", "confirmed_closed": True},
     ]
 
 
@@ -52,6 +52,8 @@ def test_auto_replay_sized_paper_trade(tmp_path):
     with patch("research.paper_auto_replay.verify_saved_scan"):
         result = replay_saved_scan(scan(), candles(), database_path=str(tmp_path / "paper.db"), five_history=[{}], four_history=[{}])
     assert result["trade"]["status"] == "EXECUTED_SL"
+    assert result["paper_plan"]["entry_mid"] == "102"
+    assert result["trade"]["entry"] == "102.0204"
     assert result["paper_plan"]["paper_only"] is True
     assert result["provenance"]["live_authorized"] is False
 
