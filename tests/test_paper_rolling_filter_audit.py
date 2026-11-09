@@ -46,9 +46,11 @@ def test_rolling_audit_does_not_look_ahead_at_later_5m_or_4h_bars():
         data["five"], data["four"], symbol=data["symbol"],
         asof_ms=data["asof_ms"],
     )
+    cutoff = data["five"][199][0] + 300000
+    closed_four = [row for row in data["four"] if row[0] + 14400000 <= cutoff]
     truncated = rolling_filter_report(
-        data["five"][:200], data["four"], symbol=data["symbol"],
-        asof_ms=data["five"][199][0] + 300000,
+        data["five"][:200], closed_four, symbol=data["symbol"],
+        asof_ms=cutoff,
     )
     assert truncated["scans"] == full["scans"][:len(truncated["scans"])]
     assert truncated["counts"]["scans"] == len(truncated["scans"])
