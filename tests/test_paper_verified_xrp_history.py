@@ -11,6 +11,7 @@ import pytest
 from futures_engine.verified_strategy_scan import evaluate, to_strategy_candles
 from research.paper_auto_replay import replay_saved_scan
 from research.paper_independent_verifier import verify_saved_scan
+from research.paper_snapshot_replay import run_snapshot
 
 FIXTURE = Path(__file__).parent / "fixtures" / "xrpusdt_verified_20261109.json"
 
@@ -86,3 +87,17 @@ def test_real_xrp_history_rejects_mismatched_4h_candle(tmp_path):
     four[-1]["time"] -= 14400000
     with pytest.raises(ValueError, match="history does not match"):
         verify_saved_scan(scan, five, four)
+
+
+def test_next_candle_open_gap_changes_paper_entry_without_rewriting_signal(tmp_path):
+    data = _data()
+    signal_close = data["five"][-1][4]
+    data["future"][0][1] = "1.0940"  # synthetic fill-gap scenario; not historical price
+    assert signal_close != data["future"][0][1]
+    result = run_snapshot(data, database_path=str(tmp_path / "gap-paper.sqlite3"))
+    assert result["status"] == "HISTORICAL_PAPER_REPLAY"
+    assert result["score"] == 90
+    assert result["risk_plan"]["entry_mid"] == "1.0940"
+    assert Decimal(result["trade"]["entry"]) != Decimal(signal_close)
+    assert Decimal(result["trade"]["net_pnl"]) >= Decimal("-1.50")
+    assert result["orders_sent"] is False
