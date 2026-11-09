@@ -94,8 +94,10 @@ def run_once(*, snapshot_dir, database_path, symbols=SYMBOLS,
         snapshot_dir=snapshot_dir, database_path=database_path,
         loader=loader, now_ms=observed,
     )
+    blocked = captures and all(item["status"] == "BLOCKED" for item in captures)
     return {
-        "status": "RESEARCH_PAPER_ONLY", "captures": captures,
+        "status": "BLOCKED_MARKET_DATA" if blocked else "RESEARCH_PAPER_ONLY",
+        "captures": captures,
         "followups": followups, "orders_sent": False,
         "live_authorized": False,
     }
