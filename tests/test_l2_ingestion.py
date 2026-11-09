@@ -57,3 +57,37 @@ def test_ingestion_rejects_interval_mismatch():
     writer = ResearchWriter(FakeStore(), ResearchConfig(sample_interval_ms=100))
     with pytest.raises(ValueError, match="interval mismatch"):
         ResearchIngestor(writer, StoragePlan(6, 10000, 96, 1024, 512 * 1024 * 1024))
+
+
+def test_six_streams_share_bounded_writer_without_cross_sampling():
+    async def scenario():
+        store = FakeStore()
+        writer = ResearchWriter(store, ResearchConfig(sample_interval_ms=10000, queue_size=12))
+        ingestor = ResearchIngestor(
+            writer, StoragePlan(6, 10000, 96, 1024, 512 * 1024 * 1024)
+        )
+        writer.start()
+        for venue in ("binance", "bybit", "okx"):
+            for asset in ("SOL", "XRP"):
+                event = message(venue)
+                event["asset"] = asset
+                assert ingestor.ingest(event, 100000)
+                assert not ingestor.ingest(event, 105000)
+        await writer.shutdown()
+        assert len(store.snapshots) == 6
+        assert ingestor.accepted == 6
+        assert ingestor.sampled_out == 6
+        assert writer.dropped_snapshots == 0
+
+    asyncio.run(scenario())
+
+
+def test_saturated_queue_counts_snapshot_drops():
+    store = FakeStore()
+    writer = ResearchWriter(store, ResearchConfig(sample_interval_ms=10000, queue_size=1))
+    ingestor = ResearchIngestor(
+        writer, StoragePlan(6, 10000, 96, 1024, 512 * 1024 * 1024)
+    )
+    assert ingestor.ingest(message("okx"), 100000)
+    assert not ingestor.ingest(message("bybit"), 100000)
+    assert writer.dropped_snapshots == 1
