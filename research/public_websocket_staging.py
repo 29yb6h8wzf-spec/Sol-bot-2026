@@ -51,7 +51,7 @@ async def watch(name, url, subscription, deadline, stats):
                     try:
                         message = await asyncio.wait_for(ws.recv(), timeout=min(30, remaining))
                     except TimeoutError:
-                        if remaining <= 0:
+                        if time.monotonic() >= deadline:
                             break
                         raise
                     data = json.loads(message)
