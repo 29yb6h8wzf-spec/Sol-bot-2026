@@ -5,6 +5,7 @@ Only closed candles from a previously captured authorized market snapshot.
 """
 import argparse
 import json
+from itertools import pairwise
 from pathlib import Path
 
 from futures_engine.verified_strategy_scan import to_strategy_candles
@@ -32,7 +33,7 @@ def diagnose_snapshot(payload):
                     or any(type(b[0]) is not int for b in bars)
                     or any(b[0] + duration > observed for b in bars)
                     or any(b[0] + duration != a[0]
-                           for b, a in zip(bars, bars[1:]))):
+                           for b, a in pairwise(bars))):
                 raise ValueError("stale, unclosed, or noncontiguous market candles")
         if not five[-1][0] + 300000 <= observed < five[-1][0] + 600000:
             raise ValueError("snapshot outside forward signal window")
