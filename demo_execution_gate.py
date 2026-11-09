@@ -53,6 +53,11 @@ def validate(signal, verified, route, plan, account, *, now=None):
     timestamp = signal.get("timestamp")
     if type(timestamp) is not int or not 0 <= now - timestamp <= MAX_SIGNAL_AGE_SECONDS:
         raise DemoGateBlocked("stale_signal")
+    proof = verified.get("verification")
+    if (not isinstance(proof, dict) or proof.get("status") != "RECALCULATED_RESEARCH_CANDIDATE"
+            or proof.get("score_verified_independently") is not True
+            or proof.get("execution_authorized") is not False):
+        raise DemoGateBlocked("independent_proof_required")
     if verified.get("source") != "verified_85_score_engine":
         raise DemoGateBlocked("unverified_source")
     score = verified.get("score")
@@ -60,13 +65,13 @@ def validate(signal, verified, route, plan, account, *, now=None):
         raise DemoGateBlocked("unverified_score")
     symbol = verified.get("symbol")
     side = verified.get("direction")
-    if symbol not in SYMBOLS or side not in ("LONG", "SHORT"):
+    if symbol not in SYMBOLS or side not in ("long", "short"):
         raise DemoGateBlocked("unsupported_market_or_side")
-    if plan.get("symbol") != symbol or plan.get("direction") != side:
+    if plan.get("symbol") != symbol or plan.get("side") != side:
         raise DemoGateBlocked("plan_mismatch")
     if route.get("status") != "DEMO_ELIGIBLE_NOT_SUBMITTED":
         raise DemoGateBlocked("router_not_eligible")
-    if plan.get("status") != "PLANNED_ONLY":
+    if plan.get("status") != "INDICATIVE_PLAN_ONLY_NOT_EXECUTABLE" or plan.get("orders_sent") is not False:
         raise DemoGateBlocked("plan_not_ready")
     if account.get("endpoint") != "https://demo-fapi.binance.com":
         raise DemoGateBlocked("not_demo_endpoint")
@@ -91,9 +96,9 @@ def validate(signal, verified, route, plan, account, *, now=None):
     min_notional = dec(account.get("min_notional_usdt"), "min_notional")
     if min(qty, entry, stop, target, min_notional) <= 0:
         raise DemoGateBlocked("invalid_order_values")
-    if side == "LONG" and not stop < entry < target:
+    if side == "long" and not stop < entry < target:
         raise DemoGateBlocked("invalid_long_bracket")
-    if side == "SHORT" and not target < entry < stop:
+    if side == "short" and not target < entry < stop:
         raise DemoGateBlocked("invalid_short_bracket")
     notional = qty * entry
     if notional < min_notional:
