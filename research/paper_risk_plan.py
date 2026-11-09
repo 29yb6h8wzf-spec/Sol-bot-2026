@@ -4,7 +4,10 @@ This is a deterministic simulation helper, not a live trading approval.
 """
 from decimal import ROUND_DOWN, ROUND_UP, Decimal
 
-from research.paper_exchange_rules import check_paper_exchange_plan, research_exchange_rules
+from research.paper_exchange_rules import (
+    check_paper_exchange_plan,
+    research_exchange_rules,
+)
 from research.paper_order_manager import PaperOrderManager
 from research.paper_signal_adapter import replay_scanner_candidate
 
@@ -16,9 +19,9 @@ def paper_plan(entry_mid, side, *, capital="150", leverage="2",
                reward_multiple="2", quantity_step=None, symbol=None):
     price, equity, lev, risk = map(D, (entry_mid, capital, leverage, risk_usd))
     rules = research_exchange_rules(symbol) if symbol is not None else None
-    if rules is not None and quantity_step is not None:
-        if D(str(quantity_step)) != D(rules["step_size"]):
-            raise ValueError("quantity step conflicts with exchange rules")
+    if (rules is not None and quantity_step is not None
+            and D(str(quantity_step)) != D(rules["step_size"])):
+        raise ValueError("quantity step conflicts with exchange rules")
     resolved_step = (rules["step_size"] if rules is not None
                      else "0.001" if quantity_step is None else quantity_step)
     distance, reward, step = map(D, (stop_fraction, reward_multiple, resolved_step))
