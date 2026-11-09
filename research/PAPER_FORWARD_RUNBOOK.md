@@ -23,6 +23,25 @@ closed 5m candles. The command exits after one pass. A separate scheduler
 could invoke it every 5 minutes **only after deployment approval**. Keep
 snapshot files and SQLite DB on persistent isolated storage before scheduling.
 
+## Authorized connector file import (offline, no Binance network)
+
+An authorized source can export the exact public USDT-M OHLCV into a JSON
+file with `schema_version: 1`, `captured_at_ms`, and both SOL/XRP items
+containing `symbol`, `five`, and `four` arrays. Then run:
+
+```bash
+python -m research.paper_forward_once \\
+  --market-data-file tests/fixtures/forward_connector_snapshot_20261109_2023utc.json \\
+  --snapshot-dir /tmp/signalpilot-forward-snapshots \\
+  --db /tmp/signalpilot-forward-paper.sqlite3
+```
+
+The checked-in file is a historical **example**, not a live feed. To monitor
+forward, a separately authorized integration must deliver a **new** captured
+snapshot every 5 minutes and persist the same snapshot directory and SQLite
+DB across invocations. Do not treat a timestamp supplied inside a JSON file
+as independently verified proof of when it was captured.
+
 ## Safety and evidence boundaries
 
 - Scan and verification run on the same exact closed candle histories.
