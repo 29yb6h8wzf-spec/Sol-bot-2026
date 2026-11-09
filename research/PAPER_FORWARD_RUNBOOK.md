@@ -43,6 +43,19 @@ snapshot files and SQLite DB on persistent isolated storage before scheduling.
 - A historical fixture test is not a live forward trade. No profitability
   claim follows from a successful historical replay.
 
+## Public data access finding (2026-11-09)
+
+The GitHub-hosted runner attempted a read-only public SOL/XRP scan and
+received **Binance HTTP 451 (restricted location)** for both symbols.
+It produced no live scanner snapshots or Paper orders. The scheduled/network
+smoke job was removed after this evidence; do not proxy or evade restrictions.
+The read-only Binance connector supplied a separately captured SOL/XRP closed-
+candle snapshot at 20:23:20 UTC, committed at 20:23:22 UTC, before the next
+5m candle closed at 20:25 UTC. The offline scanner test evaluates that saved
+input without network. This is a captured data snapshot, **not** a running
+forward scanner or an automatically executed Paper trade. The data connector
+is not integrated into the isolated scheduler.
+
 ## Tests
 
 ```bash
