@@ -2,7 +2,7 @@
 
 This is a deterministic simulation helper, not a live trading approval.
 """
-from decimal import Decimal, ROUND_DOWN
+from decimal import ROUND_DOWN, Decimal
 
 from research.paper_signal_adapter import replay_scanner_candidate
 
