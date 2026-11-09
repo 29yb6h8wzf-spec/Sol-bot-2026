@@ -103,15 +103,33 @@ def capture(sol, xrp, provenance, reconciliation, risk, *, now=None):
     # Do not reset the UTC daily loss counter; preserve full-day PnL.
     if day_pnl != amount(risk.get("account_wide_realized_net_usdt")):
         raise EpochBlocked("income_monitor_disagrees")
+    legacy_orders = provenance.get("orders")
+    if (not isinstance(legacy_orders, list) or
+            len(legacy_orders) != provenance.get("unique_orders") or
+            any(not isinstance(row, dict) or not isinstance(row.get("order_fingerprint"), str)
+                or not row.get("order_fingerprint") or
+                type(row.get("fill_count")) is not int or row["fill_count"] < 1
+                for row in legacy_orders)):
+        raise EpochBlocked("legacy_order_evidence_missing")
+    fingerprints = [row["order_fingerprint"] for row in legacy_orders]
+    if len(set(fingerprints)) != len(fingerprints):
+        raise EpochBlocked("duplicate_legacy_order_fingerprint")
     historical = {
         "classification": "UNATTRIBUTED_PRE_EPOCH_NOT_SIGNALPILOT",
         "fill_count": unknown,
+        "total_fills": provenance["total_fills"],
+        "verified_fills": provenance["verified_signalpilot_fills"],
+        "verified_realized_pnl_usdt": str(amount(provenance.get("verified_realized_pnl_usdt"))),
+        "verified_commissions_usdt": str(amount(provenance.get("verified_commissions_usdt"))),
+        "orders": legacy_orders,
         "order_classifications": provenance.get("order_classifications"),
         "unattributed_history_unresolved": reconciliation.get("unattributed_history_unresolved"),
         "legacy_income_gap_usdt": reconciliation.get("account_realized_gap_usdt"),
         "legacy_commission_gap_usdt": reconciliation.get("account_commission_gap_usdt"),
         "legacy_funding_unattributed_usdt": reconciliation.get("account_funding_unattributed_usdt"),
     }
+    if sum(row["fill_count"] for row in legacy_orders) != provenance["total_fills"]:
+        raise EpochBlocked("legacy_order_fill_count_mismatch")
     if not isinstance(historical["order_classifications"], dict):
         raise EpochBlocked("legacy_classifications_missing")
     epoch = {
