@@ -37,7 +37,7 @@ def capture_scan(symbol, *, output_dir, loader=None, now_ms=None):
     five = observed.get("5m")
     four = observed.get("4h")
     if not isinstance(five, list) or not isinstance(four, list):
-        raise ValueError("missing scanner candle history")
+        raise TypeError("missing scanner candle history")
     for index in range(len(scan["candidates_85_plus"])):
         verify_saved_scan(
             scan, to_strategy_candles(five), to_strategy_candles(four),
