@@ -1,7 +1,7 @@
 name: L2 Research CI
 on:
   pull_request:
-    branches: [main]
+    branches: [main, research/l2-ci-gate-20261109]
   workflow_dispatch:
 
 permissions:
@@ -18,8 +18,8 @@ jobs:
       - name: Install test tools
         run: python -m pip install pytest pytest-asyncio ruff
       - name: Compile L2 helpers
-        run: python -m py_compile research/l2_validation.py research/core_engine_v3_8.py research/core_engine_v3_9.py research/ensemble_lab.py research/l2_adapters.py research/l2_capacity.py research/l2_ingestion.py tests/test_l2_validation.py tests/test_l2_async.py tests/test_l2_v39.py tests/test_ensemble_lab.py tests/test_l2_adapters.py tests/test_l2_capacity.py tests/test_l2_ingestion.py
+        run: python -m py_compile research/l2_validation.py research/core_engine_v3_8.py research/core_engine_v3_9.py research/ensemble_lab.py research/l2_adapters.py research/l2_capacity.py research/l2_ingestion.py tests/test_l2_validation.py tests/test_l2_async.py tests/test_l2_v39.py tests/test_ensemble_lab.py tests/test_l2_adapters.py tests/test_l2_capacity.py tests/test_l2_ingestion.py tests/test_l2_staging_gate.py
       - name: Lint L2 helpers
-        run: ruff check research/l2_validation.py research/core_engine_v3_8.py research/core_engine_v3_9.py research/ensemble_lab.py research/l2_adapters.py research/l2_capacity.py research/l2_ingestion.py tests/test_l2_validation.py tests/test_l2_async.py tests/test_l2_v39.py tests/test_ensemble_lab.py tests/test_l2_adapters.py tests/test_l2_capacity.py tests/test_l2_ingestion.py
+        run: ruff check research/l2_validation.py research/core_engine_v3_8.py research/core_engine_v3_9.py research/ensemble_lab.py research/l2_adapters.py research/l2_capacity.py research/l2_ingestion.py tests/test_l2_validation.py tests/test_l2_async.py tests/test_l2_v39.py tests/test_ensemble_lab.py tests/test_l2_adapters.py tests/test_l2_capacity.py tests/test_l2_ingestion.py tests/test_l2_staging_gate.py
       - name: Offline unit tests
-        run: python -m pytest -q tests/test_l2_validation.py tests/test_l2_async.py tests/test_l2_v39.py tests/test_ensemble_lab.py tests/test_l2_adapters.py tests/test_l2_capacity.py tests/test_l2_ingestion.py
+        run: python -m pytest -q tests/test_l2_validation.py tests/test_l2_async.py tests/test_l2_v39.py tests/test_ensemble_lab.py tests/test_l2_adapters.py tests/test_l2_capacity.py tests/test_l2_ingestion.py tests/test_l2_staging_gate.py
