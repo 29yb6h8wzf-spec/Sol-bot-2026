@@ -66,8 +66,9 @@ def replay_saved_scan(scan, candles, *, database_path, candidate_index=0,
             raise ValueError("gap in future candle series")
     return replay_sized_candidate(
         scan, signal_close=signal_close, entry_mid=next_open,
-        future_bars=future,
+        future_bars=entry_bars,
         database_path=database_path, candidate_index=candidate_index,
+        entry_open_ms=entry_open_ms,
     )
 
 
