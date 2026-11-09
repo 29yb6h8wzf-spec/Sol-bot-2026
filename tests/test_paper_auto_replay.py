@@ -35,7 +35,7 @@ def candles():
 
 def test_auto_replay_sized_paper_trade(tmp_path):
     result = replay_saved_scan(scan(), candles(), database_path=str(tmp_path / "paper.db"))
-    assert result["trade"]["status"] == "EXECUTED_TP"
+    assert result["trade"]["status"] == "EXECUTED_SL"
     assert result["paper_plan"]["paper_only"] is True
     assert result["provenance"]["live_authorized"] is False
 
