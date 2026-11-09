@@ -14,7 +14,8 @@ from research.paper_risk_plan import replay_sized_candidate
 
 
 def replay_saved_scan(scan, candles, *, database_path, candidate_index=0,
-                      five_history=None, four_history=None):
+                      five_history=None, four_history=None,
+                      entry_open_ms=None):
     if five_history is None or four_history is None:
         raise ValueError("independent 5m and 4h history required")
     verify_saved_scan(
@@ -36,9 +37,18 @@ def replay_saved_scan(scan, candles, *, database_path, candidate_index=0,
     # replay: the first replay candle must immediately follow the signal.
     if future[0]["open_ms"] != signal_ms + 300000:
         raise ValueError("gap after signal candle")
-    # The entry is the OPEN of the first candle after the verified signal.
+    # Keep the entire future series contiguous, even if entry is delayed.
+    if entry_open_ms is None:
+        entry_open_ms = signal_ms + 300000
+    if (type(entry_open_ms) is not int or entry_open_ms < signal_ms + 300000
+            or entry_open_ms % 300000):
+        raise ValueError("invalid entry candle timestamp")
+    entry_bars = [b for b in future if b["open_ms"] >= entry_open_ms]
+    if not entry_bars or entry_bars[0]["open_ms"] != entry_open_ms:
+        raise ValueError("entry candle not yet closed or missing")
+    # The entry is the OPEN of the first eligible candle after capture.
     # Using the signal CLOSE assumes an unavailable fill and hides price gaps.
-    first = future[0]
+    first = entry_bars[0]
     if first.get("confirmed_closed") is not True:
         raise ValueError("entry candle must be confirmed closed")
     if "open" not in first:
