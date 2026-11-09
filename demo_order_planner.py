@@ -5,7 +5,7 @@ exchange prices, margin, fees, account PnL and risk must be revalidated.
 """
 from decimal import Decimal as D, ROUND_DOWN, ROUND_UP
 
-SYMBOLS = frozenset(("BTC/USDT:USDT", "ETH/USDT:USDT",
+MAX_MARGIN_FRACTION = D("0.05")\n\nSYMBOLS = frozenset(("BTC/USDT:USDT", "ETH/USDT:USDT",
                      "SOL/USDT:USDT", "XRP/USDT:USDT"))
 
 
@@ -79,10 +79,10 @@ def plan(verified, bars, *, tick, step, min_qty, min_cost, now_ms,
     if risk_per_unit <= 0:
         raise ValueError("zero_stop_distance")
     quantity = rounded(min(max_risk / risk_per_unit,
-                           capital * D(leverage) / entry), step, ROUND_DOWN)
+                           capital * MAX_MARGIN_FRACTION * D(leverage) / entry), step, ROUND_DOWN)
     if quantity <= 0 or quantity < min_qty or quantity * entry < min_cost:
         raise ValueError("below_exchange_minimum")
-    if quantity * risk_per_unit > max_risk or quantity * entry > capital * D(leverage):
+    if quantity * risk_per_unit > max_risk or quantity * entry > capital * MAX_MARGIN_FRACTION * D(leverage):
         raise ValueError("risk_cap_exceeded")
     return {
         "symbol": verified["symbol"], "side": side,
