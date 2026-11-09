@@ -21,9 +21,19 @@ def replay_captured_bundle(bundle, future, *, database_path,
     scan = bundle["scan"]
     five, four = bundle["five"], bundle["four"]
     signal_ms = scan["closed_5m_candle_ms"]
+    captured = bundle.get("captured_at_ms")
+    if (type(captured) is not int
+            or not signal_ms + 300000 <= captured < signal_ms + 600000):
+        raise ValueError("missing valid forward capture timestamp")
+    # A scan recorded after the next candle opened cannot legitimately fill
+    # at that opening price. Wait for the following candle instead.
+    entry_open_ms = (signal_ms + 300000 if captured == signal_ms + 300000
+                     else signal_ms + 600000)
     if not isinstance(future, list) or not future:
         raise ValueError("future closed candles required")
     now = int(time.time() * 1000) if observed_at_ms is None else observed_at_ms
+    if now < captured:
+        raise ValueError("future observation precedes signal capture")
     previous = signal_ms
     paper_bars = [{
         "open_ms": five[-1][0], "close_ms": five[-1][0] + 299999,
@@ -54,6 +64,7 @@ def replay_captured_bundle(bundle, future, *, database_path,
         candidate_index=candidate_index,
         five_history=to_strategy_candles(five),
         four_history=to_strategy_candles(four),
+        entry_open_ms=entry_open_ms,
     )
     return {
         "status": "OFFLINE_PAPER_REPLAY", "symbol": bundle["symbol"],
