@@ -33,3 +33,27 @@ def test_rejects_duplicate_overlap_or_reversal_before_db_write(tmp_path, second_
 def test_valid_chronology_executes_paper_target(tmp_path):
     result = replay(payload(), str(tmp_path / "valid.sqlite3"))
     assert result["trade"]["status"] == "EXECUTED_TP"
+
+
+@pytest.mark.parametrize("field,value,reason", [
+    ("confirmed_closed", False, "unconfirmed"),
+    ("high", "NaN", "invalid paper OHLC"),
+    ("low", "0", "invalid paper OHLC"),
+    ("close", "200", "invalid paper OHLC"),
+])
+def test_rejects_late_malformed_candle_before_opening_trade(tmp_path, field, value, reason):
+    case = payload()
+    case["bars"][1][field] = value
+    db = tmp_path / "no-phantom-paper.sqlite3"
+    with pytest.raises(ValueError, match=reason):
+        replay(case, str(db))
+    assert not db.exists()
+
+
+def test_rejects_pre_entry_bar_before_sqlite_write(tmp_path):
+    case = payload()
+    case["opened_at"] += 300
+    db = tmp_path / "pre-entry.sqlite3"
+    with pytest.raises(ValueError, match="precedes trade entry"):
+        replay(case, str(db))
+    assert not db.exists()
