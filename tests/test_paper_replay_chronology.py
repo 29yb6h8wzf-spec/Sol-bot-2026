@@ -1,6 +1,4 @@
 """Replay refuses malformed chronology before creating a durable trade."""
-import sqlite3
-
 import pytest
 
 from research.paper_market_replay import replay
