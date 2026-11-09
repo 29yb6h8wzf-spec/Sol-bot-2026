@@ -103,14 +103,57 @@ def run_once(*, snapshot_dir, database_path, symbols=SYMBOLS,
     }
 
 
+def run_from_connector_snapshot(payload, *, snapshot_dir, database_path):
+    """Ingest an externally supplied public candle snapshot without network."""
+    if payload.get("schema_version") != 1:
+        raise ValueError("invalid connector snapshot schema")
+    observed = payload.get("captured_at_ms")
+    items = payload.get("items")
+    if type(observed) is not int or not isinstance(items, list):
+        raise ValueError("invalid connector snapshot")
+    if len(items) != len(SYMBOLS):
+        raise ValueError("both monitoring symbols required")
+    by_symbol = {}
+    for item in items:
+        symbol = item.get("symbol")
+        if symbol not in SYMBOLS or symbol in by_symbol:
+            raise ValueError("unexpected or duplicate connector symbol")
+        if not isinstance(item.get("five"), list) or not isinstance(item.get("four"), list):
+            raise TypeError("missing connector OHLCV")
+        by_symbol[symbol] = item
+    if set(by_symbol) != set(SYMBOLS):
+        raise ValueError("missing monitoring symbol")
+
+    class _OfflineExchange:
+        def close(self):
+            pass
+
+    def loader(symbol, timeframe):
+        if symbol not in by_symbol or timeframe not in ("5m", "4h"):
+            raise ValueError("unexpected market request")
+        rows = by_symbol[symbol]["five" if timeframe == "5m" else "four"]
+        return _OfflineExchange(), {}, rows
+
+    return run_once(
+        snapshot_dir=snapshot_dir, database_path=database_path,
+        loader=loader, now_ms=observed,
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description="One-shot read-only forward Paper monitor")
     parser.add_argument("--snapshot-dir", type=Path, required=True)
     parser.add_argument("--db", required=True)
+    parser.add_argument("--market-data-file", type=Path)
     args = parser.parse_args()
-    print(json.dumps(run_once(
-        snapshot_dir=args.snapshot_dir, database_path=args.db,
-    ), sort_keys=True))
+    if args.market_data_file is not None:
+        payload = json.loads(args.market_data_file.read_text(encoding="utf-8"))
+        result = run_from_connector_snapshot(
+            payload, snapshot_dir=args.snapshot_dir, database_path=args.db,
+        )
+    else:
+        result = run_once(snapshot_dir=args.snapshot_dir, database_path=args.db)
+    print(json.dumps(result, sort_keys=True))
 
 
 if __name__ == "__main__":
