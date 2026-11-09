@@ -10,7 +10,7 @@ from research.paper_risk_plan import paper_plan
 def test_plan_respects_risk_and_leverage(side):
     p = paper_plan("100", side)
     assert Decimal(p["estimated_risk_usd"]) <= Decimal("1.50")
-    assert Decimal(p["estimated_notional"]) <= Decimal("300")
+    assert Decimal(p["estimated_notional"]) <= Decimal(300)
     if side == "LONG":
         assert Decimal(p["stop"]) < 100 < Decimal(p["target"])
     else:
