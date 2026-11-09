@@ -4,6 +4,7 @@ This is a deterministic simulation helper, not a live trading approval.
 """
 from decimal import ROUND_DOWN, Decimal
 
+from research.paper_order_manager import PaperOrderManager
 from research.paper_signal_adapter import replay_scanner_candidate
 
 D = Decimal
@@ -20,21 +21,26 @@ def paper_plan(entry_mid, side, *, capital="150", leverage="2",
             0 < risk <= D("1.50") and 0 < distance <= D("0.02") and
             reward > 0 and step > 0):
         raise ValueError("paper risk limits exceeded")
-    # Risk budget includes estimated round-trip taker fees and slippage.
-    cost_fraction = D("0.0014")
-    unit_risk = price * (distance + cost_fraction)
-    max_qty = min(risk / unit_risk, equity * lev / price)
-    quantity = (max_qty / step).to_integral_value(rounding=ROUND_DOWN) * step
-    if quantity <= 0:
-        raise ValueError("paper quantity below step size")
     sign = D(1) if side == "LONG" else D(-1)
     stop = price * (1 - sign * distance)
     target = price * (1 + sign * distance * reward)
+    # Use the SAME fee/slippage arithmetic as PaperOrderManager, not a
+    # rounded friction approximation. A stop must never exceed risk_usd.
+    friction = PaperOrderManager()
+    entry_fill = price * (1 + sign * friction.slippage)
+    stop_fill = stop * (1 - sign * friction.slippage)
+    unit_risk = sign * (entry_fill - stop_fill) + friction.fee * (entry_fill + stop_fill)
+    if unit_risk <= 0:
+        raise ValueError("invalid stop risk")
+    max_qty = min(risk / unit_risk, equity * lev / entry_fill)
+    quantity = (max_qty / step).to_integral_value(rounding=ROUND_DOWN) * step
+    if quantity <= 0:
+        raise ValueError("paper quantity below step size")
     return {
         "entry_mid": str(price), "quantity": str(quantity),
         "stop": str(stop), "target": str(target),
         "estimated_risk_usd": str(quantity * unit_risk),
-        "estimated_notional": str(quantity * price),
+        "estimated_notional": str(quantity * entry_fill),
         "paper_only": True,
     }
 
