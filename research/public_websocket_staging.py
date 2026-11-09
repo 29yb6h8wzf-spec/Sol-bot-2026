@@ -29,7 +29,7 @@ def extract(name, data):
     if name.startswith("bybit") and data.get("topic", "").startswith("orderbook."):
         book = data["data"]
         return float(book["b"][0][0]), float(book["a"][0][0])
-    if name.startswith("okx") and data.get("arg", {}).get("channel") == "books5":
+    if name.startswith("okx") and data.get("arg", {}).get("channel") == "books5" and data.get("data"):
         book = data["data"][0]
         return float(book["bids"][0][0]), float(book["asks"][0][0])
     return None
@@ -88,8 +88,9 @@ async def main():
     with open("staging-results/public-websocket-720s.json", "w", encoding="utf-8") as out:
         json.dump(report, out, indent=2)
     print(json.dumps(report, indent=2))
-    if sum(x["valid_books"] for x in report["streams"].values()) == 0:
-        raise RuntimeError("No valid public websocket books received")
+    missing = [name for name, item in report["streams"].items() if item["valid_books"] == 0]
+    if missing:
+        raise RuntimeError("No valid public websocket books for: " + ", ".join(missing))
     if report["duration_seconds"] < DURATION_SECONDS:
         raise RuntimeError("Staging stopped early")
 
