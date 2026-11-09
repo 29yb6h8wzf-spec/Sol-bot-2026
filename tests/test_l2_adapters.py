@@ -81,6 +81,7 @@ class FakeExchange:
     def __init__(self):
         self.id = "fake"
         self.closed = False
+        self.close_count = 0
         self.markets = {"SOL/USDT:USDT": {
             "base": "SOL", "quote": "USDT", "swap": True, "linear": True,
             "symbol": "SOL/USDT:USDT",
@@ -96,6 +97,7 @@ class FakeExchange:
         return {"bids": [[100, 1]], "asks": [[101, 1]]}
 
     async def close(self):
+        self.close_count += 1
         self.closed = True
 
 
@@ -108,4 +110,16 @@ def test_ccxt_source_streams_and_closes():
         assert msg["symbol"] == "SOL/USDT:USDT"
         await gen.aclose()
         assert exch.closed
+    asyncio.run(scenario())
+
+
+def test_ccxt_shutdown_does_not_double_close():
+    async def scenario():
+        exch = FakeExchange()
+        source = CcxtOrderBookSource(lambda: exch, "SOL", venue="fake")
+        gen = source.watch()
+        await anext(gen)
+        await source.close()
+        await gen.aclose()
+        assert exch.close_count == 1
     asyncio.run(scenario())
