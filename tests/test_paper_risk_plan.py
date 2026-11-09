@@ -3,6 +3,7 @@ from decimal import Decimal
 
 import pytest
 
+from research.paper_order_manager import PaperOrderManager
 from research.paper_risk_plan import paper_plan
 
 
@@ -29,3 +30,20 @@ def test_plan_rejects_unsafe_inputs(kwargs):
 def test_plan_rejects_unfillable_quantity():
     with pytest.raises(ValueError, match="below step"):
         paper_plan("100", "LONG", quantity_step="1000")
+
+
+@pytest.mark.parametrize("side", ["LONG", "SHORT"])
+def test_exact_paper_stop_including_fees_and_slippage_never_exceeds_risk(side):
+    plan = paper_plan("1.0932", side)
+    manager = PaperOrderManager()
+    manager.open(
+        "risk-cap", side, plan["quantity"], plan["entry_mid"],
+        plan["stop"], plan["target"], 0,
+    )
+    price = Decimal(plan["entry_mid"])
+    stop = Decimal(plan["stop"])
+    high, low = (price, stop) if side == "LONG" else (stop, price)
+    finished = manager.update("risk-cap", high, low, stop, 300)
+    assert finished.status == "EXECUTED_SL"
+    assert Decimal("-1.50") <= finished.net_pnl <= 0
+    assert -finished.net_pnl == Decimal(plan["estimated_risk_usd"])
