@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 from dataclasses import replace
 from signals_v3.dynamic_universe import UniverseObservation
+from signals_v3.historical_universe_replay import replay_universe
 from signals_v3.historical_universe_gate import load_snapshots,verify_decision_snapshot,COLUMNS
 
 class HistoricalUniverseGateTests(unittest.TestCase):
@@ -38,6 +39,22 @@ class HistoricalUniverseGateTests(unittest.TestCase):
                 obs=replace(self.obs,last_price_usd=price)
                 r=verify_decision_snapshot([obs],self.now,["ADAUSDT"])
                 self.assertEqual(bool(r["eligible_symbols"]),eligible)
+    def test_replay_market_enters_price_band(self):
+        early=replace(self.obs,last_price_usd=0.98)
+        later=replace(self.obs,observed_at_ms=self.now+60_000,last_price_usd=1.00)
+        result=replay_universe([
+            {"decision_ms":self.now,"observations":[early],"expected_symbols":["ADAUSDT"]},
+            {"decision_ms":self.now+60_000,"observations":[later],"expected_symbols":["ADAUSDT"]},
+        ])
+        self.assertEqual(result[0]["eligible_symbols"],())
+        self.assertEqual(result[1]["eligible_symbols"],("ADAUSDT",))
+    def test_replay_missing_period_rejected(self):
+        with self.assertRaisesRegex(ValueError,"missing_historical_evidence"):
+            replay_universe([{"decision_ms":self.now}])
+    def test_replay_out_of_order_rejected(self):
+        item={"decision_ms":self.now,"observations":[self.obs],"expected_symbols":["ADAUSDT"]}
+        with self.assertRaisesRegex(ValueError,"nonmonotonic_decision_times"):
+            replay_universe([item,item])
     def test_csv_roundtrip(self):
         with tempfile.TemporaryDirectory() as directory:
             p=Path(directory)/"snap.csv"
