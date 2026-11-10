@@ -11,7 +11,7 @@ class CurrentCandidateDiscoveryTests(unittest.TestCase):
         ]
     def fetch(self,path,params=None):
         if path.endswith("exchangeInfo"):
-            return {"symbols":self.markets}
+            return {"symbols":[dict(m,filters=[{"filterType":"MIN_NOTIONAL","notional":"5"}]) for m in self.markets]}
         if path.endswith("ticker/price"):
             return [{"symbol":"ADAUSDT","price":"0.99"},{"symbol":"SOLUSDT","price":"150"},{"symbol":"BTCUSDT","price":"90000"},{"symbol":"OLDUSDT","price":"2"}]
         if path.endswith("ticker/24hr"):
