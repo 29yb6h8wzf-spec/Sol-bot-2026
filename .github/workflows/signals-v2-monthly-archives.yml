@@ -1,0 +1,29 @@
+name: Signals V2 monthly archive acquisition
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - 'signals_v2/download_24m.py'
+      - '.github/workflows/signals-v2-monthly-archives.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-archive-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download October 2026 SOL XRP candles and funding
+        run: python signals_v2/download_24m.py --start 2026-10 --end 2026-10 --output research_data/monthly
+      - name: Upload ZIPs and manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-v2-monthly-public-archive-smoke
+          path: research_data/monthly/
+          if-no-files-found: warn
+          retention-days: 7
