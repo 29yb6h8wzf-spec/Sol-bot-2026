@@ -34,3 +34,44 @@ if __name__=="__main__":
     result=summarize(json.loads(Path(a.audit).read_text()))
     Path(a.output).write_text(json.dumps(result,indent=2)+"\n")
     print(json.dumps({k:result[k] for k in ("total","verified","blocked","coverage_percent","dynamic_backtest_ready")}))
+
+
+def audit_expected_archive_grid(audit, symbols, months, intervals=("1m","5m","fundingRate")):
+    """Fail closed on missing, duplicate or unexpected archive keys.
+
+    This audits the planned OHLCV/funding grid only; it cannot prove historical
+    listings, spread or order-book depth and never authorizes a backtest.
+    """
+    from itertools import product
+    rows=audit.get("records")
+    if not isinstance(rows,list):
+        raise ValueError("missing_audit_records")
+    dimensions=(tuple(symbols),tuple(months),tuple(intervals))
+    if any(not values or len(set(values))!=len(values) or
+           any(not isinstance(v,str) or not v for v in values) for values in dimensions):
+        raise ValueError("invalid_expected_archive_grid")
+    expected=set(product(*dimensions))
+    observed={}
+    duplicates=set()
+    unexpected=set()
+    for row in rows:
+        if not isinstance(row,dict):
+            raise ValueError("invalid_archive_audit_record")
+        key=(row.get("symbol"),row.get("month"),row.get("interval"))
+        if key not in expected:
+            unexpected.add(key)
+            continue
+        if key in observed:
+            duplicates.add(key)
+        observed[key]=row.get("verified") is True
+    missing=expected-observed.keys()
+    unverified={key for key,verified in observed.items() if not verified}
+    complete=not (missing or duplicates or unexpected or unverified)
+    return {"expected_count":len(expected),"observed_unique_count":len(observed),
+            "verified_unique_count":sum(observed.values()),
+            "missing":sorted(missing),"duplicate":sorted(duplicates),
+            "unexpected":sorted(unexpected),"unverified":sorted(unverified),
+            "archive_grid_complete":complete,
+            "historical_universe_verified":False,
+            "historical_depth_verified":False,
+            "dynamic_backtest_ready":False}
