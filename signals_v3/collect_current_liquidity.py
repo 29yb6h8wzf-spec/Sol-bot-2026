@@ -35,7 +35,9 @@ def snapshot_symbol(symbol,fetch=public_json,clock_ms=lambda:int(time.time()*100
     price=float(ticker["lastPrice"])
     if price<=0:
         raise ValueError("invalid_last_price")
-    if not book.get("bids") or not book.get("asks"):\n        raise ValueError("empty_order_book")\n    bid=float(book["bids"][0][0]);ask=float(book["asks"][0][0])
+    if not book.get("bids") or not book.get("asks"):
+        raise ValueError("empty_order_book")
+    bid=float(book["bids"][0][0]);ask=float(book["asks"][0][0])
     if bid<=0 or ask<=0 or bid>ask:
         raise ValueError("invalid_best_quotes")
     mid=(bid+ask)/2
@@ -67,7 +69,8 @@ def main():
     result=snapshot_symbol(args.symbol)
     path=Path(args.output)
     path.parent.mkdir(parents=True,exist_ok=True)
-    path.write_text(json.dumps(result,indent=2)+"\n")
+    path.write_text(json.dumps(result,indent=2)+"
+")
     print(json.dumps({"symbol":args.symbol,"current_only":True,"output":str(path)}))
 
 if __name__=="__main__":
