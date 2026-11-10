@@ -46,6 +46,9 @@ class VerifiedReplayTests(unittest.TestCase):
             decisions=[{"decision_ms":1500,"expected_symbols":["SOLUSDT"],"observations":[obs]}]
             result=replay_verified_historical_universe(decisions,[1500],path)
             self.assertEqual(result[0]["eligible_symbols"],("SOLUSDT",))
+            (root/"historical_orderbook.csv").write_bytes(b"tampered after signing")
+            with self.assertRaisesRegex(ValueError,"historical_artifact_checksum_mismatch"):
+                replay_verified_historical_universe(decisions,[1500],path)
             with self.assertRaisesRegex(ValueError,"historical_evidence_outside_coverage"):
                 replay_verified_historical_universe(decisions,[2500],path)
 
