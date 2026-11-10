@@ -19,4 +19,4 @@ jobs:
         with:
           python-version: '3.11'
       - name: Run guarded replay and historical exclusion unit tests
-        run: PYTHONPATH=. python -m unittest -v signals_v2.test_guarded_replay signals_v2.test_backtest_exclusion_gate
+        run: PYTHONPATH=.:signals_v2 python -m unittest -v signals_v2.test_guarded_replay signals_v2.test_backtest_exclusion_gate
