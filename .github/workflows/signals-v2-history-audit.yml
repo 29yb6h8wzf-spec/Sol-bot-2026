@@ -6,6 +6,7 @@ on:
       - research/signals-v2-core-20261110
     paths:
       - 'signals_v2/download_history.py'
+      - 'signals_v2/download_archive.py'
       - 'signals_v2/audit_history.py'
       - '.github/workflows/signals-v2-history-audit.yml'
 permissions:
