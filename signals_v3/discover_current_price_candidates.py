@@ -21,7 +21,9 @@ def discover_current_price_candidates(fetch=public_json):
             price=float(item["price"])
         except (KeyError,TypeError,ValueError):
             raise ValueError("invalid_price_ticker")
-        if not isfinite(price) or price<=0:\n            raise ValueError("invalid_price_ticker")\n        if symbol in prices:
+        if not isfinite(price) or price<=0:
+            raise ValueError("invalid_price_ticker")
+        if symbol in prices:
             raise ValueError("duplicate_price_ticker")
         prices[symbol]=price
     candidates=[]
