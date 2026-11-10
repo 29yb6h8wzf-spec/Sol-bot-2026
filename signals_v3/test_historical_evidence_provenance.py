@@ -34,6 +34,18 @@ class HistoricalEvidenceProvenanceTests(unittest.TestCase):
         self.manifest["evidence_artifacts"]=[{"role":"historical_orderbook","path":"missing.csv","sha256":"0"*64}]
         with self.assertRaisesRegex(ValueError,"historical_artifact_missing_or_unsafe"):
             self.check(self.manifest)
+    def test_symlink_artifact_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            payload=b"archived-book"
+            (root/"real.csv").write_bytes(payload)
+            (root/"alias.csv").symlink_to(root/"real.csv")
+            manifest=dict(self.manifest)
+            manifest["evidence_artifacts"]=[{"role":"historical_orderbook","path":"alias.csv","sha256":hashlib.sha256(payload).hexdigest()}]
+            p=root/"manifest.json"
+            p.write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError,"historical_artifact_missing_or_unsafe"):
+                verify_historical_evidence_manifest(p,1500)
     def test_absolute_artifact_path_rejected(self):
         self.manifest["evidence_artifacts"]=[{"role":"historical_orderbook","path":"/tmp/other.csv","sha256":"0"*64}]
         with self.assertRaisesRegex(ValueError,"historical_artifact_missing_or_unsafe"):
