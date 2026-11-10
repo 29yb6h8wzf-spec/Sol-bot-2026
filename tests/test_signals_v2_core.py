@@ -138,7 +138,10 @@ def test_no_lookahead_from_future_candles():
 
 
 def test_structure_rejects_missing_bar():
-    bars = structure_bars()
+    bars = structure_bars() + (
+        Candle(BASE + 8 * FIVE_MINUTES_MS, 10, 11, 9, 10, 5,
+               BASE + 9 * FIVE_MINUTES_MS),
+    )
     broken = bars[:5] + bars[6:]
     with pytest.raises(DataRejected, match="missing_or_duplicate"):
         structure(broken)
