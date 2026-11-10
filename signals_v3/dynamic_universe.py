@@ -32,6 +32,17 @@ class UniverseThresholds:
     available_notional_usd:float=75.0
 
 def eligibility(obs:UniverseObservation,decision_ms:int,limits:UniverseThresholds=UniverseThresholds()):
+    # Untrusted historical/provider data must fail closed rather than crash a replay.
+    if not isinstance(obs,UniverseObservation):
+        return False,"invalid_market_data"
+    if any(type(v) is not int for v in (decision_ms,obs.observed_at_ms)) or decision_ms<0 or obs.observed_at_ms<0:
+        return False,"invalid_market_data"
+    if any(type(v) not in (int,float) for v in (
+        obs.last_price_usd,obs.quote_volume_24h_usd,obs.spread_bps,
+        obs.bid_depth_10bps_usd,obs.ask_depth_10bps_usd,obs.min_notional_usd)):
+        return False,"invalid_market_data"
+    if not isinstance(obs.symbol,str) or not isinstance(obs.quote_asset,str) or not isinstance(obs.status,str) or not isinstance(obs.contract_type,str):
+        return False,"invalid_market_data"
     if obs.observed_at_ms>decision_ms or decision_ms-obs.observed_at_ms>limits.max_observation_age_ms:
         return False,"missing_point_in_time_evidence"
     if not obs.symbol.endswith("USDT") or obs.quote_asset!="USDT" or obs.status!="TRADING" or obs.contract_type!="PERPETUAL":
