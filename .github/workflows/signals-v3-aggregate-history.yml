@@ -22,7 +22,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p research_data/v3reports
-          gh run download 42809833881 --repo "${{ github.repository }}" --pattern 'signals-v3-24m-*' --dir research_data/v3reports
+          gh run download 42856413197 --repo "${{ github.repository }}" --pattern 'signals-v3-24m-*' --dir research_data/v3reports
       - name: Aggregate and validate full history
         run: PYTHONPATH=. python -m signals_v3.aggregate_history research_data/v3reports research_data/v3_24m_aggregate.json
       - name: Upload research-only aggregate
