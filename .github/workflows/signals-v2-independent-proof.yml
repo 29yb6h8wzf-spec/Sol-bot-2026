@@ -1,0 +1,52 @@
+name: Signals V2 independent 144 archive proof
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - '.github/workflows/signals-v2-independent-proof.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download existing 24-month source archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p research_data/monthly research_data/shards
+          gh run download 42788507430 --repo "${{ github.repository }}" --pattern 'signals-v2-20*' --dir research_data/shards
+          find research_data/shards -type f -name '*.zip' -exec cp -n '{}' research_data/monthly/ ';'
+          test "$(find research_data/monthly -maxdepth 1 -name '*.zip' | wc -l)" -eq 144
+      - name: Independently restore missing daily data
+        run: |
+          python signals_v2/repair_oct28.py --source research_data/monthly --output research_data/repaired
+          test "$(find research_data/repaired -maxdepth 1 -name '*-2026-10.zip' | wc -l)" -eq 4
+          cp research_data/repaired/*-2026-10.zip research_data/monthly/
+      - name: Prove 144 of 144 and publish machine-readable evidence
+        run: |
+          python signals_v2/audit_monthly_archives.py research_data/monthly
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('research_data/monthly/integrity_report.json')
+          r=json.loads(p.read_text())
+          assert r['status']=='PASS' and r['archives_verified']==144 and not r['errors'],r['errors']
+          print('ARCHIVE_PROOF: 144/144 PASS')
+          PY
+      - name: Upload evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-v2-independent-144-proof
+          path: |
+            research_data/monthly/integrity_report.json
+            research_data/repaired/repair_receipts.json
+          if-no-files-found: warn
