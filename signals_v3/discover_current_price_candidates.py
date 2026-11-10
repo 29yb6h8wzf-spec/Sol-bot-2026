@@ -3,6 +3,7 @@
 Price filtering is a discovery prefilter only, not proof of liquidity eligibility.
 No historical reconstruction, orders, or deployment.
 """
+from math import isfinite
 from signals_v3.collect_current_liquidity import public_json, snapshot_symbol
 from signals_v3.dynamic_universe import MIN_PRICE_USD, MAX_PRICE_USD
 
@@ -20,14 +21,18 @@ def discover_current_price_candidates(fetch=public_json):
             price=float(item["price"])
         except (KeyError,TypeError,ValueError):
             raise ValueError("invalid_price_ticker")
-        if symbol in prices:
+        if not isfinite(price) or price<=0:\n            raise ValueError("invalid_price_ticker")\n        if symbol in prices:
             raise ValueError("duplicate_price_ticker")
         prices[symbol]=price
     candidates=[]
+    listed=set()
     for market in info["symbols"]:
         if market.get("quoteAsset")!="USDT" or market.get("contractType")!="PERPETUAL" or market.get("status")!="TRADING":
             continue
         symbol=market["symbol"]
+        if symbol in listed:
+            raise ValueError("duplicate_market_listing")
+        listed.add(symbol)
         if symbol not in prices:
             raise ValueError("missing_price_ticker")
         if MIN_PRICE_USD<=prices[symbol]<=MAX_PRICE_USD:
