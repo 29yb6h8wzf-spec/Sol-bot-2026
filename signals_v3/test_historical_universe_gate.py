@@ -25,6 +25,16 @@ class HistoricalUniverseGateTests(unittest.TestCase):
         obs=replace(self.obs,observed_at_ms=self.now+1)
         r=verify_decision_snapshot([obs],self.now,["ADAUSDT"])
         self.assertEqual(r["eligible_symbols"],())
+    def test_stale_snapshot_cannot_qualify(self):
+        obs=replace(self.obs,observed_at_ms=self.now-60_001)
+        r=verify_decision_snapshot([obs],self.now,["ADAUSDT"])
+        self.assertEqual(r["eligible_symbols"],())
+    def test_price_boundaries(self):
+        for price,eligible in ((0.98,False),(0.99,True),(150.0,True),(150.01,False)):
+            with self.subTest(price=price):
+                obs=replace(self.obs,last_price_usd=price)
+                r=verify_decision_snapshot([obs],self.now,["ADAUSDT"])
+                self.assertEqual(bool(r["eligible_symbols"]),eligible)
     def test_csv_roundtrip(self):
         with tempfile.TemporaryDirectory() as directory:
             p=Path(directory)/"snap.csv"
