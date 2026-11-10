@@ -28,6 +28,7 @@ def verify_historical_evidence_manifest(path,decision_ms):
     if not isinstance(artifacts,list) or not artifacts:
         raise ValueError("missing_verifiable_historical_artifacts")
     verified_roles=set()
+    seen_paths=set()
     root=Path(path).resolve().parent
     for item in artifacts:
         if not isinstance(item,dict) or item.get("role") not in ("point_in_time_listings","historical_orderbook"):
@@ -46,8 +47,13 @@ def verify_historical_evidence_manifest(path,decision_ms):
         if any(part.is_symlink() for part in (unresolved, *unresolved.parents) if part!=root and part.is_relative_to(root)):
             raise ValueError("historical_artifact_missing_or_unsafe")
         target=unresolved.resolve()
+        if target in seen_paths:
+            raise ValueError("duplicate_historical_artifact_path")
+        seen_paths.add(target)
         if not target.is_relative_to(root) or not target.is_file():
             raise ValueError("historical_artifact_missing_or_unsafe")
+        if target.stat().st_size == 0:
+            raise ValueError("empty_historical_artifact")
         hasher=hashlib.sha256()
         with target.open('rb') as source:
             for chunk in iter(lambda: source.read(1024*1024), b''):
