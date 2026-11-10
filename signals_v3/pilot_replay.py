@@ -10,8 +10,22 @@ from signals_v2.contracts import DataRejected,MarketSnapshot
 from signals_v2.hybrid import Hypothesis
 from signals_v2.guarded_replay import guarded_replay
 from signals_v2.backtest_exclusion_gate import load_manifest,eligible
-from signals_v2.pilot_replay import candles
-from signals_v2.enumerate_all_mismatches import iter_rows
+import csv,io,zipfile
+from signals_v2.contracts import Candle
+
+def iter_rows(path):
+    with zipfile.ZipFile(path) as archive:
+        names=[n for n in archive.namelist() if n.endswith('.csv')]
+        if len(names)!=1 or archive.testzip() is not None:
+            raise DataRejected('invalid_archive')
+        with archive.open(names[0]) as handle:
+            for row in csv.reader(io.TextIOWrapper(handle,encoding='utf-8-sig')):
+                if row and row[0].strip().isdigit():
+                    raw=int(row[0]);yield (raw//1000 if raw>=100000000000000 else raw),row
+
+def candles(path,duration):
+    return [Candle(t,*(float(v) for v in row[1:6]),t+duration)
+            for t,row in iter_rows(path)]
 from signals_v3.router import candidates
 
 def replay_hypothesis(signal):
