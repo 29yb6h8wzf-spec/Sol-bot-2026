@@ -18,9 +18,9 @@ def verify_historical_evidence_manifest(path,decision_ms):
         raise ValueError("invalid_decision_timestamp")
     start=manifest.get("coverage_start_ms")
     end=manifest.get("coverage_end_ms")
-    if any(not isinstance(v,int) or isinstance(v,bool) for v in (start,end)) or start>end or not start<=decision_ms<=end:
+    if any(not isinstance(v,int) or isinstance(v,bool) for v in (start,end)) or start<0 or end<0 or start>end or not start<=decision_ms<=end:
         raise ValueError("historical_evidence_outside_coverage")
-    if not manifest.get("source_reference") or not isinstance(manifest["source_reference"],str):
+    if not isinstance(manifest.get("source_reference"),str) or not manifest["source_reference"].strip():
         raise ValueError("missing_historical_evidence_source_reference")
     if manifest.get("point_in_time_listings_verified") is not True or manifest.get("spread_and_depth_verified") is not True:
         raise ValueError("incomplete_historical_evidence")
@@ -41,7 +41,7 @@ def verify_historical_evidence_manifest(path,decision_ms):
             int(digest,16)
         except ValueError as exc:
             raise ValueError("invalid_historical_artifact_reference") from exc
-        if Path(relative).is_absolute() or Path(relative).parts[0] in (".", "..") or ".." in Path(relative).parts:
+        if Path(relative).is_absolute() or not Path(relative).parts or Path(relative).parts[0] in (".", "..") or ".." in Path(relative).parts:
             raise ValueError("historical_artifact_missing_or_unsafe")
         unresolved=root/relative
         if any(part.is_symlink() for part in (unresolved, *unresolved.parents) if part!=root and part.is_relative_to(root)):
@@ -64,5 +64,5 @@ def verify_historical_evidence_manifest(path,decision_ms):
         verified_roles.add(item["role"])
     if verified_roles!={"point_in_time_listings","historical_orderbook"}:
         raise ValueError("incomplete_historical_artifact_roles")
-    return {"decision_ms":decision_ms,"historical_evidence_verified":True,
+    # Checksums prove byte integrity only, not provider authenticity or complete market coverage.\n    return {"decision_ms":decision_ms,"historical_evidence_verified":True,\n            "provider_authenticity_verified":False,"historical_market_coverage_verified":False,
             "source_type":manifest["source_type"],"artifact_count":len(artifacts)}
