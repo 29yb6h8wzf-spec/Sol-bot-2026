@@ -9,21 +9,29 @@ on:
 permissions:
   contents: read
 jobs:
-  public-archive-smoke:
+  public-archive-history:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        period:
+          - { start: '2024-11', end: '2025-04' }
+          - { start: '2025-05', end: '2025-10' }
+          - { start: '2025-11', end: '2026-04' }
+          - { start: '2026-05', end: '2026-10' }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Download October 2026 SOL XRP candles and funding
-        run: python signals_v2/download_24m.py --start 2026-10 --end 2026-10 --output research_data/monthly
-      - name: Upload ZIPs and manifest
+      - name: Download 6 months of SOL XRP 1m 5m funding archives
+        run: python signals_v2/download_24m.py --start ${{ matrix.period.start }} --end ${{ matrix.period.end }} --output research_data/monthly
+      - name: Upload ZIPs and checksum manifest
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: signals-v2-monthly-public-archive-smoke
+          name: signals-v2-${{ matrix.period.start }}-to-${{ matrix.period.end }}
           path: research_data/monthly/
           if-no-files-found: warn
           retention-days: 7
