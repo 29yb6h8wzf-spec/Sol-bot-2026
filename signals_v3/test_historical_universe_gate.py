@@ -56,6 +56,17 @@ class HistoricalUniverseGateTests(unittest.TestCase):
         ])
         self.assertEqual(result[1]["listed_added"],("SOLUSDT",))
         self.assertEqual(result[1]["listed_removed"],("ADAUSDT",))
+    def test_replay_explicit_schedule_rejects_gap(self):
+        item={"decision_ms":self.now,"observations":[self.obs],"expected_symbols":["ADAUSDT"]}
+        with self.assertRaisesRegex(ValueError,"incomplete_historical_decision_schedule"):
+            replay_universe([item],expected_decision_times=[self.now,self.now+60_000])
+    def test_replay_explicit_schedule_accepts_complete_series(self):
+        later=replace(self.obs,observed_at_ms=self.now+60_000)
+        result=replay_universe([
+            {"decision_ms":self.now,"observations":[self.obs],"expected_symbols":["ADAUSDT"]},
+            {"decision_ms":self.now+60_000,"observations":[later],"expected_symbols":["ADAUSDT"]},
+        ],expected_decision_times=[self.now,self.now+60_000])
+        self.assertEqual(len(result),2)
     def test_replay_missing_period_rejected(self):
         with self.assertRaisesRegex(ValueError,"missing_historical_evidence"):
             replay_universe([{"decision_ms":self.now}])
