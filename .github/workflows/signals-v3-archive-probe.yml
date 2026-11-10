@@ -32,6 +32,10 @@ jobs:
       - name: Compare actual 1m and 5m OHLCV
         run: |
           PYTHONPATH=. python -m signals_v3.audit_timeframes research_data/v3_probe/plan.json --root research_data/v3_probe/archives --output research_data/v3_probe/timeframe_consistency.json
+            research_data/v3_probe/funding_audit.json
+      - name: Audit historical funding archives
+        run: |
+          PYTHONPATH=. python -m signals_v3.audit_funding_batch research_data/v3_probe/plan.json --root research_data/v3_probe/archives --output research_data/v3_probe/funding_audit.json
       - name: Preserve evidence (no ZIP redistribution)
         if: always()
         uses: actions/upload-artifact@v4
