@@ -29,6 +29,9 @@ jobs:
       - name: Audit strict candle continuity
         run: |
           PYTHONPATH=. python -m signals_v3.audit_kline_continuity research_data/v3_probe/plan.json --root research_data/v3_probe/archives --output research_data/v3_probe/kline_continuity.json
+      - name: Compare actual 1m and 5m OHLCV
+        run: |
+          PYTHONPATH=. python -m signals_v3.audit_timeframes research_data/v3_probe/plan.json --root research_data/v3_probe/archives --output research_data/v3_probe/timeframe_consistency.json
       - name: Preserve evidence (no ZIP redistribution)
         if: always()
         uses: actions/upload-artifact@v4
@@ -40,4 +43,5 @@ jobs:
             research_data/v3_probe/archive_audit.json
             research_data/v3_probe/archive_coverage.json
             research_data/v3_probe/kline_continuity.json
+            research_data/v3_probe/timeframe_consistency.json
           if-no-files-found: warn
