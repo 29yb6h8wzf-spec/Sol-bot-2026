@@ -1,6 +1,11 @@
 name: SignalPilot V3 public market one-shot probe
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - research/signals-v2-core-20261110
+    paths:
+      - .github/workflows/signals-v3-public-market-probe.yml
 permissions:
   contents: read
 jobs:
