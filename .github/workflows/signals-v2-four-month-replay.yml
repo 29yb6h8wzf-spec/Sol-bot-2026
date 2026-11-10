@@ -1,0 +1,44 @@
+name: Signals V2 four-month replay replication
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - '.github/workflows/signals-v2-four-month-replay.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  monthly-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        month: ['2026-06','2026-07','2026-08','2026-09']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Retrieve official market data and full mismatch manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MONTH: ${{ matrix.month }}
+        run: |
+          mkdir -p research_data/pilot research_data/shards
+          gh run download 42788507430 --repo "${{ github.repository }}" --pattern 'signals-v2-20*' --dir research_data/shards
+          find research_data/shards -type f -name "*-${MONTH}.zip" -exec cp -n '{}' research_data/pilot/ ';'
+          test "$(find research_data/pilot -maxdepth 1 -name "*-${MONTH}.zip" | wc -l)" -eq 6
+          gh run download 42794564196 --repo "${{ github.repository }}" --name signals-v2-all-ohlcv-mismatches --dir research_data/pilot
+      - name: Replay independent calendar month
+        env:
+          MONTH: ${{ matrix.month }}
+        run: PYTHONPATH=.:signals_v2 python -m signals_v2.pilot_replay research_data/pilot research_data/pilot/all_ohlcv_mismatches.json --month "$MONTH" --stride 12
+      - name: Save each month independently
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-v2-replay-${{ matrix.month }}
+          path: research_data/pilot/pilot_replay_report.json
+          if-no-files-found: warn
