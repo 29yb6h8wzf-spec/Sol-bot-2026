@@ -1,7 +1,7 @@
 """Malformed historical universe provider payloads must never pass eligibility."""
 import unittest
 from dataclasses import replace
-from signals_v3.dynamic_universe import UniverseObservation, eligibility
+from signals_v3.dynamic_universe import UniverseObservation, eligibility, select_universe
 
 class MalformedUniverseTests(unittest.TestCase):
     def setUp(self):
@@ -21,6 +21,12 @@ class MalformedUniverseTests(unittest.TestCase):
             with self.subTest(observed=observed,decision=decision):
                 self.assertEqual(eligibility(replace(self.obs,observed_at_ms=observed),decision),
                                  (False,"invalid_market_data"))
+    def test_duplicate_snapshot_symbols_rejected(self):
+        with self.assertRaisesRegex(ValueError,"duplicate_universe_observation"):
+            select_universe((self.obs,self.obs),1000)
+    def test_malformed_snapshot_identity_rejected(self):
+        with self.assertRaisesRegex(ValueError,"invalid_universe_observation_identity"):
+            select_universe((replace(self.obs,symbol=None),),1000)
     def test_invalid_identity_fail_closed(self):
         self.assertEqual(eligibility(replace(self.obs,symbol=None),1000),
                          (False,"invalid_market_data"))
