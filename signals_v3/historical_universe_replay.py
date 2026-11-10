@@ -52,3 +52,22 @@ def replay_complete_universe(decisions, expected_decision_times):
     if expected_decision_times is None:
         raise ValueError("missing_expected_decision_schedule")
     return replay_universe(decisions, expected_decision_times)
+
+
+def replay_verified_historical_universe(decisions, expected_decision_times, evidence_manifest_path):
+    """Require independently hashed historical listing and order-book artifacts.
+
+    A complete observation grid alone is not proof that observations are historical.
+    Validate provenance at every requested decision timestamp before replay.
+    """
+    from signals_v3.historical_evidence_provenance import verify_historical_evidence_manifest
+    if expected_decision_times is None:
+        raise ValueError("missing_expected_decision_schedule")
+    schedule=tuple(expected_decision_times)
+    if not schedule:
+        raise ValueError("invalid_expected_decision_schedule")
+    if not evidence_manifest_path:
+        raise ValueError("missing_historical_evidence_manifest")
+    for timestamp in schedule:
+        verify_historical_evidence_manifest(evidence_manifest_path,timestamp)
+    return replay_complete_universe(decisions,schedule)
