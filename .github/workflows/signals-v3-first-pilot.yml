@@ -1,0 +1,37 @@
+name: Signals V3 first historical pilot
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - '.github/workflows/signals-v3-first-pilot.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download archived September 2026 OHLCV and funding
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p research_data/v3pilot research_data/shards
+          gh run download 42788507430 --repo "${{ github.repository }}" --pattern 'signals-v2-20*' --dir research_data/shards
+          find research_data/shards -type f -name '*-2026-09.zip' -exec cp -n '{}' research_data/v3pilot/ ';'
+          test "$(find research_data/v3pilot -maxdepth 1 -name '*-2026-09.zip' | wc -l)" -eq 6
+          gh run download 42794564196 --repo "${{ github.repository }}" --name signals-v2-all-ohlcv-mismatches --dir research_data/v3pilot
+      - name: Replay V3 on real archived data without any orders
+        run: PYTHONPATH=. python -m signals_v3.pilot_replay research_data/v3pilot research_data/v3pilot/all_ohlcv_mismatches.json --month 2026-09 --stride 12
+      - name: Preserve V3 research report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-v3-september-2026-pilot
+          path: research_data/v3pilot/v3_pilot_replay_report.json
+          if-no-files-found: warn
