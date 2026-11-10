@@ -25,6 +25,18 @@ class CurrentCandidateDiscoveryTests(unittest.TestCase):
         self.assertEqual(result["captured_count"],1)
         self.assertFalse(result["complete_market_capture"])
         self.assertFalse(result["historical_universe_verified"])
+    def test_nonfinite_price_fails_closed(self):
+        def fetch(path,params=None):
+            if path.endswith("ticker/price"):
+                return [{"symbol":"ADAUSDT","price":"NaN"},{"symbol":"SOLUSDT","price":"150"},
+                        {"symbol":"BTCUSDT","price":"90000"},{"symbol":"OLDUSDT","price":"2"}]
+            return self.fetch(path,params)
+        with self.assertRaisesRegex(ValueError,"invalid_price_ticker"):
+            discover_current_price_candidates(fetch)
+    def test_duplicate_market_listing_fails_closed(self):
+        self.markets.append(dict(self.markets[0]))
+        with self.assertRaisesRegex(ValueError,"duplicate_market_listing"):
+            discover_current_price_candidates(self.fetch)
     def test_missing_price_fails_closed(self):
         def fetch(path,params=None):
             if path.endswith("ticker/price"):
