@@ -85,7 +85,7 @@ def fresh_risk_from_authenticated_snapshot(snap, provenance):
     return risk
 
 
-def run(mode, path, *, status_path=None):
+def run(mode, path, *, status_path=None, previous_baseline_path=None):
     path = isolated_path(path)
     exchange = demo_client_from_aws()
     try:
@@ -97,6 +97,16 @@ def run(mode, path, *, status_path=None):
             reconciliation = trusted_json(
                 Path("/opt/signalpilot"), "demo-reconciliation-status.json")
             epoch = capture(sol, xrp, provenance, reconciliation, risk)
+            if previous_baseline_path is not None:
+                old = trusted_baseline(previous_baseline_path)
+                if old["epoch_started_at"] // 86400 >= epoch["epoch_started_at"] // 86400:
+                    raise EpochBlocked("previous_epoch_must_be_earlier_utc_day")
+                epoch["previous_baseline_sha256"] = old["baseline_sha256"]
+                epoch["previous_baseline_epoch_started_at"] = old["epoch_started_at"]
+                epoch["prior_audit_legacy_fills"] = old["legacy_audit"]["fill_count"]
+                epoch["baseline_sha256"] = _hash({
+                    key: value for key, value in epoch.items()
+                    if key != "baseline_sha256"})
             persist_once(path, epoch)
             return {"mode": "DEMO_ONLY", "status": epoch["status"],
                     "legacy_fills_archived": epoch["legacy_audit"]["fill_count"],
@@ -124,8 +134,10 @@ def main():
     parser.add_argument("mode", choices=("capture", "reconcile"))
     parser.add_argument("--baseline", required=True)
     parser.add_argument("--status", default=None)
+    parser.add_argument("--previous-baseline", default=None)
     args = parser.parse_args()
-    result = run(args.mode, args.baseline, status_path=args.status)
+    result = run(args.mode, args.baseline, status_path=args.status,
+                 previous_baseline_path=args.previous_baseline)
     print(json.dumps(result, sort_keys=True))
 
 
