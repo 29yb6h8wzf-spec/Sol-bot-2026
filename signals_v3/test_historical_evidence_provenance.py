@@ -1,4 +1,5 @@
 import json
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,14 +12,28 @@ class HistoricalEvidenceProvenanceTests(unittest.TestCase):
                        "coverage_start_ms":1000,"coverage_end_ms":2000,
                        "source_reference":"archive-sha256:example",
                        "point_in_time_listings_verified":True,
-                       "spread_and_depth_verified":True}
+                       "spread_and_depth_verified":True,
+                       "evidence_artifacts":[]}
     def check(self,manifest,decision=1500):
         with tempfile.TemporaryDirectory() as directory:
             p=Path(directory)/"manifest.json"
+            manifest=dict(manifest)
+            if not manifest["evidence_artifacts"]:
+                artifacts=[]
+                for role in ("point_in_time_listings","historical_orderbook"):
+                    filename=role+".csv"
+                    payload=(role+"\\n").encode()
+                    (Path(directory)/filename).write_bytes(payload)
+                    artifacts.append({"role":role,"path":filename,"sha256":hashlib.sha256(payload).hexdigest()})
+                manifest["evidence_artifacts"]=artifacts
             p.write_text(json.dumps(manifest))
             return verify_historical_evidence_manifest(p,decision)
     def test_valid_declared_manifest(self):
         self.assertTrue(self.check(self.manifest)["historical_evidence_verified"])
+    def test_missing_artifact_rejected(self):
+        self.manifest["evidence_artifacts"]=[{"role":"historical_orderbook","path":"missing.csv","sha256":"0"*64}]
+        with self.assertRaisesRegex(ValueError,"historical_artifact_missing_or_unsafe"):
+            self.check(self.manifest)
     def test_current_capture_rejected(self):
         self.manifest["current_only"]=True
         self.manifest["historical_universe_verified"]=False
