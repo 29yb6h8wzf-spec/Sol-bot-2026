@@ -40,8 +40,10 @@ def verify_historical_evidence_manifest(path,decision_ms):
             int(digest,16)
         except ValueError as exc:
             raise ValueError("invalid_historical_artifact_reference") from exc
+        if Path(relative).is_absolute() or Path(relative).parts[0] in (".", "..") or ".." in Path(relative).parts:
+            raise ValueError("historical_artifact_missing_or_unsafe")
         target=(root/relative).resolve()
-        if not target.is_relative_to(root) or not target.is_file():
+        if not target.is_relative_to(root) or not target.is_file() or target.is_symlink():
             raise ValueError("historical_artifact_missing_or_unsafe")
         hasher=hashlib.sha256()
         with target.open('rb') as source:
