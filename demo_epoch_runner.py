@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from demo_account_snapshot import demo_client_from_aws, read_snapshots
-from demo_epoch_baseline import capture, inspect, persist_once, EpochBlocked
+from demo_epoch_baseline import capture, inspect, persist_once, EpochBlocked, _hash
 from demo_epoch_risk import reconcile
 from demo_provenance_observer import inspect as inspect_provenance
 from demo_virtual_allocation import trusted_json
