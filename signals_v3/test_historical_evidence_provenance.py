@@ -54,6 +54,28 @@ class HistoricalEvidenceProvenanceTests(unittest.TestCase):
         self.manifest["evidence_artifacts"]=[{"role":"historical_orderbook","path":"../other.csv","sha256":"0"*64}]
         with self.assertRaisesRegex(ValueError,"historical_artifact_missing_or_unsafe"):
             self.check(self.manifest)
+    def test_empty_artifact_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root/"empty.csv").write_bytes(b"")
+            m=dict(self.manifest)
+            m["evidence_artifacts"]=[{"role":"historical_orderbook","path":"empty.csv","sha256":hashlib.sha256(b"").hexdigest()}]
+            p=root/"manifest.json"
+            p.write_text(json.dumps(m))
+            with self.assertRaisesRegex(ValueError,"empty_historical_artifact"):
+                verify_historical_evidence_manifest(p,1500)
+    def test_duplicate_artifact_path_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            payload=b"placeholder"
+            (root/"same.csv").write_bytes(payload)
+            m=dict(self.manifest)
+            m["evidence_artifacts"]=[{"role":role,"path":"same.csv","sha256":hashlib.sha256(payload).hexdigest()}
+                                     for role in ("point_in_time_listings","historical_orderbook")]
+            p=root/"manifest.json"
+            p.write_text(json.dumps(m))
+            with self.assertRaisesRegex(ValueError,"duplicate_historical_artifact_path"):
+                verify_historical_evidence_manifest(p,1500)
     def test_current_capture_rejected(self):
         self.manifest["current_only"]=True
         self.manifest["historical_universe_verified"]=False
