@@ -1,5 +1,10 @@
 name: Signals V3 offline archive audit
 on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - '.github/workflows/signals-v3-offline-archive-audit.yml'
+      - 'signals_v3/run_archive_audit.py'
   workflow_dispatch:
     inputs:
       symbols:
