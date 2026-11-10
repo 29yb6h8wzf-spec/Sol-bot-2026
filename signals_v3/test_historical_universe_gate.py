@@ -81,8 +81,22 @@ class HistoricalUniverseGateTests(unittest.TestCase):
     def test_csv_duplicate_header_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             p=Path(directory)/"snap.csv"
-            p.write_text(",".join(COLUMNS+("symbol",))+"\\n")
+            p.write_text(",".join(COLUMNS+("symbol",))+"\n")
             with self.assertRaisesRegex(ValueError,"invalid_universe_snapshot_schema"):
+                load_snapshots(p)
+    def test_csv_invalid_numeric_and_extra_column_rejected(self):
+        for field,value in (("last_price_usd","nan"),("spread_bps","inf"),("bid_depth_10bps_usd","-1"),("observed_at_ms","not-a-time")):
+            with self.subTest(field=field),tempfile.TemporaryDirectory() as directory:
+                p=Path(directory)/"snap.csv"
+                values={k:str(getattr(self.obs,k)) for k in COLUMNS}
+                values[field]=value
+                p.write_text(",".join(COLUMNS)+"\n"+",".join(values[k] for k in COLUMNS)+"\n")
+                with self.assertRaisesRegex(ValueError,"invalid_universe_snapshot_row"):
+                    load_snapshots(p)
+        with tempfile.TemporaryDirectory() as directory:
+            p=Path(directory)/"snap.csv"
+            p.write_text(",".join(COLUMNS)+"\n"+",".join(str(getattr(self.obs,k)) for k in COLUMNS)+",unexpected\n")
+            with self.assertRaisesRegex(ValueError,"invalid_universe_snapshot_row"):
                 load_snapshots(p)
     def test_csv_roundtrip(self):
         with tempfile.TemporaryDirectory() as directory:
