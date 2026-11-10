@@ -43,7 +43,11 @@ def verify_historical_evidence_manifest(path,decision_ms):
         target=(root/relative).resolve()
         if not target.is_relative_to(root) or not target.is_file():
             raise ValueError("historical_artifact_missing_or_unsafe")
-        actual=hashlib.sha256(target.read_bytes()).hexdigest()
+        hasher=hashlib.sha256()
+        with target.open('rb') as source:
+            for chunk in iter(lambda: source.read(1024*1024), b''):
+                hasher.update(chunk)
+        actual=hasher.hexdigest()
         if actual!=digest.lower():
             raise ValueError("historical_artifact_checksum_mismatch")
         verified_roles.add(item["role"])
