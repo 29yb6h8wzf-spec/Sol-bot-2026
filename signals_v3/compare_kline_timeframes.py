@@ -32,11 +32,11 @@ def compare(archive_1m,archive_5m,limit_examples=10):
             continue
         actual=(bars[0][1],max(x[2] for x in bars),min(x[3] for x in bars),
                 bars[-1][4],sum((x[5] for x in bars),Decimal(0)))
-        checked+=1
         if actual!=(o,h,l,c,v):
             mismatches+=1
             if len(examples)<limit_examples:examples.append({"time_ms":t,"reason":"ohlcv_mismatch"})
-    return {"checked":checked,"mismatches":mismatches,"matching":checked-mismatches,
+        else:checked+=1
+    return {"checked":checked,"mismatches":mismatches,"matching":checked,
             "consistent":checked>0 and mismatches==0,"examples":examples,
             "research_only":True}
 
