@@ -21,7 +21,8 @@ jobs:
           PYTHONPATH=. python -m signals_v3.archive_acquisition_plan --symbols SOLUSDT XRPUSDT --first 2026-07 --last 2026-09 --output research_data/v3_probe/plan.json
       - name: Acquire bounded public historical ZIPs across three months, no exchange trading access
         run: |
-          PYTHONPATH=. python -m signals_v3.acquire_public_archives research_data/v3_probe/plan.json --root research_data/v3_probe/archives --max-files 12 --output research_data/v3_probe/acquisition.json
+          PYTHONPATH=. python -m signals_v3.acquire_public_archives research_data/v3_probe/plan.json --root research_data/v3_probe/archives --max-files 12 --output research_data/v3_probe/acquisition_batch1.json
+          PYTHONPATH=. python -m signals_v3.acquire_public_archives research_data/v3_probe/plan.json --root research_data/v3_probe/archives --max-files 12 --output research_data/v3_probe/acquisition_batch2.json
       - name: Generate post-acquisition coverage
         run: |
           PYTHONPATH=. python -m signals_v3.run_archive_audit research_data/v3_probe/plan.json --archive-root research_data/v3_probe/archives --output-dir research_data/v3_probe
@@ -32,7 +33,7 @@ jobs:
           name: signals-v3-public-archive-probe-evidence
           path: |
             research_data/v3_probe/plan.json
-            research_data/v3_probe/acquisition.json
+            research_data/v3_probe/acquisition_batch*.json
             research_data/v3_probe/archive_audit.json
             research_data/v3_probe/archive_coverage.json
           if-no-files-found: warn
