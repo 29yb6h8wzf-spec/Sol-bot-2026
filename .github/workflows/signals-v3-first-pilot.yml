@@ -40,10 +40,26 @@ jobs:
           gh run download 42794564196 --repo "${{ github.repository }}" --name signals-v2-all-ohlcv-mismatches --dir research_data/v3pilot
       - name: Replay V3 on real archived data without any orders
         run: PYTHONPATH=. python -m signals_v3.pilot_replay research_data/v3pilot research_data/v3pilot/all_ohlcv_mismatches.json --month 2026-09 --stride 12
+      - name: Diagnose real pilot performance (research only)
+        run: |
+          PYTHONPATH=. python -m signals_v3.diagnose_pilot research_data/v3pilot/v3_pilot_replay_report.json | tee research_data/v3pilot/v3_pilot_diagnosis.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("research_data/v3pilot/v3_pilot_diagnosis.json")
+          d=json.loads(p.read_text())
+          if d["promotion_allowed"] is not False or d["out_of_sample_certified"] is not False:
+              raise SystemExit("FAIL_CLOSED: pilot must never authorize promotion")
+          if d["trades"]<1:
+              raise SystemExit("FAIL_CLOSED: no evaluated trades")
+          print("Research pilot diagnostic recorded; no trading authorization")
+          PY
       - name: Preserve V3 research report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: signals-v3-september-2026-pilot
-          path: research_data/v3pilot/v3_pilot_replay_report.json
+          path: |
+            research_data/v3pilot/v3_pilot_replay_report.json
+            research_data/v3pilot/v3_pilot_diagnosis.json
           if-no-files-found: warn
