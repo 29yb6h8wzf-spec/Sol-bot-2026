@@ -31,7 +31,9 @@ jobs:
         run: |
           mkdir -p research_data/repaired
           python signals_v2/repair_oct28.py --source research_data/monthly --output research_data/repaired
+          test "$(find research_data/repaired -maxdepth 1 -name '*-2026-10.zip' | wc -l)" -eq 4
           cp research_data/repaired/*-2026-10.zip research_data/monthly/
+          test "$(find research_data/monthly -maxdepth 1 -name '*.zip' | wc -l)" -eq 144
       - name: Audit all 144 archives
         run: python signals_v2/audit_monthly_archives.py research_data/monthly
       - name: Upload audit report
