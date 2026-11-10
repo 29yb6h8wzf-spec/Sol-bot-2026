@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from dataclasses import replace
 from signals_v3.dynamic_universe import UniverseObservation
-from signals_v3.historical_universe_replay import replay_universe
+from signals_v3.historical_universe_replay import replay_universe,replay_complete_universe
 from signals_v3.historical_universe_gate import load_snapshots,verify_decision_snapshot,COLUMNS
 
 class HistoricalUniverseGateTests(unittest.TestCase):
@@ -56,6 +56,10 @@ class HistoricalUniverseGateTests(unittest.TestCase):
         ])
         self.assertEqual(result[1]["listed_added"],("SOLUSDT",))
         self.assertEqual(result[1]["listed_removed"],("ADAUSDT",))
+    def test_complete_replay_requires_schedule(self):
+        item={"decision_ms":self.now,"observations":[self.obs],"expected_symbols":["ADAUSDT"]}
+        with self.assertRaisesRegex(ValueError,"missing_expected_decision_schedule"):
+            replay_complete_universe([item],None)
     def test_replay_explicit_schedule_rejects_gap(self):
         item={"decision_ms":self.now,"observations":[self.obs],"expected_symbols":["ADAUSDT"]}
         with self.assertRaisesRegex(ValueError,"incomplete_historical_decision_schedule"):
