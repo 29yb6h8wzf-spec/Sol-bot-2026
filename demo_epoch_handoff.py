@@ -5,6 +5,7 @@ and exactly-once reservation for a separate supervised Demo executor.
 This is NOT an order-submission module. Never import real trading clients.
 """
 import time
+from datetime import datetime, timezone
 from decimal import Decimal
 from demo_account_snapshot import read_snapshot
 from demo_execution_gate import validate, reserve, DemoGateBlocked
@@ -13,8 +14,14 @@ from demo_order_planner import plan as plan_bracket
 from demo_risk_adapter import preflight_with_epoch
 
 MARKETS = {"SOL/USDT:USDT": "SOLUSDT", "XRP/USDT:USDT": "XRPUSDT"}
-BASELINE = "/opt/signalpilot-audit-worktree/demo-epoch-baseline.json"
-STATUS = "/opt/signalpilot-audit-worktree/demo-epoch-risk-status.json"
+AUDIT_ROOT = "/opt/signalpilot-audit-worktree"
+
+
+def epoch_paths(now=None):
+    now = int(time.time()) if now is None else int(now)
+    day = datetime.fromtimestamp(now, timezone.utc).date().isoformat()
+    return (f"{AUDIT_ROOT}/demo-epoch-baseline-{day}.json",
+            f"{AUDIT_ROOT}/demo-epoch-risk-status-{day}.json")
 
 
 def market_filters(exchange, symbol):
@@ -55,10 +62,13 @@ def closed_bars(exchange, symbol, candle):
     return bars
 
 
-def prepare(payload, exchange, *, baseline_path=BASELINE, status_path=STATUS,
+def prepare(payload, exchange, *, baseline_path=None, status_path=None,
             now=None, verifier=verify):
     """Return trusted, risk-approved offline handoff. No orders or reservations."""
     now = int(time.time()) if now is None else int(now)
+    defaults = epoch_paths(now)
+    baseline_path = defaults[0] if baseline_path is None else baseline_path
+    status_path = defaults[1] if status_path is None else status_path
     if not isinstance(payload, dict) or type(payload.get("timestamp")) is not int:
         raise DemoGateBlocked("invalid_signal_payload")
     if not getattr(exchange, "_signalpilot_get_only_guard", False):
