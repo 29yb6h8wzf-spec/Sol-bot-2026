@@ -38,8 +38,9 @@ def verify_decision_snapshot(observations,decision_ms,expected_symbols=None):
         raise ValueError("duplicate_symbol_snapshot")
     if expected_symbols is None:
         raise ValueError("missing_historical_market_listing")
+    expected_symbols=tuple(expected_symbols)
     expected=set(expected_symbols)
-    if not expected or any(not s.endswith("USDT") for s in expected):
+    if not expected or len(expected)!=len(tuple(expected_symbols)) or any(not s.endswith("USDT") for s in expected):
         raise ValueError("invalid_historical_market_listing")
     observed={x.symbol for x in observations}
     if observed!=expected:
