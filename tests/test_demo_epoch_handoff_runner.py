@@ -68,3 +68,12 @@ def test_no_ready_when_independent_verifier_rejects(tmp_path):
     assert result["status"] == "NO_ELIGIBLE_VERIFIED_SIGNAL"
     assert result["ready"] == 0
     assert result["blocked_reasons"]["independent_candidate_mismatch"] == 1
+
+
+def test_utc_rollover_selects_new_immutable_baseline():
+    from demo_epoch_handoff import epoch_paths
+    day1 = epoch_paths(1794267500)
+    day2 = epoch_paths(1794267500 + 86400)
+    assert day1 != day2
+    assert day1[0].endswith("2026-11-09.json")
+    assert day2[0].endswith("2026-11-10.json")
