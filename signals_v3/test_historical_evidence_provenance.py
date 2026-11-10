@@ -30,6 +30,18 @@ class HistoricalEvidenceProvenanceTests(unittest.TestCase):
             return verify_historical_evidence_manifest(p,decision)
     def test_valid_declared_manifest(self):
         self.assertTrue(self.check(self.manifest)["historical_evidence_verified"])
+    def test_checksum_does_not_certify_provider_or_market_coverage(self):
+        result=self.check(self.manifest)
+        self.assertFalse(result["provider_authenticity_verified"])
+        self.assertFalse(result["historical_market_coverage_verified"])
+    def test_whitespace_source_reference_rejected(self):
+        self.manifest["source_reference"]="  "
+        with self.assertRaisesRegex(ValueError,"missing_historical_evidence_source_reference"):
+            self.check(self.manifest)
+    def test_negative_coverage_rejected(self):
+        self.manifest["coverage_start_ms"]=-1
+        with self.assertRaisesRegex(ValueError,"historical_evidence_outside_coverage"):
+            self.check(self.manifest)
     def test_missing_artifact_rejected(self):
         self.manifest["evidence_artifacts"]=[{"role":"historical_orderbook","path":"missing.csv","sha256":"0"*64}]
         with self.assertRaisesRegex(ValueError,"historical_artifact_missing_or_unsafe"):
