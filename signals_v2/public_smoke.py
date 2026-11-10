@@ -12,6 +12,7 @@ from urllib.request import Request, urlopen
 from signals_v2.contracts import Candle, MarketSnapshot, DataRejected
 from signals_v2.hybrid import candidates
 from signals_v2.replay import replay
+from signals_v2.nonoverlap import select_nonoverlapping
 
 HOST = "https://fapi.binance.com"
 PATH = "/fapi/v1/klines"
@@ -54,7 +55,10 @@ def run_symbol(symbol: str) -> dict:
                "one_rows": len(one), "eligible": 0, "abstentions": 0,
                "rejected": {}, "proposals": 0, "replayed": 0,
                "net_r_descriptive": 0.0, "exit_reasons": {},
+               "nonoverlap_replayed": 0, "nonoverlap_net_r": 0.0,
+               "nonoverlap_exit_reasons": {},
                "status": "DIAGNOSTIC_ONLY_NOT_OOS"}
+    proposal_windows = []
     for i in range(80, len(five)-48):
         end = five[i-1].open_ms + 300_000
         if end > one[-1].open_ms + 60_000:
@@ -80,6 +84,7 @@ def run_symbol(symbol: str) -> dict:
             results["abstentions"] += 1
         for proposal in proposals:
             results["proposals"] += 1
+            proposal_windows.append((proposal, i))
             try:
                 outcome = replay(proposal, five[i:i+48])
             except DataRejected as exc:
@@ -90,6 +95,22 @@ def run_symbol(symbol: str) -> dict:
             results["net_r_descriptive"] += outcome.net_r
             results["exit_reasons"][outcome.exit_reason] = (
                 results["exit_reasons"].get(outcome.exit_reason, 0) + 1)
+    selected = select_nonoverlapping(p for p, _ in proposal_windows)
+    # The non-overlap diagnostic is separate from raw overlapping proposal counts.
+    by_identity = {id(p): i for p, i in proposal_windows}
+    for proposal in selected:
+        i = by_identity[id(proposal)]
+        try:
+            outcome = replay(proposal, five[i:i+48])
+        except DataRejected as exc:
+            key = "nonoverlap_replay_" + str(exc)
+            results["rejected"][key] = results["rejected"].get(key, 0) + 1
+            continue
+        results["nonoverlap_replayed"] += 1
+        results["nonoverlap_net_r"] += outcome.net_r
+        reason = outcome.exit_reason
+        reasons = results["nonoverlap_exit_reasons"]
+        reasons[reason] = reasons.get(reason, 0) + 1
     return results
 
 
