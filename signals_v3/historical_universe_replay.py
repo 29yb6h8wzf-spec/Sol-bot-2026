@@ -45,4 +45,10 @@ def replay_universe(decisions, expected_decision_times=None):
     if expected_decision_times is not None and tuple(r["decision_ms"] for r in output)!=expected_decision_times:
         raise ValueError("incomplete_historical_decision_schedule")
     return tuple(output)
-\n\ndef replay_complete_universe(decisions, expected_decision_times):\n    """Production research entry point: never allow an implicit schedule."""\n    if expected_decision_times is None:\n        raise ValueError("missing_expected_decision_schedule")\n    return replay_universe(decisions, expected_decision_times)\n
+
+
+def replay_complete_universe(decisions, expected_decision_times):
+    """Production research entry point: never allow an implicit schedule."""
+    if expected_decision_times is None:
+        raise ValueError("missing_expected_decision_schedule")
+    return replay_universe(decisions, expected_decision_times)
