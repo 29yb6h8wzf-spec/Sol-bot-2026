@@ -32,17 +32,19 @@ def audit(root,start="2024-11",end="2026-10"):
                             month_end=timestamp(next_month+"-01")
                             for row in reader:
                                 if not row or not row[0].strip().isdigit():continue
-                                t=int(row[0])
+                                raw_t=int(row[0])
+                                t=raw_t//1000 if raw_t>=100_000_000_000_000 else raw_t
+                                if raw_t>=100_000_000_000_000 and raw_t%1000!=0:raise ValueError(f"submillisecond_timestamp:{raw_t}")
                                 if not month_start<=t<month_end:raise ValueError("outside_month")
                                 if interval in STEPS:
                                     step=STEPS[interval]
                                     if first is None and t!=month_start:raise ValueError("missing_month_start")
-                                    if last is not None and t-last!=step:raise ValueError("gap_or_duplicate")
+                                    if last is not None and t-last!=step:raise ValueError(f"gap_or_duplicate:prev={last}:current={t}:delta={t-last}:expected={step}")
                                     if len(row)<6:raise ValueError("short_ohlcv")
                                     import math
                                     o,h,l,c,v=map(float,row[1:6])
                                     if not all(map(math.isfinite,(o,h,l,c,v))) or not (0<l<=min(o,c)<=max(o,c)<=h) or v<0:raise ValueError("bad_ohlcv")
-                                elif last is not None and t<=last:raise ValueError("funding_not_monotonic")
+                                elif last is not None and t<=last:raise ValueError(f"funding_not_monotonic:prev={last}:current={t}")
                                 if first is None:first=t
                                 last=t;count+=1
                             if not count:raise ValueError("empty_csv")
