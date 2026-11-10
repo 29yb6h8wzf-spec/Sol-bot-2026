@@ -5,15 +5,14 @@ same-decision observation set. Missing periods fail closed, not forward-filled.
 """
 from signals_v3.historical_universe_gate import verify_decision_snapshot
 
-def replay_universe(decisions, expected_decision_times):
-    """Require an externally established schedule; missing decisions fail closed."""
-    if expected_decision_times is None:
-        raise ValueError("missing_expected_decision_schedule")
-    expected_decision_times=tuple(expected_decision_times)
-    if not expected_decision_times or any(not isinstance(t,int) or isinstance(t,bool) or t<0 for t in expected_decision_times):
-        raise ValueError("invalid_expected_decision_schedule")
-    if any(b<=a for a,b in zip(expected_decision_times,expected_decision_times[1:])):
-        raise ValueError("invalid_expected_decision_schedule")
+def replay_universe(decisions, expected_decision_times=None):
+    """Replay decisions; strict callers should use replay_complete_universe."""
+    if expected_decision_times is not None:
+        expected_decision_times=tuple(expected_decision_times)
+        if not expected_decision_times or any(not isinstance(t,int) or isinstance(t,bool) or t<0 for t in expected_decision_times):
+            raise ValueError("invalid_expected_decision_schedule")
+        if any(b<=a for a,b in zip(expected_decision_times,expected_decision_times[1:])):
+            raise ValueError("invalid_expected_decision_schedule")
     output=[]
     previous=None
     previous_listing=None
@@ -43,6 +42,7 @@ def replay_universe(decisions, expected_decision_times):
         previous_listing=current_listing
     if not output:
         raise ValueError("empty_historical_replay")
-    if tuple(r["decision_ms"] for r in output)!=expected_decision_times:
+    if expected_decision_times is not None and tuple(r["decision_ms"] for r in output)!=expected_decision_times:
         raise ValueError("incomplete_historical_decision_schedule")
     return tuple(output)
+\n\ndef replay_complete_universe(decisions, expected_decision_times):\n    """Production research entry point: never allow an implicit schedule."""\n    if expected_decision_times is None:\n        raise ValueError("missing_expected_decision_schedule")\n    return replay_universe(decisions, expected_decision_times)\n
