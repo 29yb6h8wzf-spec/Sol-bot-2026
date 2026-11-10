@@ -42,7 +42,10 @@ jobs:
           LAST_MONTH="${LAST_MONTH:-2026-09}"
           read -r -a symbol_array <<< "$SYMBOLS"
           PYTHONPATH=. python -m signals_v3.archive_acquisition_plan --symbols "${symbol_array[@]}" --first "$FIRST_MONTH" --last "$LAST_MONTH" --output research_data/v3_audit/plan.json
-      - name: Audit checked-out local archive files only
+      - name: Acquire bounded public research archives (read-only, no trading API)
+        run: |
+          PYTHONPATH=. python -m signals_v3.acquire_public_archives research_data/v3_audit/plan.json --root research_data/v3_archives --max-files 12 --output research_data/v3_audit/acquisition.json
+      - name: Audit acquired public archive files
         run: |
           PYTHONPATH=. python -m signals_v3.run_archive_audit research_data/v3_audit/plan.json --archive-root research_data/v3_archives --output-dir research_data/v3_audit
       - name: Upload truthful coverage evidence
