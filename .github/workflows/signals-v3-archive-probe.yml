@@ -39,6 +39,27 @@ jobs:
       - name: Validate OHLCV prices and volumes
         run: |
           PYTHONPATH=. python -m signals_v3.audit_ohlcv_batch research_data/v3_probe/plan.json --root research_data/v3_probe/archives --output research_data/v3_probe/ohlcv_values.json
+      - name: Enforce fail-closed data quality gate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path("research_data/v3_probe")
+          checks={
+              "archive_coverage.json":("coverage_percent",100.0),
+              "kline_continuity.json":("all_klines_continuous",True),
+              "timeframe_consistency.json":("all_pairs_consistent",True),
+              "funding_audit.json":("blocked_archives",0),
+              "ohlcv_values.json":("all_ohlcv_valid",True),
+          }
+          for filename,(field,expected) in checks.items():
+              report=json.loads((root/filename).read_text())
+              actual=report[field]
+              print(f"{filename}: {field}={actual} expected={expected}")
+              if actual!=expected:
+                  raise SystemExit(f"FAIL_CLOSED: {filename} {field}={actual}")
+          print("DATA_QUALITY_GATE_PASS; dynamic_backtest_ready remains false")
+          PY
       - name: Preserve evidence (no ZIP redistribution)
         if: always()
         uses: actions/upload-artifact@v4
