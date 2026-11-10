@@ -1,0 +1,38 @@
+name: Signals V2 24-month archive integrity gate
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - 'signals_v2/audit_monthly_archives.py'
+      - '.github/workflows/signals-v2-archive-integrity.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Fetch four completed research artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p research_data/monthly
+          gh run download 42788507430 --repo ${{ github.repository }} --pattern 'signals-v2-20*' --dir research_data/shards
+          find research_data/shards -type f -name '*.zip' -exec cp -n '{}' research_data/monthly/ ';'
+          find research_data/monthly -maxdepth 1 -name '*.zip' | wc -l
+      - name: Audit all 144 archives
+        run: python signals_v2/audit_monthly_archives.py research_data/monthly
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-v2-24month-integrity-report
+          path: research_data/monthly/integrity_report.json
+          if-no-files-found: warn
+          retention-days: 30
