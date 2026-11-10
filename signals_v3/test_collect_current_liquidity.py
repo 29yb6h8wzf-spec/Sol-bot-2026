@@ -17,6 +17,15 @@ class CurrentLiquidityCollectorTests(unittest.TestCase):
         self.assertTrue(result["current_only"])
         self.assertFalse(result["historical_universe_verified"])
         self.assertEqual(len(calls),3)
+    def test_empty_book_fails_closed(self):
+        def fetch(path,params=None):
+            if path.endswith("exchangeInfo"):
+                return {"symbols":[{"symbol":"SOLUSDT","status":"TRADING","contractType":"PERPETUAL","quoteAsset":"USDT","filters":[{"filterType":"MIN_NOTIONAL","notional":"5"}]}]}
+            if path.endswith("24hr"):
+                return {"lastPrice":"100","quoteVolume":"25000000"}
+            return {"bids":[],"asks":[]}
+        with self.assertRaisesRegex(ValueError,"empty_order_book"):
+            snapshot_symbol("SOLUSDT",fetch=fetch,clock_ms=lambda:100000)
     def test_missing_notional_fails_closed(self):
         def fetch(path,params=None):
             if path.endswith("exchangeInfo"):
