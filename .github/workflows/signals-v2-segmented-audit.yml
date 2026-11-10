@@ -1,0 +1,37 @@
+name: Signals V2 segmented 144 archive audit
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - 'signals_v2/audit_segmented_history.py'
+      - '.github/workflows/signals-v2-segmented-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Retrieve original 144 monthly archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p research_data/monthly
+          gh run download 42788507430 --repo "${{ github.repository }}" --pattern 'signals-v2-20*' --dir research_data/shards
+          find research_data/shards -type f -name '*.zip' -exec cp -n '{}' research_data/monthly/ ';'
+      - name: Validate all 144 archives with strict missing-day exclusion
+        run: python signals_v2/audit_segmented_history.py research_data/monthly
+      - name: Preserve machine-readable evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-v2-segmented-history-audit
+          path: research_data/monthly/segmented_audit_report.json
+          if-no-files-found: warn
+          retention-days: 30
