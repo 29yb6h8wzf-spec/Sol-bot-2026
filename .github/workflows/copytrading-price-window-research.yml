@@ -1,0 +1,21 @@
+name: Copy trading historical price research tests
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - 'cloudflare/copytrading-research.mjs'
+      - 'cloudflare/copytrading-price-window.mjs'
+      - 'cloudflare/copytrading-price-window.test.mjs'
+      - '.github/workflows/copytrading-price-window-research.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  price-window:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test cloudflare/copytrading-price-window.test.mjs
