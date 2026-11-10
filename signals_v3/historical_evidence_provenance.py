@@ -3,6 +3,7 @@
 Current public snapshots cannot be passed off as historical depth/spread evidence.
 """
 import json
+import hashlib
 from pathlib import Path
 
 def verify_historical_evidence_manifest(path,decision_ms):
@@ -23,5 +24,30 @@ def verify_historical_evidence_manifest(path,decision_ms):
         raise ValueError("missing_historical_evidence_source_reference")
     if manifest.get("point_in_time_listings_verified") is not True or manifest.get("spread_and_depth_verified") is not True:
         raise ValueError("incomplete_historical_evidence")
+    artifacts=manifest.get("evidence_artifacts")
+    if not isinstance(artifacts,list) or not artifacts:
+        raise ValueError("missing_verifiable_historical_artifacts")
+    verified_roles=set()
+    root=Path(path).resolve().parent
+    for item in artifacts:
+        if not isinstance(item,dict) or item.get("role") not in ("point_in_time_listings","historical_orderbook"):
+            raise ValueError("invalid_historical_artifact_role")
+        relative=item.get("path")
+        digest=item.get("sha256")
+        if not isinstance(relative,str) or not relative or not isinstance(digest,str) or len(digest)!=64:
+            raise ValueError("invalid_historical_artifact_reference")
+        try:
+            int(digest,16)
+        except ValueError as exc:
+            raise ValueError("invalid_historical_artifact_reference") from exc
+        target=(root/relative).resolve()
+        if not target.is_relative_to(root) or not target.is_file():
+            raise ValueError("historical_artifact_missing_or_unsafe")
+        actual=hashlib.sha256(target.read_bytes()).hexdigest()
+        if actual!=digest.lower():
+            raise ValueError("historical_artifact_checksum_mismatch")
+        verified_roles.add(item["role"])
+    if verified_roles!={"point_in_time_listings","historical_orderbook"}:
+        raise ValueError("incomplete_historical_artifact_roles")
     return {"decision_ms":decision_ms,"historical_evidence_verified":True,
-            "source_type":manifest["source_type"]}
+            "source_type":manifest["source_type"],"artifact_count":len(artifacts)}
