@@ -68,7 +68,7 @@ def build_plan(payload, *, verifier=verify, loader=closed_futures_bars, now_ms=N
     if qty < filters["min_qty"] or qty * entry < filters["min_cost"]:
         raise ValueError("below_exchange_minimum_after_cost_buffer")
     buffered_risk = qty * max_unit_loss
-    if buffered_risk > D("1.50") or qty * entry > D("300"):
+    if buffered_risk > D("1.50") or qty * entry > D("15"):
         raise ValueError("buffered_risk_cap_exceeded")
     result["quantity"] = str(qty)
     result["estimated_notional"] = str(qty * entry)
