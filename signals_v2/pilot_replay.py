@@ -23,7 +23,7 @@ def run(root,manifest,month="2026-09",stride=12):
         funding=[(t,float(r[2])) for t,r in iter_rows(root/f"{symbol}-fundingRate-{month}.zip")]
         fund_times=[t for t,_ in funding]
         one_close=[b.available_at_ms for b in one]
-        counts=Counter();returns=[];specialists=Counter()
+        counts=Counter();returns=[];specialists=Counter();by_specialist={};by_regime={};by_direction={}
         next_allowed=0
         for i in range(63,len(five)-48,stride):
             decision=five[i].available_at_ms
@@ -51,11 +51,14 @@ def run(root,manifest,month="2026-09",stride=12):
                 rate=sum(x[1] for x in funding[fstart:fend_actual])
                 result=guarded_replay(p,history,future,intervals,max_bars=48,funding_rate_total=rate)
                 returns.append(result.net_r);specialists[p.specialist]+=1
+                for bucket,key in ((by_specialist,p.specialist),(by_regime,p.regime),(by_direction,p.direction)):
+                    bucket.setdefault(key,[]).append(result.net_r)
                 counts["trades"]+=1;counts[result.exit_reason]+=1
                 next_allowed=actual_end
             except (DataRejected,ValueError,IndexError) as exc:
                 counts["rejected_"+str(exc).split(":")[0]]+=1
         report["symbols"][symbol]={"counts":dict(counts),"specialists":dict(specialists),
+          "breakdown":{name:{key:{"count":len(vals),"mean_net_r":sum(vals)/len(vals),"net_r_total":sum(vals),"win_rate":sum(v>0 for v in vals)/len(vals)} for key,vals in group.items()} for name,group in (("specialist",by_specialist),("regime",by_regime),("direction",by_direction))},
           "trades":len(returns),"mean_net_r":sum(returns)/len(returns) if returns else None,
           "net_r_total":sum(returns),"positive_net_r":sum(v>0 for v in returns),
           "fee_per_side":0.0005,"slippage_per_side":0.0002,
