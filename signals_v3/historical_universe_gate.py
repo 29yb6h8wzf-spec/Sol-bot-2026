@@ -15,7 +15,7 @@ COLUMNS=("symbol","observed_at_ms","last_price_usd","quote_volume_24h_usd",
 def load_snapshots(path):
     with Path(path).open(newline="") as f:
         reader=csv.DictReader(f)
-        if reader.fieldnames is None or set(reader.fieldnames)!=set(COLUMNS):
+        if reader.fieldnames is None or len(reader.fieldnames)!=len(COLUMNS) or set(reader.fieldnames)!=set(COLUMNS):
             raise ValueError("invalid_universe_snapshot_schema")
         observations=[]
         for row in reader:
