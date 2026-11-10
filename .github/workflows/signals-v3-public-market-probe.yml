@@ -1,0 +1,31 @@
+name: SignalPilot V3 public market one-shot probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-readonly-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/signals-v2-core-20261110
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Public endpoint probe, one symbol, no orders
+        env:
+          PYTHONPATH: .
+        run: |
+          python -m signals_v3.collect_current_liquidity SOLUSDT /tmp/signalpilot-v3-sol-public-snapshot.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/signalpilot-v3-sol-public-snapshot.json')
+          d=json.loads(p.read_text())
+          assert d['current_only'] is True
+          assert d['historical_universe_verified'] is False
+          assert d['symbol']=='SOLUSDT'
+          print(json.dumps({'symbol':d['symbol'],'public_snapshot_valid':True,'current_only':True}))
+          PY
