@@ -78,6 +78,12 @@ class HistoricalUniverseGateTests(unittest.TestCase):
         item={"decision_ms":self.now,"observations":[self.obs],"expected_symbols":["ADAUSDT"]}
         with self.assertRaisesRegex(ValueError,"nonmonotonic_decision_times"):
             replay_universe([item,item])
+    def test_csv_duplicate_header_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            p=Path(directory)/"snap.csv"
+            p.write_text(",".join(COLUMNS+("symbol",))+"\\n")
+            with self.assertRaisesRegex(ValueError,"invalid_universe_snapshot_schema"):
+                load_snapshots(p)
     def test_csv_roundtrip(self):
         with tempfile.TemporaryDirectory() as directory:
             p=Path(directory)/"snap.csv"
