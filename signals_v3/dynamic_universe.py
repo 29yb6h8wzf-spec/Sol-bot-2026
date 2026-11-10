@@ -65,6 +65,10 @@ def eligibility(obs:UniverseObservation,decision_ms:int,limits:UniverseThreshold
 def select_universe(observations,decision_ms,limits=UniverseThresholds()):
     accepted=[];reasons={}
     for obs in observations:
+        if not isinstance(obs,UniverseObservation) or not isinstance(obs.symbol,str) or not obs.symbol:
+            raise ValueError("invalid_universe_observation_identity")
+        if obs.symbol in reasons:
+            raise ValueError("duplicate_universe_observation")
         ok,reason=eligibility(obs,decision_ms,limits)
         reasons[obs.symbol]=reason
         if ok:accepted.append(obs.symbol)
