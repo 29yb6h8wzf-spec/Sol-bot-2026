@@ -27,6 +27,6 @@ def append_current_capture(path,capture):
     target=Path(path)
     target.parent.mkdir(parents=True,exist_ok=True)
     with target.open("a",encoding="utf-8") as handle:
-        handle.write(json.dumps(capture,sort_keys=True,allow_nan=False)+"\\n")
+        handle.write(json.dumps(capture,sort_keys=True,allow_nan=False)+"\n")
     return {"path":str(target),"appended":1,"captured_count":len(symbols),
             "complete_market_capture":capture.get("complete_market_capture") is True}
