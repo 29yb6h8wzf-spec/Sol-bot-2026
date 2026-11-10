@@ -28,9 +28,21 @@ jobs:
           MONTH: ${{ matrix.month }}
         run: |
           mkdir -p research_data/v3history research_data/shards
-          gh run download 42788507430 --repo "${{ github.repository }}" --pattern 'signals-v2-20*' --dir research_data/shards
-          find research_data/shards -type f -name "*-${MONTH}.zip" -exec cp -n '{}' research_data/v3history/ ';'
-          test "$(find research_data/v3history -maxdepth 1 -name "*-${MONTH}.zip" | wc -l)" -eq 6
+          PYTHONPATH=. python -m signals_v3.archive_acquisition_plan --symbols SOLUSDT XRPUSDT --first "$MONTH" --last "$MONTH" --output research_data/v3history/plan.json
+          PYTHONPATH=. python -m signals_v3.acquire_public_archives research_data/v3history/plan.json --root research_data/v3history/downloads --max-files 6 --output research_data/v3history/acquisition.json
+          PYTHONPATH=. python -m signals_v3.run_archive_audit research_data/v3history/plan.json --archive-root research_data/v3history/downloads --output-dir research_data/v3history
+          python - <<'PY'
+          import json,shutil
+          from pathlib import Path
+          root=Path("research_data/v3history")
+          report=json.loads((root/"archive_coverage.json").read_text())
+          if report["verified"]!=6 or report["blocked"]!=0 or not report["archive_grid"]["archive_grid_complete"]:
+              raise SystemExit("FAIL_CLOSED: missing or invalid monthly archive data")
+          for source in (root/"downloads").rglob("*.zip"):
+              shutil.copy2(source,root/source.name)
+          if len(list(root.glob("*.zip")))!=6:
+              raise SystemExit("FAIL_CLOSED: expected six verified monthly ZIPs")
+          PY
           gh run download 42794564196 --repo "${{ github.repository }}" --name signals-v2-all-ohlcv-mismatches --dir research_data/v3history
       - name: Run V3 offline historical replay
         env:
