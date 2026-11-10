@@ -44,7 +44,7 @@ def repair(source,target,fetch=urlopen):
             after=[r for t,r in existing if t>=DAY_END]
             inside=[r for t,r in existing if DAY_START<=t<DAY_END]
             if inside:raise ValueError("not_an_exact_missing_day")
-            if int(before[-1][0])!=DAY_START-step or int(after[0][0])!=DAY_END:
+            if not before or not after or normalize([before[-1]])[0][0]!=DAY_START-step or normalize([after[0]])[0][0]!=DAY_END:
                 raise ValueError("wrong_gap_boundaries")
             daily_name=f"{symbol}-{interval}-{DAY}.zip"
             url=f"{BASE}/{symbol}/{interval}/{daily_name}"
