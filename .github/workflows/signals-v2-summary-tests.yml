@@ -1,0 +1,20 @@
+name: Signals V2 summary unit tests
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - 'signals_v2/summarize_24_months.py'
+      - 'signals_v2/test_summarize_24_months.py'
+      - '.github/workflows/signals-v2-summary-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  summary-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: PYTHONPATH=. python -m unittest -v signals_v2.test_summarize_24_months
