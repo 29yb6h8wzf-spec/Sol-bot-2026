@@ -34,6 +34,14 @@ class HistoricalEvidenceProvenanceTests(unittest.TestCase):
         self.manifest["evidence_artifacts"]=[{"role":"historical_orderbook","path":"missing.csv","sha256":"0"*64}]
         with self.assertRaisesRegex(ValueError,"historical_artifact_missing_or_unsafe"):
             self.check(self.manifest)
+    def test_absolute_artifact_path_rejected(self):
+        self.manifest["evidence_artifacts"]=[{"role":"historical_orderbook","path":"/tmp/other.csv","sha256":"0"*64}]
+        with self.assertRaisesRegex(ValueError,"historical_artifact_missing_or_unsafe"):
+            self.check(self.manifest)
+    def test_parent_traversal_rejected(self):
+        self.manifest["evidence_artifacts"]=[{"role":"historical_orderbook","path":"../other.csv","sha256":"0"*64}]
+        with self.assertRaisesRegex(ValueError,"historical_artifact_missing_or_unsafe"):
+            self.check(self.manifest)
     def test_current_capture_rejected(self):
         self.manifest["current_only"]=True
         self.manifest["historical_universe_verified"]=False
