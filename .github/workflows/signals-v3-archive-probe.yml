@@ -18,8 +18,8 @@ jobs:
       - name: Generate bounded research plan
         run: |
           mkdir -p research_data/v3_probe
-          PYTHONPATH=. python -m signals_v3.archive_acquisition_plan --symbols SOLUSDT XRPUSDT --first 2026-08 --last 2026-09 --output research_data/v3_probe/plan.json
-      - name: Acquire twelve public historical ZIPs across two months, no exchange trading access
+          PYTHONPATH=. python -m signals_v3.archive_acquisition_plan --symbols SOLUSDT XRPUSDT --first 2026-07 --last 2026-09 --output research_data/v3_probe/plan.json
+      - name: Acquire bounded public historical ZIPs across three months, no exchange trading access
         run: |
           PYTHONPATH=. python -m signals_v3.acquire_public_archives research_data/v3_probe/plan.json --root research_data/v3_probe/archives --max-files 12 --output research_data/v3_probe/acquisition.json
       - name: Generate post-acquisition coverage
