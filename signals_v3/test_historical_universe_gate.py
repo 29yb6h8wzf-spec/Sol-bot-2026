@@ -18,6 +18,9 @@ class HistoricalUniverseGateTests(unittest.TestCase):
     def test_incomplete_listing_rejected(self):
         with self.assertRaisesRegex(ValueError,"incomplete_historical_universe"):
             verify_decision_snapshot([self.obs],self.now,["ADAUSDT","SOLUSDT"])
+    def test_duplicate_listing_rejected(self):
+        with self.assertRaisesRegex(ValueError,"invalid_historical_market_listing"):
+            verify_decision_snapshot([self.obs],self.now,["ADAUSDT","ADAUSDT"])
     def test_duplicate_rejected(self):
         with self.assertRaisesRegex(ValueError,"duplicate_symbol_snapshot"):
             verify_decision_snapshot([self.obs,self.obs],self.now,["ADAUSDT"])
