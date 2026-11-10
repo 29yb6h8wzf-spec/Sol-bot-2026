@@ -25,10 +25,9 @@ def ema(values: tuple[float, ...], span: int) -> float:
     return result
 
 
-def features(bars: tuple[Candle, ...]) -> Features:
+def features(bars: tuple[Candle, ...], *, decision_ms: int) -> Features:
     if not isinstance(bars, tuple) or len(bars) < 64:
         raise DataRejected("insufficient_feature_history")
-    decision_ms = bars[-1].available_at_ms
     for candle in bars:
         candle.validate(FIVE_MINUTES_MS, decision_ms)
     if any(b.open_ms - a.open_ms != FIVE_MINUTES_MS for a, b in zip(bars, bars[1:])):
