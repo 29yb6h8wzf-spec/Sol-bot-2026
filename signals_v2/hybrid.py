@@ -33,7 +33,7 @@ def candidates(snapshot: MarketSnapshot) -> tuple[Hypothesis, ...]:
     bars = snapshot.five_minute
     reg = classify(snapshot)
     s = structure(bars)
-    f = features(bars)
+    f = features(bars, decision_ms=snapshot.decision_ms)
     if reg.regime in ("UNKNOWN", "RANGE_COMPRESSION"):
         return ()
     # 1m is a confirmation of the completed 5m candle, never future data.
