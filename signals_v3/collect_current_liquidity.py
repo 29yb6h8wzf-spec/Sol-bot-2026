@@ -6,6 +6,7 @@ No credentials, private endpoints, order endpoints, or deployment.
 import json
 import time
 import urllib.parse
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -15,8 +16,13 @@ def public_json(path,params=None):
     if params:
         url+="?"+urllib.parse.urlencode(params)
     req=urllib.request.Request(url,headers={"User-Agent":"SignalPilot-V3-Research/1.0"})
-    with urllib.request.urlopen(req,timeout=15) as response:
-        return json.load(response)
+    try:
+        with urllib.request.urlopen(req,timeout=15) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as exc:
+        if exc.code in (403,451):
+            raise RuntimeError('public_market_data_access_blocked_http_'+str(exc.code)) from exc
+        raise
 
 def snapshot_symbol(symbol,fetch=public_json,clock_ms=lambda:int(time.time()*1000)):
     if not isinstance(symbol,str) or not symbol.endswith("USDT") or not symbol.isalnum():
