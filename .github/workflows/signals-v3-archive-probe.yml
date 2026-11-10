@@ -1,0 +1,38 @@
+name: Signals V3 public archive acquisition probe
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths: ['.github/workflows/signals-v3-archive-probe.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Generate bounded research plan
+        run: |
+          mkdir -p research_data/v3_probe
+          PYTHONPATH=. python -m signals_v3.archive_acquisition_plan --symbols SOLUSDT --first 2026-09 --last 2026-09 --output research_data/v3_probe/plan.json
+      - name: Probe one public historical ZIP, no exchange trading access
+        run: |
+          PYTHONPATH=. python -m signals_v3.acquire_public_archives research_data/v3_probe/plan.json --root research_data/v3_probe/archives --max-files 1 --output research_data/v3_probe/acquisition.json
+      - name: Generate post-acquisition coverage
+        run: |
+          PYTHONPATH=. python -m signals_v3.run_archive_audit research_data/v3_probe/plan.json --archive-root research_data/v3_probe/archives --output-dir research_data/v3_probe
+      - name: Preserve evidence (no ZIP redistribution)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-v3-public-archive-probe-evidence
+          path: |
+            research_data/v3_probe/plan.json
+            research_data/v3_probe/acquisition.json
+            research_data/v3_probe/archive_audit.json
+            research_data/v3_probe/archive_coverage.json
+          if-no-files-found: warn
