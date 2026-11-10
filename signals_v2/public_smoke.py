@@ -55,7 +55,7 @@ def run_symbol(symbol: str) -> dict:
                "rejected": {}, "proposals": 0, "replayed": 0,
                "net_r_descriptive": 0.0, "exit_reasons": {},
                "status": "DIAGNOSTIC_ONLY_NOT_OOS"}
-    for i in range(80, len(five)-1):
+    for i in range(80, len(five)-48):
         end = five[i-1].open_ms + 300_000
         if end > one[-1].open_ms + 60_000:
             break
