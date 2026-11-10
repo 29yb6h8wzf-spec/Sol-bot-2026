@@ -32,7 +32,6 @@ jobs:
       - name: Compare actual 1m and 5m OHLCV
         run: |
           PYTHONPATH=. python -m signals_v3.audit_timeframes research_data/v3_probe/plan.json --root research_data/v3_probe/archives --output research_data/v3_probe/timeframe_consistency.json
-            research_data/v3_probe/funding_audit.json
       - name: Audit historical funding archives
         run: |
           PYTHONPATH=. python -m signals_v3.audit_funding_batch research_data/v3_probe/plan.json --root research_data/v3_probe/archives --output research_data/v3_probe/funding_audit.json
@@ -48,4 +47,5 @@ jobs:
             research_data/v3_probe/archive_coverage.json
             research_data/v3_probe/kline_continuity.json
             research_data/v3_probe/timeframe_consistency.json
+            research_data/v3_probe/funding_audit.json
           if-no-files-found: warn
