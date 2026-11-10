@@ -1,0 +1,46 @@
+name: Signals V3 offline archive audit
+on:
+  workflow_dispatch:
+    inputs:
+      symbols:
+        description: 'Space-separated research symbols (NOT historical universe)'
+        required: true
+        default: 'SOLUSDT XRPUSDT'
+      first_month:
+        description: 'First month YYYY-MM'
+        required: true
+        default: '2026-09'
+      last_month:
+        description: 'Last month YYYY-MM'
+        required: true
+        default: '2026-09'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build unverified acquisition plan
+        env:
+          SYMBOLS: ${{ inputs.symbols }}
+          FIRST_MONTH: ${{ inputs.first_month }}
+          LAST_MONTH: ${{ inputs.last_month }}
+        run: |
+          mkdir -p research_data/v3_audit
+          read -r -a symbol_array <<< "$SYMBOLS"
+          PYTHONPATH=. python -m signals_v3.archive_acquisition_plan --symbols "${symbol_array[@]}" --first "$FIRST_MONTH" --last "$LAST_MONTH" --output research_data/v3_audit/plan.json
+      - name: Audit checked-out local archive files only
+        run: |
+          PYTHONPATH=. python -m signals_v3.run_archive_audit research_data/v3_audit/plan.json --archive-root research_data/v3_archives --output-dir research_data/v3_audit
+      - name: Upload truthful coverage evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-v3-offline-archive-audit
+          path: research_data/v3_audit/
+          if-no-files-found: warn
