@@ -3,7 +3,7 @@
 Does not download data or infer historical listings. Missing and invalid
 archives remain blocked; verification results can feed archive inventory.
 """
-import argparse,json
+import argparse,json,zipfile
 from pathlib import Path
 from signals_v3.verify_archive import verify_archive
 
@@ -28,7 +28,7 @@ def audit_plan(plan,root):
                 evidence=verify_archive(candidate,interval,month)
                 record.update(evidence)
                 verified+=1
-            except (ValueError,OSError,KeyError,UnicodeError,EOFError) as exc:
+            except (ValueError,OSError,KeyError,UnicodeError,EOFError,zipfile.BadZipFile) as exc:
                 record["reason"]=type(exc).__name__+":"+str(exc)
         results.append(record)
     return {"research_only":True,"historical_universe_verified":False,
