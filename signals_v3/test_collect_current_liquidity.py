@@ -1,7 +1,16 @@
 import unittest
+import urllib.error
+from unittest.mock import patch
+from signals_v3.collect_current_liquidity import public_json
 from signals_v3.collect_current_liquidity import snapshot_symbol
 
 class CurrentLiquidityCollectorTests(unittest.TestCase):
+    def test_http_451_is_explicit_access_block(self):
+        err=urllib.error.HTTPError('https://fapi.binance.com/fapi/v1/exchangeInfo',451,'blocked',{},None)
+        with patch('urllib.request.urlopen',side_effect=err):
+            with self.assertRaisesRegex(RuntimeError,'public_market_data_access_blocked_http_451'):
+                public_json('/fapi/v1/exchangeInfo')
+
     def test_public_snapshot(self):
         calls=[]
         def fetch(path,params=None):
