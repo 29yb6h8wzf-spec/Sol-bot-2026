@@ -69,8 +69,7 @@ def main():
     result=snapshot_symbol(args.symbol)
     path=Path(args.output)
     path.parent.mkdir(parents=True,exist_ok=True)
-    path.write_text(json.dumps(result,indent=2)+"
-")
+    path.write_text(json.dumps(result,indent=2)+"\n")
     print(json.dumps({"symbol":args.symbol,"current_only":True,"output":str(path)}))
 
 if __name__=="__main__":
