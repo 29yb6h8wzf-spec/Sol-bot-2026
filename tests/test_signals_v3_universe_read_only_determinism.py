@@ -38,6 +38,20 @@ class UniverseReadOnlyReplayTests(unittest.TestCase):
         self.assertEqual(tuple(observations), snapshot)
         self.assertEqual(limits, UniverseThresholds())
 
+    def test_zero_min_notional_metadata_fails_closed(self):
+        # A zero minimum notional is missing/invalid exchange metadata,
+        # not evidence that every allocation can satisfy trading filters.
+        invalid = replace(observation("SOLUSDT"), min_notional_usd=0.0)
+        accepted, reasons = select_universe([invalid], 1000)
+        self.assertEqual(accepted, ())
+        self.assertEqual(reasons["SOLUSDT"], "invalid_market_data")
+
+    def test_positive_min_notional_boundary_is_eligible(self):
+        valid = replace(observation("SOLUSDT"), min_notional_usd=75.0)
+        accepted, reasons = select_universe([valid], 1000)
+        self.assertEqual(accepted, ("SOLUSDT",))
+        self.assertEqual(reasons["SOLUSDT"], "eligible")
+
     def test_future_observation_never_eligible(self):
         accepted, reasons = select_universe(
             [observation("SOLUSDT", observed_at_ms=1001)], 1000)
