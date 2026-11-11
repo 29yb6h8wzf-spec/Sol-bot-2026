@@ -65,5 +65,23 @@ class UniverseReadOnlyReplayTests(unittest.TestCase):
         self.assertEqual(reasons["SOLUSDT"], "missing_point_in_time_evidence")
 
 
+    def test_zero_liquidity_or_allocation_thresholds_fail_closed(self):
+        # Zero volume/depth thresholds would admit markets without evidence
+        # of liquidity; zero allocation cannot support a tradable contract.
+        for field in ("min_quote_volume_24h_usd",
+                      "min_each_side_depth_10bps_usd",
+                      "available_notional_usd"):
+            with self.subTest(field=field):
+                limits = replace(UniverseThresholds(), **{field: 0.0})
+                with self.assertRaisesRegex(ValueError, "invalid_universe_thresholds"):
+                    select_universe([], 1000, limits)
+                accepted, reasons = select_universe([observation("SOLUSDT")], 1000)
+                self.assertEqual(accepted, ("SOLUSDT",))
+                from signals_v3.dynamic_universe import eligibility
+                self.assertEqual(
+                    eligibility(observation("SOLUSDT"), 1000, limits),
+                    (False, "invalid_universe_thresholds"),
+                )
+
 if __name__ == "__main__":
     unittest.main()
