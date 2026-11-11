@@ -15,12 +15,15 @@ def D(value):
     return v
 
 def replay(plan, candles, *, interval_ms=300000, fee_rate="0.0005",
-           slippage_rate="0.0002", initial_equity="150"):
+           slippage_rate="0.0002", initial_equity="150",
+           max_holding_minutes=None):
     """Candles: (open_time_ms, open, high, low, close), all CLOSED.
 
     Entry is a hypothetical market fill at the NEXT candle open after signal close,
     not at the signal close. Stop-first if both exit brackets hit the same bar.
     No funding assumption: funding is not included in this P&L.
+    Optional maximum holding time closes at the completed candle close,
+    unless stop/target triggers first. No artificial exit on missing bars.
     """
     if not isinstance(plan, dict) or plan.get("status") != "INDICATIVE_PLAN_ONLY_NOT_EXECUTABLE":
         raise ValueError("unvalidated_plan")
@@ -38,6 +41,11 @@ def replay(plan, candles, *, interval_ms=300000, fee_rate="0.0005",
         raise ValueError("invalid_brackets")
     if not isinstance(interval_ms, int) or interval_ms <= 0:
         raise ValueError("invalid_interval")
+    if max_holding_minutes is not None:
+        if (type(max_holding_minutes) is not int or
+            max_holding_minutes <= 0 or
+            (max_holding_minutes * 60000) % interval_ms):
+            raise ValueError("invalid_max_holding_minutes")
     signal_close = plan.get("closed_5m_candle_ms")
     if type(signal_close) is not int or signal_close % interval_ms:
         raise ValueError("invalid_signal_candle")
@@ -83,6 +91,18 @@ def replay(plan, candles, *, interval_ms=300000, fee_rate="0.0005",
             gross = qty * (exit_fill - fill) * (1 if side == "long" else -1)
             fees = qty * (fill + exit_fill) * fee
             return {"status": "CLOSED_HYPOTHETICAL", "exit_reason": reason,
+                    "exit_candle_ms": t, "entry_fill": str(fill),
+                    "exit_fill": str(exit_fill), "gross_pnl": str(gross),
+                    "fees": str(fees), "net_pnl_excluding_funding": str(gross-fees),
+                    "orders_sent": False}
+        # A time limit expires only AFTER this entire closed candle has elapsed.
+        # Stop/target checks above always take priority, even at the cap.
+        if (max_holding_minutes is not None and
+            t + interval_ms - signal_close >= max_holding_minutes * 60000):
+            exit_fill = c * (1 - slip if side == "long" else 1 + slip)
+            gross = qty * (exit_fill - fill) * (1 if side == "long" else -1)
+            fees = qty * (fill + exit_fill) * fee
+            return {"status": "CLOSED_HYPOTHETICAL", "exit_reason": "TIME_LIMIT",
                     "exit_candle_ms": t, "entry_fill": str(fill),
                     "exit_fill": str(exit_fill), "gross_pnl": str(gross),
                     "fees": str(fees), "net_pnl_excluding_funding": str(gross-fees),
