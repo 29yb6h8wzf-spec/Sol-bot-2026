@@ -64,7 +64,8 @@ def replay_verified_historical_universe(decisions, expected_decision_times, evid
     if expected_decision_times is None:
         raise ValueError("missing_expected_decision_schedule")
     schedule=tuple(expected_decision_times)
-    if not schedule:
+    if (not schedule or any(type(t) is not int or t < 0 for t in schedule)
+            or any(b <= a for a, b in zip(schedule, schedule[1:]))):
         raise ValueError("invalid_expected_decision_schedule")
     if not evidence_manifest_path:
         raise ValueError("missing_historical_evidence_manifest")
