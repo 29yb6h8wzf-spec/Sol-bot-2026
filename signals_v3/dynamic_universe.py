@@ -70,7 +70,9 @@ def eligibility(obs:UniverseObservation,decision_ms:int,limits:UniverseThreshold
     if not _SYMBOL_PATTERN.fullmatch(obs.symbol) or obs.quote_asset!="USDT" or obs.status!="TRADING" or obs.contract_type!="PERPETUAL":
         return False,"unsupported_market"
     values=(obs.last_price_usd,obs.quote_volume_24h_usd,obs.spread_bps,obs.bid_depth_10bps_usd,obs.ask_depth_10bps_usd,obs.min_notional_usd)
-    if not all(_finite_nonnegative(v) for v in values):
+    if not all(_finite_nonnegative(v) for v in values) or obs.min_notional_usd == 0:
+        # Exchange trading filters require a strictly positive minimum notional.
+        # Missing/zero metadata cannot establish that an allocation is executable.
         return False,"invalid_market_data"
     if not MIN_PRICE_USD<=obs.last_price_usd<=MAX_PRICE_USD:
         return False,"outside_price_range"
