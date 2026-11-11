@@ -26,9 +26,15 @@ def replay_universe(decisions, expected_decision_times=None):
             raise ValueError("nonmonotonic_decision_times")
         if "observations" not in decision or "expected_symbols" not in decision:
             raise ValueError("missing_historical_evidence")
+        # Materialize the listing once: a generator must not be consumed by
+        # validation and then silently appear empty during change tracking.
+        try:
+            listing=tuple(decision["expected_symbols"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("invalid_historical_market_listing") from exc
         result=verify_decision_snapshot(
-            decision["observations"],timestamp,decision["expected_symbols"])
-        current_listing=frozenset(decision["expected_symbols"])
+            decision["observations"],timestamp,listing)
+        current_listing=frozenset(listing)
         if previous_listing is not None:
             result["listed_added"]=tuple(sorted(current_listing-previous_listing))
             result["listed_removed"]=tuple(sorted(previous_listing-current_listing))
