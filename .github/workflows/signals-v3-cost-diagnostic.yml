@@ -1,0 +1,78 @@
+name: Signals V3 cost decomposition diagnostic
+# Exploratory, research-only. Window 2024-11..2026-10 was already inspected:
+# output is diagnosis, never OOS evidence. No orders, secrets or deployment.
+on:
+  push:
+    branches: ['research/v3-*']
+    paths:
+      - 'signals_v3/cost_decomposition.py'
+      - 'signals_v3/pilot_replay.py'
+      - '.github/workflows/signals-v3-cost-diagnostic.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  monthly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        month: ['2024-12', '2025-04', '2025-08', '2025-12', '2026-04', '2026-08']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Retrieve verified archives and mismatch exclusions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MONTH: ${{ matrix.month }}
+        run: |
+          mkdir -p research_data/v3history
+          PYTHONPATH=. python -m signals_v3.archive_acquisition_plan --symbols SOLUSDT XRPUSDT --first "$MONTH" --last "$MONTH" --output research_data/v3history/plan.json
+          PYTHONPATH=. python -m signals_v3.acquire_public_archives research_data/v3history/plan.json --root research_data/v3history/downloads --max-files 6 --output research_data/v3history/acquisition.json
+          PYTHONPATH=. python -m signals_v3.run_archive_audit research_data/v3history/plan.json --archive-root research_data/v3history/downloads --output-dir research_data/v3history
+          python - <<'PY'
+          import json,shutil
+          from pathlib import Path
+          root=Path("research_data/v3history")
+          report=json.loads((root/"archive_coverage.json").read_text())
+          if report["verified"]!=6 or report["blocked"]!=0 or not report["archive_grid"]["archive_grid_complete"]:
+              raise SystemExit("FAIL_CLOSED: missing or invalid monthly archive data")
+          for source in (root/"downloads").rglob("*.zip"):
+              shutil.copy2(source,root/source.name)
+          if len(list(root.glob("*.zip")))!=6:
+              raise SystemExit("FAIL_CLOSED: expected six verified monthly ZIPs")
+          PY
+          gh run download 42794564196 --repo "${{ github.repository }}" --name signals-v2-all-ohlcv-mismatches --dir research_data/v3history
+      - name: Decompose per-trade costs
+        env:
+          MONTH: ${{ matrix.month }}
+        run: PYTHONPATH=. python -m signals_v3.cost_decomposition research_data/v3history research_data/v3history/all_ohlcv_mismatches.json --month "$MONTH" --stride 12 --output "research_data/cost_rows_${MONTH}.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v3-cost-rows-${{ matrix.month }}
+          path: research_data/cost_rows_${{ matrix.month }}.json
+          if-no-files-found: error
+  aggregate:
+    needs: monthly
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: v3-cost-rows-*
+          path: research_data/cost
+      - name: Aggregate diagnosis
+        run: PYTHONPATH=. python -c "from signals_v3.cost_decomposition import aggregate_main; aggregate_main(['research_data/cost','research_data/v3_cost_diagnosis.json'])"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v3-cost-diagnosis
+          path: research_data/v3_cost_diagnosis.json
+          if-no-files-found: error
