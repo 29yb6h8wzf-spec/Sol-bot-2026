@@ -22,8 +22,10 @@ class ThresholdSafety(unittest.TestCase):
             with self.subTest(field=field,value=value):
                 limits=replace(UniverseThresholds(),**{field:value})
                 self.assertEqual(eligibility(OBS,1000,limits),(False,"invalid_universe_thresholds"))
-                self.assertEqual(select_universe([OBS],1000,limits),
-                                 ((),{"SOLUSDT":"invalid_universe_thresholds"}))
+                with self.assertRaisesRegex(ValueError, "^invalid_universe_thresholds$"):
+                    select_universe([OBS],1000,limits)
+                with self.assertRaisesRegex(ValueError, "^invalid_universe_thresholds$"):
+                    select_universe([],1000,limits)
 
     def test_wrong_configuration_type(self):
         self.assertEqual(eligibility(OBS,1000,{}),(False,"invalid_universe_thresholds"))
