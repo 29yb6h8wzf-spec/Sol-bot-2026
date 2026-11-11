@@ -36,6 +36,9 @@ class HistoricalEvidenceIntegrationTests(unittest.TestCase):
             self.assertTrue(result["historical_evidence_verified"])
             self.assertFalse(result["provider_authenticity_verified"])
             self.assertFalse(result["historical_market_coverage_verified"])
+            self.assertFalse(result["funding_history_verified"])
+            self.assertFalse(result["orderbook_history_verified"])
+            self.assertFalse(result["point_in_time_universe_verified"])
             with self.assertRaises(ValueError):
                 verify_historical_evidence_manifest(path, 2001)
 
