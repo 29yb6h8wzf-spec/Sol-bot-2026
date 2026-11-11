@@ -28,8 +28,14 @@ class HistoricalEvidenceProvenanceTests(unittest.TestCase):
                 manifest["evidence_artifacts"]=artifacts
             p.write_text(json.dumps(manifest))
             return verify_historical_evidence_manifest(p,decision)
-    def test_valid_declared_manifest(self):
-        self.assertTrue(self.check(self.manifest)["historical_evidence_verified"])
+    def test_valid_declared_manifest_verifies_integrity_but_fails_closed(self):
+        # Checksums prove byte integrity only; they must never certify historical evidence.
+        result=self.check(self.manifest)
+        self.assertTrue(result["artifact_integrity_verified"])
+        self.assertIs(result["historical_evidence_verified"],False)
+        self.assertIs(result["point_in_time_universe_verified"],False)
+        self.assertIs(result["orderbook_history_verified"],False)
+        self.assertEqual(result["artifact_count"],2)
     def test_checksum_does_not_certify_provider_or_market_coverage(self):
         result=self.check(self.manifest)
         self.assertFalse(result["provider_authenticity_verified"])
