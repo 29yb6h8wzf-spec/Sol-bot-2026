@@ -67,4 +67,6 @@ def verify_historical_evidence_manifest(path,decision_ms):
     # Checksums prove byte integrity only, not provider authenticity or complete market coverage.
     return {"decision_ms":decision_ms,"historical_evidence_verified":True,
             "provider_authenticity_verified":False,"historical_market_coverage_verified":False,
+            "funding_history_verified":False,"orderbook_history_verified":False,
+            "point_in_time_universe_verified":False,
             "source_type":manifest["source_type"],"artifact_count":len(artifacts)}
