@@ -81,6 +81,8 @@ def replay_snapshot(five: HistoricalBars, one: HistoricalBars, *,
         raise DataRejected("historical_pair_mismatch")
     if type(decision_ms) is not int or decision_ms <= 0:
         raise DataRejected("invalid_decision_time")
+    if type(lookback_five) is not int or type(lookback_one) is not int or lookback_five <= 0 or lookback_one <= 0:
+        raise DataRejected("invalid_replay_lookback")
     f = tuple(b for b in five.bars if b.available_at_ms <= decision_ms)[-lookback_five:]
     m = tuple(b for b in one.bars if b.available_at_ms <= decision_ms)[-lookback_one:]
     snapshot = MarketSnapshot(five.symbol, decision_ms, f, m)
