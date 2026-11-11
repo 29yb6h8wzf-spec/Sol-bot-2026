@@ -53,7 +53,10 @@ def eligibility(obs:UniverseObservation,decision_ms:int,limits:UniverseThreshold
              limits.min_each_side_depth_10bps_usd,limits.available_notional_usd)
     if (any(not _finite_nonnegative(v) for v in numeric)
         or type(limits.max_observation_age_ms) is not int
-        or limits.max_observation_age_ms<0):
+        or limits.max_observation_age_ms<0
+        or limits.min_quote_volume_24h_usd == 0
+        or limits.min_each_side_depth_10bps_usd == 0
+        or limits.available_notional_usd == 0):
         return False,"invalid_universe_thresholds"
     if not isinstance(obs,UniverseObservation):
         return False,"invalid_market_data"
@@ -95,7 +98,10 @@ def select_universe(observations,decision_ms,limits=UniverseThresholds()):
                limits.min_each_side_depth_10bps_usd, limits.available_notional_usd)
     if (any(not _finite_nonnegative(v) for v in numeric)
             or type(limits.max_observation_age_ms) is not int
-            or limits.max_observation_age_ms < 0):
+            or limits.max_observation_age_ms < 0
+            or limits.min_quote_volume_24h_usd == 0
+            or limits.min_each_side_depth_10bps_usd == 0
+            or limits.available_notional_usd == 0):
         raise ValueError("invalid_universe_thresholds")
     if type(decision_ms) is not int or decision_ms < 0:
         raise ValueError("invalid_decision_timestamp")
