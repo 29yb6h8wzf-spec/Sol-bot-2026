@@ -35,7 +35,8 @@ def replay_hypothesis(signal):
         signal.strategy,"V3_EXPLORATORY",signal.decision_ms,signal.entry_reference,
         signal.stop_reference,signal.target_reference,signal.decision_ms+600000)
 
-def run(root,manifest,month="2026-09",stride=12):
+def run(root,manifest,month="2026-09",stride=12,records=None):
+    """records: optional list receiving per-trade diagnostics (does not alter the report)."""
     if type(stride)!=int or stride<1:raise ValueError("invalid_stride")
     intervals=load_manifest(manifest)
     report={"schema":"signals.v3.pilot.1","month":month,"stride_5m_bars":stride,
@@ -73,6 +74,13 @@ def run(root,manifest,month="2026-09",stride=12):
                 result=guarded_replay(proposal,history,future,intervals,
                     max_bars=48,funding_rate_total=rate)
                 returns.append(result.net_r)
+                if records is not None:
+                    records.append({"month":month,"symbol":symbol,"strategy":proposal.specialist,
+                        "direction":proposal.direction,"exit_reason":result.exit_reason,
+                        "bars_held":result.bars_held,"reference_open":future[0].open,
+                        "stop":proposal.stop_reference,"entry_fill":result.entry_fill,
+                        "exit_fill":result.exit_fill,"net_r":result.net_r,
+                        "fee_r":result.fee_r,"funding_r":result.funding_r})
                 by_strategy.setdefault(proposal.specialist,[]).append(result.net_r)
                 counts["trades"]+=1;counts[result.exit_reason]+=1
                 next_allowed=actual_end
