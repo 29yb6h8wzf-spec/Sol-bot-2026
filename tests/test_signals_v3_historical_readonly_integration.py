@@ -33,7 +33,8 @@ class HistoricalEvidenceIntegrationTests(unittest.TestCase):
             path = root / "manifest.json"
             path.write_text(json.dumps(manifest), encoding="utf-8")
             result = verify_historical_evidence_manifest(path, 1500)
-            self.assertTrue(result["historical_evidence_verified"])
+            self.assertTrue(result["artifact_integrity_verified"])
+            self.assertFalse(result["historical_evidence_verified"])
             self.assertFalse(result["provider_authenticity_verified"])
             self.assertFalse(result["historical_market_coverage_verified"])
             self.assertFalse(result["funding_history_verified"])
