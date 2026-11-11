@@ -5,6 +5,9 @@ never calls an exchange and never authorizes orders. Missing evidence fails clos
 """
 from dataclasses import dataclass
 from math import isfinite
+import re
+
+_SYMBOL_PATTERN = re.compile(r"[A-Z0-9]{2,30}USDT\Z")
 
 MIN_PRICE_USD=0.99
 MAX_PRICE_USD=150.0
@@ -55,7 +58,7 @@ def eligibility(obs:UniverseObservation,decision_ms:int,limits:UniverseThreshold
         return False,"invalid_market_data"
     if obs.observed_at_ms>decision_ms or decision_ms-obs.observed_at_ms>limits.max_observation_age_ms:
         return False,"missing_point_in_time_evidence"
-    if not obs.symbol.endswith("USDT") or obs.quote_asset!="USDT" or obs.status!="TRADING" or obs.contract_type!="PERPETUAL":
+    if not _SYMBOL_PATTERN.fullmatch(obs.symbol) or obs.quote_asset!="USDT" or obs.status!="TRADING" or obs.contract_type!="PERPETUAL":
         return False,"unsupported_market"
     values=(obs.last_price_usd,obs.quote_volume_24h_usd,obs.spread_bps,obs.bid_depth_10bps_usd,obs.ask_depth_10bps_usd,obs.min_notional_usd)
     if not all(isfinite(v) for v in values) or any(v<0 for v in values):
@@ -85,6 +88,8 @@ def select_universe(observations,decision_ms,limits=UniverseThresholds()):
         raise ValueError("invalid_universe_thresholds")
     if type(decision_ms) is not int or decision_ms < 0:
         raise ValueError("invalid_decision_timestamp")
+    if observations is None or isinstance(observations,(str,bytes,dict)):
+        raise ValueError("invalid_universe_observations")
     accepted=[];reasons={}
     for obs in observations:
         if not isinstance(obs,UniverseObservation) or not isinstance(obs.symbol,str) or not obs.symbol:
