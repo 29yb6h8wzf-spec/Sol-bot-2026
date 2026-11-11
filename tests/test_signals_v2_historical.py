@@ -77,3 +77,16 @@ def test_reject_mismatched_symbol_and_fake_observation_time():
         replay_snapshot(f, m, decision_ms=BASE+69*FIVE_MINUTES_MS)
     with pytest.raises(DataRejected, match="historical_availability_not_close"):
         replace(f, bars=(replace(f.bars[0], available_at_ms=f.bars[0].available_at_ms+1),)+f.bars[1:])
+
+
+@pytest.mark.parametrize("five_lookback,one_lookback", [
+    (0, 10), (-1, 10), (64, 0), (64, -2),
+    (True, 10), (64, False), (1.5, 10), (64, "10"),
+])
+def test_replay_rejects_invalid_lookbacks(five_lookback, one_lookback):
+    five, one = feeds()
+    f = historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
+    m = historical_rows("SOLUSDT", MINUTE_MS, one, source="fixture")
+    with pytest.raises(DataRejected, match="invalid_replay_lookback"):
+        replay_snapshot(f, m, decision_ms=BASE+69*FIVE_MINUTES_MS,
+                        lookback_five=five_lookback, lookback_one=one_lookback)
