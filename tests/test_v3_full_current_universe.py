@@ -41,6 +41,25 @@ class FullUniverseCaptureTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "rate_limited"):
             capture_full_current_universe(fetch=failing, clock_ms=lambda: 1000)
 
+    def test_future_dated_snapshot_rejected(self):
+        with patch("signals_v3.capture_full_current_universe.discover_current_price_candidates", return_value=["T0USDT"]), \
+             patch("signals_v3.capture_full_current_universe.snapshot_symbol",
+                   return_value={"symbol": "T0USDT", "observed_at_ms": 2000}):
+            with self.assertRaisesRegex(ValueError, "snapshot_timestamp_after_capture"):
+                capture_full_current_universe(fetch=self.fetch, clock_ms=lambda: 1000)
+
+    def test_non_monotonic_snapshot_timestamps_rejected(self):
+        snapshots = [
+            {"symbol": "T0USDT", "observed_at_ms": 1500},
+            {"symbol": "T1USDT", "observed_at_ms": 1200},
+        ]
+        with patch("signals_v3.capture_full_current_universe.discover_current_price_candidates",
+                   return_value=["T0USDT", "T1USDT"]), \
+             patch("signals_v3.capture_full_current_universe.snapshot_symbol",
+                   side_effect=snapshots):
+            with self.assertRaisesRegex(ValueError, "non_monotonic_market_snapshot"):
+                capture_full_current_universe(fetch=self.fetch, clock_ms=lambda: 1000)
+
     def test_slow_capture_fails_closed(self):
         times = iter([0] + [1000] * 50 + [400000] * 50)
         with self.assertRaisesRegex(ValueError, "complete_capture_too_slow"):
