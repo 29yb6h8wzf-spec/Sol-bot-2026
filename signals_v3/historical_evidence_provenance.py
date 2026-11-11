@@ -65,7 +65,7 @@ def verify_historical_evidence_manifest(path,decision_ms):
     if verified_roles!={"point_in_time_listings","historical_orderbook"}:
         raise ValueError("incomplete_historical_artifact_roles")
     # Checksums prove byte integrity only, not provider authenticity or complete market coverage.
-    return {"decision_ms":decision_ms,"historical_evidence_verified":True,
+    return {"decision_ms":decision_ms,"artifact_integrity_verified":True,"historical_evidence_verified":False,
             "provider_authenticity_verified":False,"historical_market_coverage_verified":False,
             "funding_history_verified":False,"orderbook_history_verified":False,
             "point_in_time_universe_verified":False,
