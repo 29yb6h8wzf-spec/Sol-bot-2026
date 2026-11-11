@@ -9,6 +9,15 @@ from signals_v3.historical_universe_replay import replay_verified_historical_uni
 
 
 class HistoricalReplayVerificationGateTests(unittest.TestCase):
+    def test_invalid_schedule_fails_before_manifest_io(self):
+        # A nonexistent manifest must not mask an invalid schedule.
+        # This also prevents repeated hash scans on malformed requests.
+        bad_schedules = ((), (-1,), (True,), (1, 1), (2, 1), (1, 1.5), (1, "2"))
+        for schedule in bad_schedules:
+            with self.subTest(schedule=schedule):
+                with self.assertRaisesRegex(ValueError, "invalid_expected_decision_schedule"):
+                    replay_verified_historical_universe((), schedule, "/nonexistent/manifest.json")
+
     def test_integrity_only_manifest_fails_before_replay(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
