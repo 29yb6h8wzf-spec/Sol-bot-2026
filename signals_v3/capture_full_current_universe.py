@@ -26,12 +26,19 @@ def capture_full_current_universe(fetch=public_json, clock_ms=None):
     if not symbols:
         raise ValueError("no_price_eligible_markets")
     snapshots = []
+    previous_observed_at_ms = started
     for symbol in symbols:
         snapshot = snapshot_symbol(symbol, fetch=shared_fetch, clock_ms=clock_ms)
         if snapshot["symbol"] != symbol or snapshot["observed_at_ms"] < started:
             raise ValueError("invalid_market_snapshot")
+        observed = snapshot["observed_at_ms"]
+        if type(observed) is not int or observed < previous_observed_at_ms:
+            raise ValueError("non_monotonic_market_snapshot")
+        previous_observed_at_ms = observed
         snapshots.append(snapshot)
     finished = clock_ms()
+    if finished < previous_observed_at_ms:
+        raise ValueError("snapshot_timestamp_after_capture")
     if finished < started or finished - started > 300_000:
         raise ValueError("complete_capture_too_slow")
     if len(snapshots) != len(symbols) or len({x["symbol"] for x in snapshots}) != len(symbols):
