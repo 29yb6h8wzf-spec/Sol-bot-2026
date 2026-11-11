@@ -90,8 +90,12 @@ def select_universe(observations,decision_ms,limits=UniverseThresholds()):
         raise ValueError("invalid_decision_timestamp")
     if observations is None or isinstance(observations,(str,bytes,dict)):
         raise ValueError("invalid_universe_observations")
+    try:
+        iterator = iter(observations)
+    except TypeError as exc:
+        raise ValueError("invalid_universe_observations") from exc
     accepted=[];reasons={}
-    for obs in observations:
+    for obs in iterator:
         if not isinstance(obs,UniverseObservation) or not isinstance(obs.symbol,str) or not obs.symbol:
             raise ValueError("invalid_universe_observation_identity")
         if obs.symbol in reasons:
