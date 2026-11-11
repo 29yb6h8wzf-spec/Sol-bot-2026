@@ -69,5 +69,12 @@ def replay_verified_historical_universe(decisions, expected_decision_times, evid
     if not evidence_manifest_path:
         raise ValueError("missing_historical_evidence_manifest")
     for timestamp in schedule:
-        verify_historical_evidence_manifest(evidence_manifest_path,timestamp)
+        verification=verify_historical_evidence_manifest(evidence_manifest_path,timestamp)
+        if verification.get("historical_evidence_verified") is not True:
+            raise ValueError("unverified_historical_evidence")
+        if any(verification.get(field) is not True for field in (
+            "provider_authenticity_verified", "historical_market_coverage_verified",
+            "funding_history_verified", "orderbook_history_verified",
+            "point_in_time_universe_verified")):
+            raise ValueError("incomplete_historical_evidence")
     return replay_complete_universe(decisions,schedule)
