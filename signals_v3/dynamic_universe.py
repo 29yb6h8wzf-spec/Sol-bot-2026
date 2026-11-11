@@ -9,6 +9,15 @@ import re
 
 _SYMBOL_PATTERN = re.compile(r"[A-Z0-9]{2,30}USDT\Z")
 
+def _finite_nonnegative(value):
+    """Reject enormous integers and non-finite provider values without raising."""
+    if type(value) not in (int, float) or value < 0:
+        return False
+    try:
+        return isfinite(value)
+    except (OverflowError, ValueError):
+        return False
+
 MIN_PRICE_USD=0.99
 MAX_PRICE_USD=150.0
 
@@ -42,7 +51,7 @@ def eligibility(obs:UniverseObservation,decision_ms:int,limits:UniverseThreshold
         return False,"invalid_universe_thresholds"
     numeric=(limits.min_quote_volume_24h_usd,limits.max_spread_bps,
              limits.min_each_side_depth_10bps_usd,limits.available_notional_usd)
-    if (any(type(v) not in (int,float) or not isfinite(v) or v<0 for v in numeric)
+    if (any(not _finite_nonnegative(v) for v in numeric)
         or type(limits.max_observation_age_ms) is not int
         or limits.max_observation_age_ms<0):
         return False,"invalid_universe_thresholds"
@@ -61,7 +70,7 @@ def eligibility(obs:UniverseObservation,decision_ms:int,limits:UniverseThreshold
     if not _SYMBOL_PATTERN.fullmatch(obs.symbol) or obs.quote_asset!="USDT" or obs.status!="TRADING" or obs.contract_type!="PERPETUAL":
         return False,"unsupported_market"
     values=(obs.last_price_usd,obs.quote_volume_24h_usd,obs.spread_bps,obs.bid_depth_10bps_usd,obs.ask_depth_10bps_usd,obs.min_notional_usd)
-    if not all(isfinite(v) for v in values) or any(v<0 for v in values):
+    if not all(_finite_nonnegative(v) for v in values):
         return False,"invalid_market_data"
     if not MIN_PRICE_USD<=obs.last_price_usd<=MAX_PRICE_USD:
         return False,"outside_price_range"
@@ -82,7 +91,7 @@ def select_universe(observations,decision_ms,limits=UniverseThresholds()):
         raise ValueError("invalid_universe_thresholds")
     numeric = (limits.min_quote_volume_24h_usd, limits.max_spread_bps,
                limits.min_each_side_depth_10bps_usd, limits.available_notional_usd)
-    if (any(type(v) not in (int, float) or not isfinite(v) or v < 0 for v in numeric)
+    if (any(not _finite_nonnegative(v) for v in numeric)
             or type(limits.max_observation_age_ms) is not int
             or limits.max_observation_age_ms < 0):
         raise ValueError("invalid_universe_thresholds")
