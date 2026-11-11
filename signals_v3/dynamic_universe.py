@@ -73,6 +73,18 @@ def eligibility(obs:UniverseObservation,decision_ms:int,limits:UniverseThreshold
     return True,"eligible"
 
 def select_universe(observations,decision_ms,limits=UniverseThresholds()):
+    # Validate configuration even when a replay has no observations. An empty
+    # batch must not silently certify an invalid research configuration.
+    if not isinstance(limits, UniverseThresholds):
+        raise ValueError("invalid_universe_thresholds")
+    numeric = (limits.min_quote_volume_24h_usd, limits.max_spread_bps,
+               limits.min_each_side_depth_10bps_usd, limits.available_notional_usd)
+    if (any(type(v) not in (int, float) or not isfinite(v) or v < 0 for v in numeric)
+            or type(limits.max_observation_age_ms) is not int
+            or limits.max_observation_age_ms < 0):
+        raise ValueError("invalid_universe_thresholds")
+    if type(decision_ms) is not int or decision_ms < 0:
+        raise ValueError("invalid_decision_timestamp")
     accepted=[];reasons={}
     for obs in observations:
         if not isinstance(obs,UniverseObservation) or not isinstance(obs.symbol,str) or not obs.symbol:
