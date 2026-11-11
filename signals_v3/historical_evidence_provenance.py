@@ -41,7 +41,7 @@ def verify_historical_evidence_manifest(path,decision_ms):
             int(digest,16)
         except ValueError as exc:
             raise ValueError("invalid_historical_artifact_reference") from exc
-        if Path(relative).is_absolute() or not Path(relative).parts or Path(relative).parts[0] in (".", "..") or ".." in Path(relative).parts:
+        if ("\\" in relative or "\x00" in relative or Path(relative).is_absolute() or not Path(relative).parts or Path(relative).parts[0] in (".", "..") or ".." in Path(relative).parts):
             raise ValueError("historical_artifact_missing_or_unsafe")
         unresolved=root/relative
         if any(part.is_symlink() for part in (unresolved, *unresolved.parents) if part!=root and part.is_relative_to(root)):
