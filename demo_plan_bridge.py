@@ -13,7 +13,9 @@ from demo_independent_verifier import verify
 from demo_order_planner import plan
 from futures_engine.market import closed_futures_bars
 
-FEE_AND_SLIPPAGE_BUFFER = D("0.002")  # 0.20% of notional, conservative placeholder
+FEE_AND_SLIPPAGE_BUFFER = D("0.002")  # Minimum reserve relative to entry notional.
+ASSUMED_TAKER_FEE = D("0.0006")
+ASSUMED_SLIPPAGE = D("0.0005")
 SYMBOLS = frozenset(("BTC/USDT:USDT", "ETH/USDT:USDT",
                      "SOL/USDT:USDT", "XRP/USDT:USDT"))
 
@@ -58,23 +60,32 @@ def build_plan(payload, *, verifier=verify, loader=closed_futures_bars, now_ms=N
     finally:
         if hasattr(exchange, "close"):
             exchange.close()
-    # Re-size for a 0.20% notional reserve covering estimated fees and
-    # slippage. This is NOT a guaranteed fill or maximum real-world loss.
+    # Model the same adverse entry and stop fills as the offline risk check.
+    # The next open can gap, so execution still requires a fresh risk check.
     entry, stop = D(result["entry"]), D(result["stop"])
-    max_unit_loss = abs(entry - stop) + entry * FEE_AND_SLIPPAGE_BUFFER
+    direction = 1 if result["side"] == "long" else -1
+    entry_fill = entry * (1 + direction * ASSUMED_SLIPPAGE)
+    stop_fill = stop * (1 - direction * ASSUMED_SLIPPAGE)
+    distance = abs(entry - stop)
+    # Cover fees on both modeled fills and the offline check's stop-level fee.
+    fees = ASSUMED_TAKER_FEE * (entry_fill + max(stop, stop_fill))
+    stop_loss = abs(entry_fill - stop_fill) + fees
+    max_unit_loss = max(stop_loss, distance + entry * FEE_AND_SLIPPAGE_BUFFER)
+    max_entry = max(entry, entry_fill)
     step = filters["step"]
-    qty = min(D(result["quantity"]),
-              (D("1.50") / max_unit_loss / step).to_integral_value(rounding=ROUND_DOWN) * step)
-    if qty < filters["min_qty"] or qty * entry < filters["min_cost"]:
+    quantity_cap = min(D(result["quantity"]), D("1.50") / max_unit_loss,
+                       D("300") / max_entry)
+    qty = (quantity_cap / step).to_integral_value(rounding=ROUND_DOWN) * step
+    if qty < filters["min_qty"] or qty * min(entry, entry_fill) < filters["min_cost"]:
         raise ValueError("below_exchange_minimum_after_cost_buffer")
     buffered_risk = qty * max_unit_loss
-    if buffered_risk > D("1.50") or qty * entry > D("300"):
+    if buffered_risk > D("1.50") or qty * max_entry > D("300"):
         raise ValueError("buffered_risk_cap_exceeded")
     result["quantity"] = str(qty)
     result["estimated_notional"] = str(qty * entry)
     result["estimated_max_stop_loss_before_fees"] = str(qty * abs(entry - stop))
     result["estimated_loss_including_buffer"] = str(buffered_risk)
-    result["fee_slippage_reserve_rate"] = str(FEE_AND_SLIPPAGE_BUFFER)
+    result["fee_slippage_reserve_rate"] = str((max_unit_loss - distance) / entry)
     result["risk_snapshot_approved"] = False
     result["execution_authorized"] = False
     result["orders_sent"] = False
