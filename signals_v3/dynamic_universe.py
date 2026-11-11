@@ -33,6 +33,16 @@ class UniverseThresholds:
 
 def eligibility(obs:UniverseObservation,decision_ms:int,limits:UniverseThresholds=UniverseThresholds()):
     # Untrusted historical/provider data must fail closed rather than crash a replay.
+    # Configuration is also an untrusted input. NaN/negative thresholds can
+    # otherwise silently disable spread, depth or staleness gates.
+    if not isinstance(limits,UniverseThresholds):
+        return False,"invalid_universe_thresholds"
+    numeric=(limits.min_quote_volume_24h_usd,limits.max_spread_bps,
+             limits.min_each_side_depth_10bps_usd,limits.available_notional_usd)
+    if (any(type(v) not in (int,float) or not isfinite(v) or v<0 for v in numeric)
+        or type(limits.max_observation_age_ms) is not int
+        or limits.max_observation_age_ms<0):
+        return False,"invalid_universe_thresholds"
     if not isinstance(obs,UniverseObservation):
         return False,"invalid_market_data"
     if any(type(v) is not int for v in (decision_ms,obs.observed_at_ms)) or decision_ms<0 or obs.observed_at_ms<0:
