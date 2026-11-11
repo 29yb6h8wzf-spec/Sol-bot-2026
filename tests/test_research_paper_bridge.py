@@ -109,3 +109,27 @@ def test_nonfinite_plan_blocked(tmp_path):
         return result
     a = run(source, journal, now=NOW, planner=planner)
     assert a["planned"] == 0 and a["blocked"] == 1
+
+
+def test_temporary_market_failure_retries_only_while_fresh(tmp_path):
+    from futures_engine.market import MarketDataUnavailable
+
+    source, journal = tmp_path/"source.db", tmp_path/"journal.db"
+    setup(source, [record("recover"), record("expire")])
+    def unavailable(payload, **kwargs):
+        raise MarketDataUnavailable("exchange temporarily unavailable after retries")
+
+    assert run(source, journal, now=NOW, planner=unavailable)["blocked"] == 2
+    calls = []
+    def recovering(payload, **kwargs):
+        calls.append(payload["signal_id"])
+        if payload["signal_id"] == "expire":
+            return unavailable(payload)
+        return valid_plan(payload)
+
+    assert run(source, journal, now=NOW+10, planner=recovering)["planned"] == 1
+    assert run(source, journal, now=NOW+150, planner=recovering)["blocked"] == 1
+    assert run(source, journal, now=NOW+151, planner=recovering)["already_seen"] == 2
+    assert sorted(calls) == ["expire", "recover"]
+    with sqlite3.connect(journal) as db:
+        assert db.execute("SELECT status FROM research_paper_plans WHERE signal_id='expire'").fetchone() == ("BLOCKED",)

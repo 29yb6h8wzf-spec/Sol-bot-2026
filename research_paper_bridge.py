@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from demo_plan_bridge import build_plan
+from futures_engine.market import MarketDataUnavailable
 from futures_engine.research_sqs_preview import preview
 
 SOURCE = "/opt/signalpilot/research-history.sqlite3"
@@ -95,8 +96,10 @@ def run(source=SOURCE, journal=JOURNAL, *, now=None, planner=build_plan):
             reason TEXT NOT NULL, plan_json TEXT,
             checked_at INTEGER NOT NULL)""")
         for sid, symbol, candle, state, raw in reversed(rows):
-            if db.execute("SELECT 1 FROM research_paper_plans WHERE signal_id=?",
-                          (sid,)).fetchone():
+            previous = db.execute(
+                "SELECT status FROM research_paper_plans WHERE signal_id=?", (sid,)
+            ).fetchone()
+            if previous and previous[0] != "RETRY_MARKET_DATA":
                 stats["already_seen"] += 1
                 continue
             result = None
@@ -114,15 +117,26 @@ def run(source=SOURCE, journal=JOURNAL, *, now=None, planner=build_plan):
                 result = planner(normalized, now_ms=now * 1000)
                 validate_indicative_plan(result, normalized)
                 status, reason = "INDICATIVE_PLAN_ONLY", "no_order_submitted"
-                stats["planned"] += 1
+            except MarketDataUnavailable as exc:
+                status, reason = "RETRY_MARKET_DATA", str(exc)[:180]
             except Exception as exc:
                 status, reason = "BLOCKED", (type(exc).__name__ + ": " + str(exc))[:180]
-                stats["blocked"] += 1
-            db.execute(
-                "INSERT INTO research_paper_plans VALUES (?,?,?,?,?,?,?)",
+            saved = db.execute(
+                """INSERT INTO research_paper_plans VALUES (?,?,?,?,?,?,?)
+                   ON CONFLICT(signal_id) DO UPDATE SET status=excluded.status,
+                       reason=excluded.reason, plan_json=excluded.plan_json,
+                       checked_at=excluded.checked_at
+                   WHERE research_paper_plans.status='RETRY_MARKET_DATA'
+                     AND excluded.checked_at >= research_paper_plans.checked_at""",
                 (sid, symbol, candle, status, reason,
                  json.dumps(result, sort_keys=True) if status == "INDICATIVE_PLAN_ONLY" else None,
                  now))
+            if not saved.rowcount:
+                stats["already_seen"] += 1
+            elif status == "INDICATIVE_PLAN_ONLY":
+                stats["planned"] += 1
+            else:
+                stats["blocked"] += 1
         db.commit()
     return stats
 
