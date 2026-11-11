@@ -15,12 +15,13 @@ def D(value):
     return v
 
 def replay(plan, candles, *, interval_ms=300000, fee_rate="0.0005",
-           slippage_rate="0.0002", initial_equity="150"):
+           slippage_rate="0.0002", initial_equity="150", max_candles=48):
     """Candles: (open_time_ms, open, high, low, close), all CLOSED.
 
     Entry is a hypothetical market fill at the NEXT candle open after signal close,
     not at the signal close. Stop-first if both exit brackets hit the same bar.
     No funding assumption: funding is not included in this P&L.
+    After max_candles, unresolved outcomes are UNKNOWN (neutral).
     """
     if not isinstance(plan, dict) or plan.get("status") != "INDICATIVE_PLAN_ONLY_NOT_EXECUTABLE":
         raise ValueError("unvalidated_plan")
@@ -38,6 +39,8 @@ def replay(plan, candles, *, interval_ms=300000, fee_rate="0.0005",
         raise ValueError("invalid_brackets")
     if not isinstance(interval_ms, int) or interval_ms <= 0:
         raise ValueError("invalid_interval")
+    if type(max_candles) is not int or max_candles <= 0:
+        raise ValueError("invalid_horizon")
     signal_close = plan.get("closed_5m_candle_ms")
     if type(signal_close) is not int or signal_close % interval_ms:
         raise ValueError("invalid_signal_candle")
@@ -69,7 +72,7 @@ def replay(plan, candles, *, interval_ms=300000, fee_rate="0.0005",
     planned_risk = qty * abs(fill - stop) + fee * qty * (fill + stop) + slip * qty * stop
     if qty * fill > equity * 2 or planned_risk > D("1.50"):
         return {"status": "REJECTED", "reason": "risk_or_leverage_cap", "orders_sent": False}
-    for t,o,h,l,c in parsed:
+    for t,o,h,l,c in parsed[:max_candles]:
         # Conservative exit when stop and target both occur within one bar.
         stop_hit = l <= stop if side == "long" else h >= stop
         target_hit = h >= target if side == "long" else l <= target
@@ -87,6 +90,10 @@ def replay(plan, candles, *, interval_ms=300000, fee_rate="0.0005",
                     "exit_fill": str(exit_fill), "gross_pnl": str(gross),
                     "fees": str(fees), "net_pnl_excluding_funding": str(gross-fees),
                     "orders_sent": False}
+    if len(parsed) >= max_candles:
+        return {"status": "UNKNOWN", "reason": "evaluation_horizon_elapsed",
+                "last_evaluated_candle_ms": parsed[max_candles - 1][0],
+                "orders_sent": False}
     return {"status": "OPEN_HYPOTHETICAL", "entry_fill": str(fill),
             "last_closed_candle_ms": parsed[-1][0],
             "orders_sent": False, "unrealized_pnl_not_reported": True}
