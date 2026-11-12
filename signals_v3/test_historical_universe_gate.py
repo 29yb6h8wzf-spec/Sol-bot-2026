@@ -82,6 +82,22 @@ class HistoricalUniverseGateTests(unittest.TestCase):
         ])
         self.assertEqual(result[0]["eligible_symbols"],())
         self.assertEqual(result[1]["eligible_symbols"],("ADAUSDT",))
+    def test_replay_rejects_lazy_historical_listings(self):
+        def truncated_listing():
+            yield "ADAUSDT"
+            raise OSError("historical listing stream truncated")
+        for listing in ((x for x in ("ADAUSDT",)), iter(("ADAUSDT",)), truncated_listing()):
+            with self.subTest(kind=type(listing).__name__):
+                decision={"decision_ms":self.now,"observations":[self.obs],
+                          "expected_symbols":listing}
+                with self.assertRaisesRegex(ValueError,"invalid_historical_market_listing"):
+                    replay_universe([decision],expected_decision_times=[self.now])
+    def test_replay_accepts_materialized_historical_listings(self):
+        for listing in (["ADAUSDT"],("ADAUSDT",)):
+            decision={"decision_ms":self.now,"observations":[self.obs],
+                      "expected_symbols":listing}
+            result=replay_universe([decision],expected_decision_times=[self.now])
+            self.assertEqual(result[0]["eligible_symbols"],("ADAUSDT",))
     def test_replay_tracks_listings_entering_and_leaving(self):
         second=replace(self.obs,symbol="SOLUSDT",observed_at_ms=self.now+60_000)
         result=replay_universe([
