@@ -23,9 +23,9 @@ class HistoricalBars:
     availability_assumption: str = "HISTORICAL_CANDLE_CLOSE_RECONSTRUCTED"
 
     def __post_init__(self):
-        if self.symbol not in SYMBOLS:
+        if type(self.symbol) is not str or self.symbol not in SYMBOLS:
             raise DataRejected("unsupported_symbol")
-        if self.timeframe_ms not in (MINUTE_MS, FIVE_MINUTES_MS):
+        if type(self.timeframe_ms) is not int or self.timeframe_ms not in (MINUTE_MS, FIVE_MINUTES_MS):
             raise DataRejected("unsupported_timeframe")
         if not isinstance(self.source, str) or not self.source.strip():
             raise DataRejected("missing_provenance")
@@ -63,7 +63,8 @@ def historical_rows(symbol: str, timeframe_ms: int, rows, *,
     This is suitable for exploratory OHLCV-only backtests, not claims about
     real-time latency, microstructure or tradeable execution at the same close.
     """
-    if symbol not in SYMBOLS or timeframe_ms not in (MINUTE_MS, FIVE_MINUTES_MS):
+    if (type(symbol) is not str or symbol not in SYMBOLS
+            or type(timeframe_ms) is not int or timeframe_ms not in (MINUTE_MS, FIVE_MINUTES_MS)):
         raise DataRejected("invalid_symbol_or_timeframe")
     if not isinstance(source, str) or not source.strip():
         raise DataRejected("missing_provenance")
