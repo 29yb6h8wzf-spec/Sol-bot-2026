@@ -44,6 +44,12 @@ class HistoricalUniverseGateTests(unittest.TestCase):
                     verify_decision_snapshot(observations,self.now,["ADAUSDT"])
     def test_ordered_tuple_observations_accepted(self):
         self.assertEqual(verify_decision_snapshot((self.obs,),self.now,("ADAUSDT",))["eligible_symbols"],("ADAUSDT",))
+    def test_invalid_decision_timestamps_fail_closed(self):
+        for timestamp in (None, True, False, -1, 1.0, "1000000", [], {}):
+            with self.subTest(timestamp=repr(timestamp)):
+                with self.assertRaisesRegex(ValueError, "invalid_decision_timestamp"):
+                    verify_decision_snapshot([self.obs], timestamp, ["ADAUSDT"])
+
     def test_complete_snapshot_eligible(self):
         r=verify_decision_snapshot([self.obs],self.now,["ADAUSDT"])
         self.assertEqual(r["eligible_symbols"],("ADAUSDT",))
