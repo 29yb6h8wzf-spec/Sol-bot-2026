@@ -1,0 +1,38 @@
+name: Signals V2 first monthly replay pilot
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - 'signals_v2/pilot_replay.py'
+      - '.github/workflows/signals-v2-pilot-replay.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Retrieve September 2026 official market data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p research_data/pilot research_data/shards
+          gh run download 42788507430 --repo "${{ github.repository }}" --pattern 'signals-v2-20*' --dir research_data/shards
+          find research_data/shards -type f -name '*-2026-09.zip' -exec cp -n '{}' research_data/pilot/ ';'
+          test "$(find research_data/pilot -maxdepth 1 -name '*-2026-09.zip' | wc -l)" -eq 6
+          gh run download 42794564196 --repo "${{ github.repository }}" --name signals-v2-all-ohlcv-mismatches --dir research_data/pilot
+      - name: Replay archived September SOL and XRP setups with real funding
+        run: PYTHONPATH=.:signals_v2 python -m signals_v2.pilot_replay research_data/pilot research_data/pilot/all_ohlcv_mismatches.json --month 2026-09 --stride 12
+      - name: Upload actual pilot report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-v2-first-monthly-replay
+          path: research_data/pilot/pilot_replay_report.json
+          if-no-files-found: warn

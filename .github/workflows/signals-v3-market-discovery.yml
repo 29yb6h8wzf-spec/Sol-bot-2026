@@ -1,0 +1,27 @@
+name: Signals V3 read-only market discovery
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - '.github/workflows/signals-v3-market-discovery.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Capture current USDT-M perpetual listings (read-only public endpoint)
+        run: PYTHONPATH=. python -m signals_v3.discover_current_markets research_data/v3_current_markets.json
+      - name: Preserve timestamped discovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-v3-current-markets
+          path: research_data/v3_current_markets.json
+          if-no-files-found: warn

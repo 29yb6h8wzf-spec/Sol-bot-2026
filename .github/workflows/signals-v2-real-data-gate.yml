@@ -1,0 +1,29 @@
+name: Signals V2 real-data backtest gate
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - 'signals_v2/verify_real_exclusion_manifest.py'
+      - '.github/workflows/signals-v2-real-data-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  real-data-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Retrieve real mismatch evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p research_data/quality
+          gh run download 42794564196 --repo "${{ github.repository }}" --name signals-v2-all-ohlcv-mismatches --dir research_data/quality
+          test -s research_data/quality/all_ohlcv_mismatches.json
+      - name: Test real five-mismatch manifest and day gap against trade exclusion gate
+        run: PYTHONPATH=signals_v2 python signals_v2/verify_real_exclusion_manifest.py research_data/quality/all_ohlcv_mismatches.json

@@ -1,0 +1,22 @@
+name: Signals V2 guarded replay tests
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - 'signals_v2/guarded_replay.py'
+      - 'signals_v2/test_guarded_replay.py'
+      - '.github/workflows/signals-v2-guarded-replay.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run guarded replay and historical exclusion unit tests
+        run: PYTHONPATH=.:signals_v2 python -m unittest -v signals_v2.test_guarded_replay signals_v2.test_backtest_exclusion_gate

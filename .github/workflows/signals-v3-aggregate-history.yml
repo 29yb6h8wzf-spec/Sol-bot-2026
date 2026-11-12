@@ -1,0 +1,33 @@
+name: Signals V3 aggregate 24-month research
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - '.github/workflows/signals-v3-aggregate-history.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  aggregate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download all 24 independent V3 reports
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p research_data/v3reports
+          gh run download 42856413197 --repo "${{ github.repository }}" --pattern 'signals-v3-24m-*' --dir research_data/v3reports
+      - name: Aggregate and validate full history
+        run: PYTHONPATH=. python -m signals_v3.aggregate_history research_data/v3reports research_data/v3_24m_aggregate.json
+      - name: Upload research-only aggregate
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-v3-24m-aggregate
+          path: research_data/v3_24m_aggregate.json
+          if-no-files-found: error

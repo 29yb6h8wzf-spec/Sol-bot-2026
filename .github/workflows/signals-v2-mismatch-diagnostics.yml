@@ -1,0 +1,36 @@
+name: Signals V2 mismatch diagnostics
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - 'signals_v2/identify_mismatch_windows.py'
+      - '.github/workflows/signals-v2-mismatch-diagnostics.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download archived research data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p research_data/monthly
+          gh run download 42788507430 --repo "${{ github.repository }}" --pattern 'signals-v2-20*' --dir research_data/shards
+          find research_data/shards -type f -name '*.zip' -exec cp -n '{}' research_data/monthly/ ';'
+      - name: Identify invalid five-minute windows
+        run: python signals_v2/identify_mismatch_windows.py research_data/monthly
+      - name: Upload mismatch exclusion evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-v2-mismatch-diagnostics
+          path: research_data/monthly/mismatch_exclusions.json
+          if-no-files-found: warn

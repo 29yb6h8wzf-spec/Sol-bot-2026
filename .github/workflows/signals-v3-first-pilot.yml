@@ -1,0 +1,65 @@
+name: Signals V3 first historical pilot
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - '.github/workflows/signals-v3-first-pilot.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download archived September 2026 OHLCV and funding
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p research_data/v3pilot research_data/shards
+          PYTHONPATH=. python -m signals_v3.archive_acquisition_plan --symbols SOLUSDT XRPUSDT --first 2026-09 --last 2026-09 --output research_data/v3pilot/plan.json
+          PYTHONPATH=. python -m signals_v3.acquire_public_archives research_data/v3pilot/plan.json --root research_data/v3pilot/downloads --max-files 6 --output research_data/v3pilot/acquisition.json
+          PYTHONPATH=. python -m signals_v3.run_archive_audit research_data/v3pilot/plan.json --archive-root research_data/v3pilot/downloads --output-dir research_data/v3pilot
+          python - <<'PY'
+          import json,shutil
+          from pathlib import Path
+          root=Path("research_data/v3pilot")
+          report=json.loads((root/"archive_coverage.json").read_text())
+          if report["verified"]!=6 or report["blocked"]!=0 or not report["archive_grid"]["archive_grid_complete"]:
+              raise SystemExit("FAIL_CLOSED: incomplete archived market data")
+          for source in (root/"downloads").rglob("*.zip"):
+              shutil.copy2(source,root/source.name)
+          if len(list(root.glob("*.zip")))!=6:
+              raise SystemExit("FAIL_CLOSED: expected six verified ZIPs")
+          PY
+          gh run download 42794564196 --repo "${{ github.repository }}" --name signals-v2-all-ohlcv-mismatches --dir research_data/v3pilot
+      - name: Replay V3 on real archived data without any orders
+        run: PYTHONPATH=. python -m signals_v3.pilot_replay research_data/v3pilot research_data/v3pilot/all_ohlcv_mismatches.json --month 2026-09 --stride 12
+      - name: Diagnose real pilot performance (research only)
+        run: |
+          PYTHONPATH=. python -m signals_v3.diagnose_pilot research_data/v3pilot/v3_pilot_replay_report.json | tee research_data/v3pilot/v3_pilot_diagnosis.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("research_data/v3pilot/v3_pilot_diagnosis.json")
+          d=json.loads(p.read_text())
+          if d["promotion_allowed"] is not False or d["out_of_sample_certified"] is not False:
+              raise SystemExit("FAIL_CLOSED: pilot must never authorize promotion")
+          if d["trades"]<1:
+              raise SystemExit("FAIL_CLOSED: no evaluated trades")
+          print("Research pilot diagnostic recorded; no trading authorization")
+          PY
+      - name: Preserve V3 research report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-v3-september-2026-pilot
+          path: |
+            research_data/v3pilot/v3_pilot_replay_report.json
+            research_data/v3pilot/v3_pilot_diagnosis.json
+          if-no-files-found: warn

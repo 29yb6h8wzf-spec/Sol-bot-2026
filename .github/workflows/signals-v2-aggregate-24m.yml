@@ -1,0 +1,34 @@
+name: Signals V2 aggregate 24-month research
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - '.github/workflows/signals-v2-aggregate-24m.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  aggregate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download all 24 independently produced monthly reports
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p research_data/monthly
+          gh run download 42807013072 --repo "${{ github.repository }}" --pattern 'signals-v2-24m-*' --dir research_data/monthly
+          test "$(find research_data/monthly -name pilot_replay_report.json | wc -l)" -eq 24
+      - name: Validate and summarize actual reports
+        run: PYTHONPATH=. python -m signals_v2.summarize_24_months research_data/monthly
+      - name: Preserve consolidated results
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-v2-24m-aggregate
+          path: research_data/monthly/24_month_summary.json
+          if-no-files-found: error

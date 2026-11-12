@@ -1,0 +1,45 @@
+name: Signals V2 historical data integrity research
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/signals-v2-core-20261110
+    paths:
+      - 'signals_v2/download_history.py'
+      - 'signals_v2/download_archive.py'
+      - 'signals_v2/audit_history.py'
+      - '.github/workflows/signals-v2-history-audit.yml'
+permissions:
+  contents: read
+jobs:
+  historical-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download recent closed UTC 7-day diagnostic only
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from datetime import datetime, timedelta, timezone
+          import subprocess
+          today = datetime.now(timezone.utc).date()
+          end = today - timedelta(days=1)
+          start = end - timedelta(days=7)
+          subprocess.run(["python", "-m", "signals_v2.download_history",
+                          "--start", start.isoformat(), "--end", end.isoformat(),
+                          "--output", "research_data/v2"], check=True)
+          PY
+      - name: Verify SHA, continuity and 1m/5m reconciliation
+        run: python -m signals_v2.audit_history research_data/v2 | tee research_data/v2/audit_result.json
+      - name: Upload research data and manifest for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-v2-7day-ohlcv-diagnostic
+          path: research_data/v2/
+          if-no-files-found: warn
+          retention-days: 7

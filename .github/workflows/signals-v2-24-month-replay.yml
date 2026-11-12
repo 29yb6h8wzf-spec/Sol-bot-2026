@@ -1,0 +1,45 @@
+name: Signals V2 24-month exploratory replay
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - '.github/workflows/signals-v2-24-month-replay.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  monthly-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        month: ['2024-11', '2024-12', '2025-01', '2025-02', '2025-03', '2025-04', '2025-05', '2025-06', '2025-07', '2025-08', '2025-09', '2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Retrieve archived monthly data and mismatch exclusions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MONTH: ${{ matrix.month }}
+        run: |
+          mkdir -p research_data/pilot research_data/shards
+          gh run download 42788507430 --repo "${{ github.repository }}" --pattern 'signals-v2-20*' --dir research_data/shards
+          find research_data/shards -type f -name "*-${MONTH}.zip" -exec cp -n '{}' research_data/pilot/ ';'
+          test "$(find research_data/pilot -maxdepth 1 -name "*-${MONTH}.zip" | wc -l)" -eq 6
+          gh run download 42794564196 --repo "${{ github.repository }}" --name signals-v2-all-ohlcv-mismatches --dir research_data/pilot
+      - name: Replay research-only monthly history
+        env:
+          MONTH: ${{ matrix.month }}
+        run: PYTHONPATH=.:signals_v2 python -m signals_v2.pilot_replay research_data/pilot research_data/pilot/all_ohlcv_mismatches.json --month "$MONTH" --stride 12
+      - name: Preserve monthly report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signals-v2-24m-${{ matrix.month }}
+          path: research_data/pilot/pilot_replay_report.json
+          if-no-files-found: warn

@@ -1,0 +1,20 @@
+name: SignalPilot V3 research contract
+on:
+  push:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - 'signals_v3/**'
+      - '.github/workflows/signals-v3-research-contract.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: PYTHONPATH=. python -m unittest discover -s signals_v3 -p 'test_*.py' -v
+      - run: PYTHONPATH=. python -c 'from signals_v3.spec import SPEC; SPEC.validate(); print("V3 RESEARCH ONLY")'
