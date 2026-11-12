@@ -252,7 +252,7 @@ def test_replay_rejects_one_invalid_feed_without_attribute_errors():
         replay_snapshot(object(), m, decision_ms=BASE + 69 * FIVE_MINUTES_MS)
 
 
-@pytest.mark.parametrize("failure", [TypeError, ValueError, RuntimeError])
+@pytest.mark.parametrize("failure", [TypeError, ValueError, RuntimeError, OSError, EOFError, OverflowError])
 def test_historical_feed_stream_failure_is_rejected(failure):
     five, _ = feeds()
 
