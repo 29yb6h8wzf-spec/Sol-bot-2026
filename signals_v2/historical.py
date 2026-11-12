@@ -81,7 +81,7 @@ def historical_rows(symbol: str, timeframe_ms: int, rows, *,
             row = next(iterator)
         except StopIteration:
             break
-        except (TypeError, ValueError, RuntimeError) as exc:
+        except (TypeError, ValueError, RuntimeError, OSError, EOFError, OverflowError) as exc:
             # A failed archive stream is not a complete, auditable dataset.
             raise DataRejected("invalid_historical_rows") from exc
         if (not isinstance(row, (tuple, list)) or len(row) != 6
