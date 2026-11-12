@@ -76,7 +76,14 @@ def historical_rows(symbol: str, timeframe_ms: int, rows, *,
     except TypeError as exc:
         raise DataRejected("invalid_historical_rows") from exc
     out = []
-    for row in iterator:
+    while True:
+        try:
+            row = next(iterator)
+        except StopIteration:
+            break
+        except (TypeError, ValueError, RuntimeError) as exc:
+            # A failed archive stream is not a complete, auditable dataset.
+            raise DataRejected("invalid_historical_rows") from exc
         if (not isinstance(row, (tuple, list)) or len(row) != 6
                 or type(row[0]) is not int or any(type(x) not in (int, float) for x in row[1:])):
             raise DataRejected("invalid_historical_row")
