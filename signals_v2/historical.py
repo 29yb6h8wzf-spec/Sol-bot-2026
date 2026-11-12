@@ -27,8 +27,10 @@ class HistoricalBars:
             raise DataRejected("unsupported_symbol")
         if self.timeframe_ms not in (MINUTE_MS, FIVE_MINUTES_MS):
             raise DataRejected("unsupported_timeframe")
-        if not isinstance(self.source, str) or not self.source.strip() or not isinstance(self.sha256_digest, str) or not self.sha256_digest:
+        if not isinstance(self.source, str) or not self.source.strip():
             raise DataRejected("missing_provenance")
+        if not isinstance(self.sha256_digest, str) or not self.sha256_digest:
+            raise DataRejected("invalid_historical_digest")
         if len(self.sha256_digest) != 64 or any(c not in "0123456789abcdef" for c in self.sha256_digest):
             raise DataRejected("invalid_historical_digest")
         if self.availability_assumption != "HISTORICAL_CANDLE_CLOSE_RECONSTRUCTED":
