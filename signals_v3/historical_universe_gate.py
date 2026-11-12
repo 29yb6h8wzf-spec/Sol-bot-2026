@@ -50,12 +50,11 @@ def verify_decision_snapshot(observations,decision_ms,expected_symbols=None):
         raise ValueError("duplicate_symbol_snapshot")
     if expected_symbols is None:
         raise ValueError("missing_historical_market_listing")
-    if isinstance(expected_symbols,(str,bytes,dict,set,frozenset)):
+    # A historical listing must be an already-materialized ordered snapshot.
+    # Generators and other lazy iterables can fail midway or change between reads.
+    if type(expected_symbols) not in (tuple,list):
         raise ValueError("invalid_historical_market_listing")
-    try:
-        expected_symbols=tuple(expected_symbols)
-    except TypeError as exc:
-        raise ValueError("invalid_historical_market_listing") from exc
+    expected_symbols=tuple(expected_symbols)
     if any(type(s) is not str or not s.endswith("USDT") for s in expected_symbols):
         raise ValueError("invalid_historical_market_listing")
     expected=set(expected_symbols)
