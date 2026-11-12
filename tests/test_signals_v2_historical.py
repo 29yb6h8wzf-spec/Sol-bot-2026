@@ -250,3 +250,24 @@ def test_replay_rejects_one_invalid_feed_without_attribute_errors():
         replay_snapshot(f, object(), decision_ms=BASE + 69 * FIVE_MINUTES_MS)
     with pytest.raises(DataRejected, match="invalid_historical_pair"):
         replay_snapshot(object(), m, decision_ms=BASE + 69 * FIVE_MINUTES_MS)
+
+
+@pytest.mark.parametrize("failure", [TypeError, ValueError, RuntimeError])
+def test_historical_feed_stream_failure_is_rejected(failure):
+    five, _ = feeds()
+
+    def broken_archive():
+        yield from five[:5]
+        raise failure("archive interrupted")
+
+    with pytest.raises(DataRejected, match="invalid_historical_rows"):
+        historical_rows("SOLUSDT", FIVE_MINUTES_MS, broken_archive(), source="fixture")
+
+
+def test_historical_feed_generator_success_is_accepted():
+    five, _ = feeds()
+    from_generator = historical_rows(
+        "SOLUSDT", FIVE_MINUTES_MS, (row for row in five), source="fixture"
+    )
+    from_list = historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
+    assert from_generator == from_list
