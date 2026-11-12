@@ -271,3 +271,13 @@ def test_historical_feed_generator_success_is_accepted():
     )
     from_list = historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
     assert from_generator == from_list
+
+
+@pytest.mark.parametrize("failure", [TypeError, ValueError, RuntimeError, OSError, EOFError, OverflowError])
+def test_historical_feed_iterator_initialization_failure_is_rejected(failure):
+    class BrokenArchive:
+        def __iter__(self):
+            raise failure("archive unavailable before first row")
+
+    with pytest.raises(DataRejected, match="invalid_historical_rows"):
+        historical_rows("SOLUSDT", FIVE_MINUTES_MS, BrokenArchive(), source="fixture")
