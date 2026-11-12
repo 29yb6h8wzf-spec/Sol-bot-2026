@@ -10,6 +10,16 @@ class HistoricalUniverseGateTests(unittest.TestCase):
     def setUp(self):
         self.now=1_000_000
         self.obs=UniverseObservation("ADAUSDT",self.now,1.25,25_000_000,3,20_000,22_000,5,"TRADING","PERPETUAL","USDT")
+    def test_malformed_listing_container_fails_closed(self):
+        for listing in ("ADAUSDT", b"ADAUSDT", {"ADAUSDT": 1}, {"ADAUSDT"}, None, 17):
+            with self.subTest(listing=repr(listing)):
+                with self.assertRaisesRegex(ValueError,"invalid_historical_market_listing|missing_historical_market_listing"):
+                    verify_decision_snapshot([self.obs],self.now,listing)
+    def test_malformed_observation_fails_closed(self):
+        for observations in ([None], [object()], ["ADAUSDT"], {"ADAUSDT": self.obs}):
+            with self.subTest(observations=repr(observations)):
+                with self.assertRaisesRegex(ValueError,"invalid_historical_universe_observations"):
+                    verify_decision_snapshot(observations,self.now,["ADAUSDT"])
     def test_complete_snapshot_eligible(self):
         r=verify_decision_snapshot([self.obs],self.now,["ADAUSDT"])
         self.assertEqual(r["eligible_symbols"],("ADAUSDT",))
