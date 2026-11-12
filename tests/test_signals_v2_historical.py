@@ -135,3 +135,9 @@ def test_reject_boolean_historical_ohlcv(field_index, boolean_value):
     five[0][field_index] = boolean_value
     with pytest.raises(DataRejected, match="invalid_historical_row"):
         historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
+
+
+@pytest.mark.parametrize("bad_rows", [None, 42, True, "not rows", b"rows", {"rows": []}])
+def test_reject_invalid_historical_feed_containers(bad_rows):
+    with pytest.raises(DataRejected, match="invalid_historical_rows"):
+        historical_rows("SOLUSDT", FIVE_MINUTES_MS, bad_rows, source="fixture")
