@@ -126,3 +126,12 @@ def test_reject_invalid_historical_source_metadata(bad_source):
     original = historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
     with pytest.raises(DataRejected, match="missing_provenance"):
         replace(original, source=bad_source)
+
+
+@pytest.mark.parametrize("field_index", [1, 2, 3, 4, 5])
+@pytest.mark.parametrize("boolean_value", [True, False])
+def test_reject_boolean_historical_ohlcv(field_index, boolean_value):
+    five, _ = feeds()
+    five[0][field_index] = boolean_value
+    with pytest.raises(DataRejected, match="invalid_historical_row"):
+        historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
