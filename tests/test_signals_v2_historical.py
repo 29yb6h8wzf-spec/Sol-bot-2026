@@ -157,3 +157,18 @@ def test_reject_non_candle_historical_bar(bad_bar):
     original = historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
     with pytest.raises(DataRejected, match="invalid_historical_bar"):
         replace(original, bars=(bad_bar,) + original.bars[1:])
+
+
+@pytest.mark.parametrize("bad_value", ["101", b"101", None, object(), True, False])
+def test_reject_implicit_historical_price_coercion(bad_value):
+    five, _ = feeds()
+    five[0][4] = bad_value
+    with pytest.raises(DataRejected, match="invalid_historical_row"):
+        historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
+
+
+def test_numeric_ohlcv_int_and_float_remain_accepted():
+    five, _ = feeds()
+    five[0][4] = 101.25
+    bars = historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
+    assert bars.bars[0].close == 101.25
