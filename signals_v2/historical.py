@@ -63,8 +63,14 @@ def historical_rows(symbol: str, timeframe_ms: int, rows, *,
         raise DataRejected("invalid_symbol_or_timeframe")
     if not isinstance(source, str) or not source.strip():
         raise DataRejected("missing_provenance")
+    if rows is None or isinstance(rows, (str, bytes, dict)):
+        raise DataRejected("invalid_historical_rows")
+    try:
+        iterator = iter(rows)
+    except TypeError as exc:
+        raise DataRejected("invalid_historical_rows") from exc
     out = []
-    for row in rows:
+    for row in iterator:
         if (not isinstance(row, (tuple, list)) or len(row) != 6
                 or type(row[0]) is not int or any(type(x) is bool for x in row[1:])):
             raise DataRejected("invalid_historical_row")
