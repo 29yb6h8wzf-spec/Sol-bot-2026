@@ -35,8 +35,12 @@ class HistoricalBars:
             raise DataRejected("invalid_historical_digest")
         if self.availability_assumption != "HISTORICAL_CANDLE_CLOSE_RECONSTRUCTED":
             raise DataRejected("invalid_replay_availability")
+        if type(self.bars) is not tuple:
+            raise DataRejected("invalid_historical_bars_container")
         if not self.bars:
             raise DataRejected("no_closed_candles")
+        if any(type(b) is not Candle for b in self.bars):
+            raise DataRejected("invalid_historical_bar")
         for b in self.bars:
             b.validate(self.timeframe_ms, b.available_at_ms)
             if b.available_at_ms != b.open_ms + self.timeframe_ms:
