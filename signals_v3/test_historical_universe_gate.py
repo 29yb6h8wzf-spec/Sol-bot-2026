@@ -15,6 +15,18 @@ class HistoricalUniverseGateTests(unittest.TestCase):
             with self.subTest(listing=repr(listing)):
                 with self.assertRaisesRegex(ValueError,"invalid_historical_market_listing|missing_historical_market_listing"):
                     verify_decision_snapshot([self.obs],self.now,listing)
+    def test_lazy_historical_listings_fail_closed(self):
+        def failing_listing():
+            yield "ADAUSDT"
+            raise OSError("historical listing stream truncated")
+        for listing in ((s for s in ("ADAUSDT",)), failing_listing(), iter(("ADAUSDT",))):
+            with self.subTest(listing=type(listing).__name__):
+                with self.assertRaisesRegex(ValueError, "invalid_historical_market_listing"):
+                    verify_decision_snapshot([self.obs], self.now, listing)
+    def test_materialized_historical_listing_remains_valid(self):
+        for listing in (["ADAUSDT"], ("ADAUSDT",)):
+            with self.subTest(container=type(listing).__name__):
+                self.assertEqual(verify_decision_snapshot([self.obs], self.now, listing)["eligible_symbols"], ("ADAUSDT",))
     def test_unhashable_and_malformed_listing_entries_fail_closed(self):
         for listing in ([["ADAUSDT"]], [{"symbol": "ADAUSDT"}], [None], [17], [b"ADAUSDT"], ["SOLBTC"]):
             with self.subTest(listing=repr(listing)):
