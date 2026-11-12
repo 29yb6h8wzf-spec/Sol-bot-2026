@@ -160,7 +160,7 @@ class HistoricalUniverseGateTests(unittest.TestCase):
                 p=Path(directory)/"snap.csv"
                 values={k:str(getattr(self.obs,k)) for k in COLUMNS}
                 values["observed_at_ms"]=timestamp
-                p.write_text(",".join(COLUMNS)+"\\n"+",".join(values[k] for k in COLUMNS)+"\\n")
+                p.write_text(",".join(COLUMNS)+"\n"+",".join(values[k] for k in COLUMNS)+"\n")
                 with self.assertRaisesRegex(ValueError,"invalid_universe_snapshot_row"):
                     load_snapshots(p)
     def test_csv_roundtrip(self):
