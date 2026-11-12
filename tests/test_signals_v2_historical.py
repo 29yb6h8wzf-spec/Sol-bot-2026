@@ -172,3 +172,11 @@ def test_numeric_ohlcv_int_and_float_remain_accepted():
     five[0][4] = 101.25
     bars = historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
     assert bars.bars[0].close == 101.25
+
+
+@pytest.mark.parametrize("unordered", [set, frozenset])
+def test_reject_unordered_historical_feeds(unordered):
+    five, _ = feeds()
+    rows = unordered(tuple(row) for row in five)
+    with pytest.raises(DataRejected, match="invalid_historical_rows"):
+        historical_rows("SOLUSDT", FIVE_MINUTES_MS, rows, source="fixture")
