@@ -40,6 +40,10 @@ class HistoricalBars:
         for a, b in zip(self.bars, self.bars[1:]):
             if b.open_ms - a.open_ms != self.timeframe_ms:
                 raise DataRejected("historical_gap_or_duplicate")
+        canonical = [(b.open_ms, b.open, b.high, b.low, b.close, b.volume) for b in self.bars]
+        actual_digest = sha256(dumps(canonical, separators=(",", ":")).encode()).hexdigest()
+        if self.sha256_digest != actual_digest:
+            raise DataRejected("historical_digest_mismatch")
 
 
 def historical_rows(symbol: str, timeframe_ms: int, rows, *,
