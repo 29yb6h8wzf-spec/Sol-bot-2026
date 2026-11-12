@@ -141,3 +141,19 @@ def test_reject_boolean_historical_ohlcv(field_index, boolean_value):
 def test_reject_invalid_historical_feed_containers(bad_rows):
     with pytest.raises(DataRejected, match="invalid_historical_rows"):
         historical_rows("SOLUSDT", FIVE_MINUTES_MS, bad_rows, source="fixture")
+
+
+@pytest.mark.parametrize("container", [list, lambda bars: bars[:]])
+def test_reject_mutable_historical_bar_containers(container):
+    five, _ = feeds()
+    original = historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
+    with pytest.raises(DataRejected, match="invalid_historical_bars_container"):
+        replace(original, bars=container(list(original.bars)))
+
+
+@pytest.mark.parametrize("bad_bar", [None, "not a candle", 123, {"open_ms": BASE}])
+def test_reject_non_candle_historical_bar(bad_bar):
+    five, _ = feeds()
+    original = historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
+    with pytest.raises(DataRejected, match="invalid_historical_bar"):
+        replace(original, bars=(bad_bar,) + original.bars[1:])
