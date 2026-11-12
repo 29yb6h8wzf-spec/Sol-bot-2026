@@ -73,7 +73,8 @@ def historical_rows(symbol: str, timeframe_ms: int, rows, *,
         raise DataRejected("invalid_historical_rows")
     try:
         iterator = iter(rows)
-    except TypeError as exc:
+    except (TypeError, ValueError, RuntimeError, OSError, EOFError, OverflowError) as exc:
+        # Archive adapters may fail before yielding their first row.
         raise DataRejected("invalid_historical_rows") from exc
     out = []
     while True:
