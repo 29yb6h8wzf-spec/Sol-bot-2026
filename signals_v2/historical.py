@@ -98,6 +98,8 @@ def replay_snapshot(five: HistoricalBars, one: HistoricalBars, *,
                     decision_ms: int, lookback_five: int = 64,
                     lookback_one: int = 10) -> MarketSnapshot:
     """Return an as-of snapshot, never including a candle closed in future."""
+    if type(five) is not HistoricalBars or type(one) is not HistoricalBars:
+        raise DataRejected("invalid_historical_pair")
     if five.symbol != one.symbol or five.timeframe_ms != FIVE_MINUTES_MS or one.timeframe_ms != MINUTE_MS:
         raise DataRejected("historical_pair_mismatch")
     if type(decision_ms) is not int or decision_ms <= 0:
