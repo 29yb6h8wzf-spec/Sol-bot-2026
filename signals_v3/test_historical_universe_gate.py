@@ -154,6 +154,15 @@ class HistoricalUniverseGateTests(unittest.TestCase):
             p.write_text(",".join(COLUMNS)+"\n"+",".join(str(getattr(self.obs,k)) for k in COLUMNS)+",unexpected\n")
             with self.assertRaisesRegex(ValueError,"invalid_universe_snapshot_row"):
                 load_snapshots(p)
+    def test_csv_rejects_noncanonical_or_negative_timestamps(self):
+        for timestamp in ("-1", "+1000000", "001000000", "1.0", " 1000000"):
+            with self.subTest(timestamp=timestamp), tempfile.TemporaryDirectory() as directory:
+                p=Path(directory)/"snap.csv"
+                values={k:str(getattr(self.obs,k)) for k in COLUMNS}
+                values["observed_at_ms"]=timestamp
+                p.write_text(",".join(COLUMNS)+"\\n"+",".join(values[k] for k in COLUMNS)+"\\n")
+                with self.assertRaisesRegex(ValueError,"invalid_universe_snapshot_row"):
+                    load_snapshots(p)
     def test_csv_roundtrip(self):
         with tempfile.TemporaryDirectory() as directory:
             p=Path(directory)/"snap.csv"
