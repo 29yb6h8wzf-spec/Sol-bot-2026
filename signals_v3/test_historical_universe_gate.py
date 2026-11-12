@@ -25,6 +25,13 @@ class HistoricalUniverseGateTests(unittest.TestCase):
             with self.subTest(observations=repr(observations)):
                 with self.assertRaisesRegex(ValueError,"invalid_historical_universe_observations"):
                     verify_decision_snapshot(observations,self.now,["ADAUSDT"])
+    def test_nonsequence_observations_fail_closed(self):
+        for observations in (17, object(), {"ADAUSDT"}, frozenset({"ADAUSDT"}), (x for x in [self.obs])):
+            with self.subTest(observations=repr(observations)):
+                with self.assertRaisesRegex(ValueError,"invalid_historical_universe_observations"):
+                    verify_decision_snapshot(observations,self.now,["ADAUSDT"])
+    def test_ordered_tuple_observations_accepted(self):
+        self.assertEqual(verify_decision_snapshot((self.obs,),self.now,("ADAUSDT",))["eligible_symbols"],("ADAUSDT",))
     def test_complete_snapshot_eligible(self):
         r=verify_decision_snapshot([self.obs],self.now,["ADAUSDT"])
         self.assertEqual(r["eligible_symbols"],("ADAUSDT",))
