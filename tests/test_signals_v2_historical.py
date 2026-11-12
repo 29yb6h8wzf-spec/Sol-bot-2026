@@ -90,3 +90,13 @@ def test_replay_rejects_invalid_lookbacks(five_lookback, one_lookback):
     with pytest.raises(DataRejected, match="invalid_replay_lookback"):
         replay_snapshot(f, m, decision_ms=BASE+69*FIVE_MINUTES_MS,
                         lookback_five=five_lookback, lookback_one=one_lookback)
+
+
+@pytest.mark.parametrize("extra", [[], [123], ["untracked"]])
+def test_reject_noncanonical_historical_row_width(extra):
+    five, _ = feeds()
+    five[0] = five[0] + extra
+    if not extra:
+        five[0] = five[0][:-1]
+    with pytest.raises(DataRejected, match="invalid_historical_row"):
+        historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
