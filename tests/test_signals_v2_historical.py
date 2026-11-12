@@ -110,3 +110,19 @@ def test_reject_historical_digest_tampering():
     altered = replace(original.bars[0], close=100.5)
     with pytest.raises(DataRejected, match="historical_digest_mismatch"):
         replace(original, bars=(altered,) + original.bars[1:])
+
+
+@pytest.mark.parametrize("bad_digest", ["x" * 64, "A" * 64, "0" * 63, "0" * 65, 123])
+def test_reject_malformed_historical_digest(bad_digest):
+    five, _ = feeds()
+    original = historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
+    with pytest.raises(DataRejected, match="invalid_historical_digest"):
+        replace(original, sha256_digest=bad_digest)
+
+
+@pytest.mark.parametrize("bad_source", ["", "   ", None, 123])
+def test_reject_invalid_historical_source_metadata(bad_source):
+    five, _ = feeds()
+    original = historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
+    with pytest.raises(DataRejected, match="missing_provenance"):
+        replace(original, source=bad_source)
