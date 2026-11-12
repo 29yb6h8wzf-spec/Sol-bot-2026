@@ -26,12 +26,11 @@ def replay_universe(decisions, expected_decision_times=None):
             raise ValueError("nonmonotonic_decision_times")
         if "observations" not in decision or "expected_symbols" not in decision:
             raise ValueError("missing_historical_evidence")
-        # Materialize the listing once: a generator must not be consumed by
-        # validation and then silently appear empty during change tracking.
-        try:
-            listing=tuple(decision["expected_symbols"])
-        except (TypeError, ValueError) as exc:
-            raise ValueError("invalid_historical_market_listing") from exc
+        # Preserve the gate's strict materialized-listing contract. Coercing
+        # generators here would bypass its rejection of lazy historical evidence.
+        listing=decision["expected_symbols"]
+        if type(listing) not in (list,tuple):
+            raise ValueError("invalid_historical_market_listing")
         result=verify_decision_snapshot(
             decision["observations"],timestamp,listing)
         current_listing=frozenset(listing)
