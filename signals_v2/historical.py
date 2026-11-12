@@ -67,7 +67,8 @@ def historical_rows(symbol: str, timeframe_ms: int, rows, *,
         raise DataRejected("invalid_symbol_or_timeframe")
     if not isinstance(source, str) or not source.strip():
         raise DataRejected("missing_provenance")
-    if rows is None or isinstance(rows, (str, bytes, dict)):
+    if rows is None or isinstance(rows, (str, bytes, dict, set, frozenset)):
+        # Unordered feeds cannot establish deterministic candle chronology.
         raise DataRejected("invalid_historical_rows")
     try:
         iterator = iter(rows)
