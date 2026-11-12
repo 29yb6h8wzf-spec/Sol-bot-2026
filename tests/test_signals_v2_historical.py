@@ -100,3 +100,13 @@ def test_reject_noncanonical_historical_row_width(extra):
         five[0] = five[0][:-1]
     with pytest.raises(DataRejected, match="invalid_historical_row"):
         historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
+
+
+def test_reject_historical_digest_tampering():
+    five, _ = feeds()
+    original = historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
+    with pytest.raises(DataRejected, match="historical_digest_mismatch"):
+        replace(original, sha256_digest="0" * 64)
+    altered = replace(original.bars[0], close=100.5)
+    with pytest.raises(DataRejected, match="historical_digest_mismatch"):
+        replace(original, bars=(altered,) + original.bars[1:])
