@@ -44,11 +44,18 @@ def load_snapshots(path):
 
 def verify_decision_snapshot(observations,decision_ms,expected_symbols=None):
     if not observations:raise ValueError("missing_point_in_time_universe")
+    if isinstance(observations,(str,bytes,dict)) or any(not isinstance(x,UniverseObservation) or not isinstance(x.symbol,str) for x in observations):
+        raise ValueError("invalid_historical_universe_observations")
     if len({x.symbol for x in observations})!=len(observations):
         raise ValueError("duplicate_symbol_snapshot")
     if expected_symbols is None:
         raise ValueError("missing_historical_market_listing")
-    expected_symbols=tuple(expected_symbols)
+    if isinstance(expected_symbols,(str,bytes,dict,set,frozenset)):
+        raise ValueError("invalid_historical_market_listing")
+    try:
+        expected_symbols=tuple(expected_symbols)
+    except TypeError as exc:
+        raise ValueError("invalid_historical_market_listing") from exc
     expected=set(expected_symbols)
     if not expected or len(expected)!=len(expected_symbols) or any(not isinstance(s,str) or not s.endswith("USDT") for s in expected):
         raise ValueError("invalid_historical_market_listing")
