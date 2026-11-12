@@ -76,7 +76,7 @@ def historical_rows(symbol: str, timeframe_ms: int, rows, *,
     out = []
     for row in iterator:
         if (not isinstance(row, (tuple, list)) or len(row) != 6
-                or type(row[0]) is not int or any(type(x) is bool for x in row[1:])):
+                or type(row[0]) is not int or any(type(x) not in (int, float) for x in row[1:])):
             raise DataRejected("invalid_historical_row")
         try:
             values = tuple(float(x) for x in row[1:6])
