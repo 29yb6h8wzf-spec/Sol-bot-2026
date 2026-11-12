@@ -180,3 +180,25 @@ def test_reject_unordered_historical_feeds(unordered):
     rows = unordered(tuple(row) for row in five)
     with pytest.raises(DataRejected, match="invalid_historical_rows"):
         historical_rows("SOLUSDT", FIVE_MINUTES_MS, rows, source="fixture")
+
+
+@pytest.mark.parametrize("bad_decision", [None, True, False, 0, -1, 1.5, "1800000000000"])
+def test_replay_rejects_invalid_decision_time(bad_decision):
+    five, one = feeds()
+    f = historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
+    m = historical_rows("SOLUSDT", MINUTE_MS, one, source="fixture")
+    with pytest.raises(DataRejected, match="invalid_decision_time"):
+        replay_snapshot(f, m, decision_ms=bad_decision)
+
+
+def test_replay_at_exact_close_boundary_does_not_use_unclosed_five_minute_bar():
+    five, one = feeds()
+    f = historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
+    m = historical_rows("SOLUSDT", MINUTE_MS, one, source="fixture")
+    boundary = BASE + 69 * FIVE_MINUTES_MS
+    before = replay_snapshot(f, m, decision_ms=boundary - 1)
+    at = replay_snapshot(f, m, decision_ms=boundary)
+    assert before.five_minute[-1].available_at_ms == boundary - FIVE_MINUTES_MS
+    assert at.five_minute[-1].available_at_ms == boundary
+    assert before.one_minute[-1].available_at_ms == boundary - MINUTE_MS
+    assert at.one_minute[-1].available_at_ms == boundary
