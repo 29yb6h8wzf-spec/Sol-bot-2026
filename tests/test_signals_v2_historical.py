@@ -202,3 +202,32 @@ def test_replay_at_exact_close_boundary_does_not_use_unclosed_five_minute_bar():
     assert at.five_minute[-1].available_at_ms == boundary
     assert before.one_minute[-1].available_at_ms == boundary - MINUTE_MS
     assert at.one_minute[-1].available_at_ms == boundary
+
+
+@pytest.mark.parametrize("bad_symbol", [None, 42, [], {}, {"SOLUSDT"}, b"SOLUSDT"])
+def test_historical_rows_reject_nonstring_symbol(bad_symbol):
+    five, _ = feeds()
+    with pytest.raises(DataRejected, match="invalid_symbol_or_timeframe"):
+        historical_rows(bad_symbol, FIVE_MINUTES_MS, five, source="fixture")
+
+
+@pytest.mark.parametrize("bad_timeframe", [
+    float(FIVE_MINUTES_MS), float(MINUTE_MS), True, None, "300000", [], {},
+])
+def test_historical_rows_reject_noninteger_timeframe(bad_timeframe):
+    five, _ = feeds()
+    with pytest.raises(DataRejected, match="invalid_symbol_or_timeframe"):
+        historical_rows("SOLUSDT", bad_timeframe, five, source="fixture")
+
+
+@pytest.mark.parametrize("field,value,error", [
+    ("symbol", [], "unsupported_symbol"),
+    ("symbol", None, "unsupported_symbol"),
+    ("timeframe_ms", float(FIVE_MINUTES_MS), "unsupported_timeframe"),
+    ("timeframe_ms", None, "unsupported_timeframe"),
+])
+def test_historical_bars_reject_noncanonical_metadata_types(field, value, error):
+    five, _ = feeds()
+    original = historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
+    with pytest.raises(DataRejected, match=error):
+        replace(original, **{field: value})
