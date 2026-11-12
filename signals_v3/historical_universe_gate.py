@@ -24,6 +24,8 @@ def load_snapshots(path):
                 raise ValueError("invalid_universe_snapshot_row")
             try:
                 timestamp=int(row["observed_at_ms"])
+                if timestamp < 0 or str(timestamp) != row["observed_at_ms"]:
+                    raise ValueError("invalid_universe_snapshot_row")
                 numeric={key:float(row[key]) for key in COLUMNS[2:8]}
             except (ValueError,TypeError,OverflowError) as exc:
                 raise ValueError("invalid_universe_snapshot_row") from exc
