@@ -231,3 +231,22 @@ def test_historical_bars_reject_noncanonical_metadata_types(field, value, error)
     original = historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
     with pytest.raises(DataRejected, match=error):
         replace(original, **{field: value})
+
+
+@pytest.mark.parametrize("bad_pair", [
+    (None, None), ({"symbol": "SOLUSDT"}, None), ("SOLUSDT", None),
+    (None, 123),
+])
+def test_replay_rejects_non_historical_pair(bad_pair):
+    with pytest.raises(DataRejected, match="invalid_historical_pair"):
+        replay_snapshot(*bad_pair, decision_ms=BASE + 69 * FIVE_MINUTES_MS)
+
+
+def test_replay_rejects_one_invalid_feed_without_attribute_errors():
+    five, one = feeds()
+    f = historical_rows("SOLUSDT", FIVE_MINUTES_MS, five, source="fixture")
+    m = historical_rows("SOLUSDT", MINUTE_MS, one, source="fixture")
+    with pytest.raises(DataRejected, match="invalid_historical_pair"):
+        replay_snapshot(f, object(), decision_ms=BASE + 69 * FIVE_MINUTES_MS)
+    with pytest.raises(DataRejected, match="invalid_historical_pair"):
+        replay_snapshot(object(), m, decision_ms=BASE + 69 * FIVE_MINUTES_MS)
