@@ -44,7 +44,7 @@ def load_snapshots(path):
 
 def verify_decision_snapshot(observations,decision_ms,expected_symbols=None):
     if not observations:raise ValueError("missing_point_in_time_universe")
-    if isinstance(observations,(str,bytes,dict)) or any(not isinstance(x,UniverseObservation) or not isinstance(x.symbol,str) for x in observations):
+    if type(observations) not in (tuple,list) or any(type(x) is not UniverseObservation or type(x.symbol) is not str for x in observations):
         raise ValueError("invalid_historical_universe_observations")
     if len({x.symbol for x in observations})!=len(observations):
         raise ValueError("duplicate_symbol_snapshot")
