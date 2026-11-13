@@ -199,6 +199,21 @@ class HistoricalUniverseGateTests(unittest.TestCase):
                 p.write_text(",".join(COLUMNS)+"\n"+",".join(values[k] for k in COLUMNS)+"\n")
                 with self.assertRaisesRegex(ValueError,"invalid_universe_snapshot_row"):
                     load_snapshots(p)
+    def test_csv_rejects_ambiguous_numeric_formatting(self):
+        for field, value in (
+            ("last_price_usd", " 1.25"),
+            ("last_price_usd", "1.25 "),
+            ("quote_volume_24h_usd", "25_000_000"),
+            ("spread_bps", " 3 "),
+            ("min_notional_usd", "5_0"),
+        ):
+            with self.subTest(field=field, value=value), tempfile.TemporaryDirectory() as directory:
+                p=Path(directory)/"snap.csv"
+                values={k:str(getattr(self.obs,k)) for k in COLUMNS}
+                values[field]=value
+                p.write_text(",".join(COLUMNS)+"\n"+",".join(values[k] for k in COLUMNS)+"\n")
+                with self.assertRaisesRegex(ValueError,"invalid_universe_snapshot_row"):
+                    load_snapshots(p)
     def test_csv_roundtrip(self):
         with tempfile.TemporaryDirectory() as directory:
             p=Path(directory)/"snap.csv"
