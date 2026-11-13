@@ -76,6 +76,10 @@ def replay_verified_historical_universe(decisions, expected_decision_times, evid
     from signals_v3.historical_evidence_provenance import verify_historical_evidence_manifest
     if expected_decision_times is None:
         raise ValueError("missing_expected_decision_schedule")
+    # Reject lazy decision feeds before opening any provenance artifact. The
+    # verified entry point must enforce the same materialization contract.
+    if type(decisions) not in (tuple, list):
+        raise ValueError("invalid_historical_decision_container")
     # Do not materialize lazy schedules before validating their provenance.
     # A truncated iterator could otherwise be mistaken for a complete audit grid.
     if type(expected_decision_times) not in (tuple, list):
