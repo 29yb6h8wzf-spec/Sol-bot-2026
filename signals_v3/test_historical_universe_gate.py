@@ -10,6 +10,19 @@ class HistoricalUniverseGateTests(unittest.TestCase):
     def setUp(self):
         self.now=1_000_000
         self.obs=UniverseObservation("ADAUSDT",self.now,1.25,25_000_000,3,20_000,22_000,5,"TRADING","PERPETUAL","USDT")
+    def test_csv_duplicate_symbol_timestamp_rejected(self):
+        import csv
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"observations.csv"
+            row=["ADAUSDT",str(self.now),"1.25","25000000","3","20000","22000","5","TRADING","PERPETUAL","USDT"]
+            with path.open("w",newline="") as handle:
+                writer=csv.writer(handle)
+                writer.writerow(COLUMNS)
+                writer.writerow(row)
+                writer.writerow(row)
+            with self.assertRaisesRegex(ValueError,"duplicate_historical_universe_observation"):
+                load_snapshots(path)
+
     def test_malformed_listing_container_fails_closed(self):
         for listing in ("ADAUSDT", b"ADAUSDT", {"ADAUSDT": 1}, {"ADAUSDT"}, None, 17):
             with self.subTest(listing=repr(listing)):
