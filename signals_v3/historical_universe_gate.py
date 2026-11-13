@@ -7,7 +7,7 @@ exchangeInfo or ticker data. No exchange connectivity or orders.
 import csv
 from math import isfinite
 from pathlib import Path
-from signals_v3.dynamic_universe import UniverseObservation,select_universe
+from signals_v3.dynamic_universe import UniverseObservation,select_universe, _SYMBOL_PATTERN
 
 COLUMNS=("symbol","observed_at_ms","last_price_usd","quote_volume_24h_usd",
          "spread_bps","bid_depth_10bps_usd","ask_depth_10bps_usd",
@@ -69,7 +69,7 @@ def verify_decision_snapshot(observations,decision_ms,expected_symbols=None):
     if type(expected_symbols) not in (tuple,list):
         raise ValueError("invalid_historical_market_listing")
     expected_symbols=tuple(expected_symbols)
-    if any(type(s) is not str or not s.endswith("USDT") for s in expected_symbols):
+    if any(type(s) is not str or not _SYMBOL_PATTERN.fullmatch(s) for s in expected_symbols):
         raise ValueError("invalid_historical_market_listing")
     expected=set(expected_symbols)
     if not expected or len(expected)!=len(expected_symbols):
