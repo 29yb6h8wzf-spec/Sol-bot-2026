@@ -52,6 +52,22 @@ class VerifiedReplayTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"historical_evidence_outside_coverage"):
                 replay_verified_historical_universe(decisions,[2500],path)
 
+    def test_lazy_decision_feed_rejected_before_manifest_io(self):
+        class ExplodingFeed:
+            def __iter__(self):
+                raise AssertionError("lazy feed must not be consumed")
+
+        for feed in (ExplodingFeed(), iter(()), (x for x in ())):
+            with self.subTest(feed=type(feed).__name__):
+                with self.assertRaisesRegex(ValueError, "invalid_historical_decision_container"):
+                    replay_verified_historical_universe(feed, [1000], "/nonexistent/manifest.json")
+
+    def test_materialized_decisions_still_reach_provenance_gate(self):
+        for feed in ([], ()):
+            with self.subTest(feed=type(feed).__name__):
+                with self.assertRaises(FileNotFoundError):
+                    replay_verified_historical_universe(feed, [1000], "/nonexistent/manifest.json")
+
     def test_requires_explicit_schedule(self):
         with self.assertRaisesRegex(ValueError, "missing_expected_decision_schedule"):
             replay_verified_historical_universe([], None, "manifest.json")
