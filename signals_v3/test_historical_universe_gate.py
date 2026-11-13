@@ -129,6 +129,29 @@ class HistoricalUniverseGateTests(unittest.TestCase):
         item={"decision_ms":self.now,"observations":[self.obs],"expected_symbols":["ADAUSDT"]}
         for schedule in ([self.now],(self.now,)):
             self.assertEqual(len(replay_complete_universe([item],schedule)),1)
+    def test_verified_replay_rejects_lazy_schedule_before_manifest_io(self):
+        from unittest.mock import patch
+        from signals_v3.historical_universe_replay import replay_verified_historical_universe
+        item={"decision_ms":self.now,"observations":[self.obs],"expected_symbols":["ADAUSDT"]}
+        def truncated_schedule():
+            yield self.now
+            raise OSError("historical schedule truncated")
+        for schedule in ((x for x in [self.now]), iter([self.now]), truncated_schedule(), "1000000", {self.now}):
+            with self.subTest(kind=type(schedule).__name__):
+                with patch("signals_v3.historical_evidence_provenance.verify_historical_evidence_manifest") as verify:
+                    with self.assertRaisesRegex(ValueError,"invalid_expected_decision_schedule"):
+                        replay_verified_historical_universe([item],schedule,"unused-manifest.json")
+                    verify.assert_not_called()
+    def test_verified_replay_materialized_schedule_reaches_evidence_gate(self):
+        from unittest.mock import patch
+        from signals_v3.historical_universe_replay import replay_verified_historical_universe
+        item={"decision_ms":self.now,"observations":[self.obs],"expected_symbols":["ADAUSDT"]}
+        for schedule in ([self.now],(self.now,)):
+            with self.subTest(kind=type(schedule).__name__):
+                with patch("signals_v3.historical_evidence_provenance.verify_historical_evidence_manifest",return_value={"historical_evidence_verified":False}) as verify:
+                    with self.assertRaisesRegex(ValueError,"unverified_historical_evidence"):
+                        replay_verified_historical_universe([item],schedule,"unused-manifest.json")
+                    verify.assert_called_once_with("unused-manifest.json",self.now)
     def test_replay_explicit_schedule_rejects_gap(self):
         item={"decision_ms":self.now,"observations":[self.obs],"expected_symbols":["ADAUSDT"]}
         with self.assertRaisesRegex(ValueError,"incomplete_historical_decision_schedule"):
