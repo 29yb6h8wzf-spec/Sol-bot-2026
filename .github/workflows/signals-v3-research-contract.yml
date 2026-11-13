@@ -4,11 +4,17 @@ on:
     branches: [research/signals-v2-core-20261110, research/v3-stage3-audit-20261112]
     paths:
       - 'signals_v3/**'
+      - 'signals_v2/**'
+      - 'tests/test_signals_v2_historical.py'
+      - 'tests/test_signals_v3_one_shot_listing_replay.py'
       - '.github/workflows/signals-v3-research-contract.yml'
   pull_request:
     branches: [research/signals-v2-core-20261110]
     paths:
       - 'signals_v3/**'
+      - 'signals_v2/**'
+      - 'tests/test_signals_v2_historical.py'
+      - 'tests/test_signals_v3_one_shot_listing_replay.py'
       - '.github/workflows/signals-v3-research-contract.yml'
   workflow_dispatch:
 permissions:
@@ -22,4 +28,5 @@ jobs:
         with:
           python-version: '3.11'
       - run: PYTHONPATH=. python -m unittest discover -s signals_v3 -p 'test_*.py' -v
+      - run: PYTHONPATH=. python -m unittest tests.test_signals_v2_historical tests.test_signals_v3_one_shot_listing_replay -v
       - run: PYTHONPATH=. python -c 'from signals_v3.spec import SPEC; SPEC.validate(); print("V3 RESEARCH ONLY")'
