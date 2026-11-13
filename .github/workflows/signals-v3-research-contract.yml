@@ -28,5 +28,6 @@ jobs:
         with:
           python-version: '3.11'
       - run: PYTHONPATH=. python -m unittest discover -s signals_v3 -p 'test_*.py' -v
-      - run: PYTHONPATH=. python -m unittest tests.test_signals_v2_historical tests.test_signals_v3_one_shot_listing_replay -v
+      - run: python -m pip install 'pytest>=8,<9'
+      - run: PYTHONPATH=. python -m pytest tests/test_signals_v2_historical.py tests/test_signals_v3_one_shot_listing_replay.py -q
       - run: PYTHONPATH=. python -c 'from signals_v3.spec import SPEC; SPEC.validate(); print("V3 RESEARCH ONLY")'
