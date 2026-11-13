@@ -8,6 +8,10 @@ from signals_v3.historical_universe_gate import verify_decision_snapshot
 def replay_universe(decisions, expected_decision_times=None):
     """Replay decisions; strict callers should use replay_complete_universe."""
     if expected_decision_times is not None:
+        # The audit schedule must be materialized before validation. Lazy feeds
+        # can fail midway or change between passes, undermining replay coverage.
+        if type(expected_decision_times) not in (tuple, list):
+            raise ValueError("invalid_expected_decision_schedule")
         expected_decision_times=tuple(expected_decision_times)
         if not expected_decision_times or any(not isinstance(t,int) or isinstance(t,bool) or t<0 for t in expected_decision_times):
             raise ValueError("invalid_expected_decision_schedule")
