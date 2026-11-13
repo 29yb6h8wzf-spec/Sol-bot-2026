@@ -17,6 +17,10 @@ def replay_universe(decisions, expected_decision_times=None):
             raise ValueError("invalid_expected_decision_schedule")
         if any(b<=a for a,b in zip(expected_decision_times,expected_decision_times[1:])):
             raise ValueError("invalid_expected_decision_schedule")
+    # An audit decision grid must be fully materialized before replay. A lazy
+    # source can truncate after yielding plausible early snapshots.
+    if type(decisions) not in (tuple, list):
+        raise ValueError("invalid_historical_decision_container")
     output=[]
     previous=None
     previous_listing=None
