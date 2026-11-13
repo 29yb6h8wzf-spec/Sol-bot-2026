@@ -5,6 +5,11 @@ on:
     paths:
       - 'signals_v3/**'
       - '.github/workflows/signals-v3-research-contract.yml'
+  pull_request:
+    branches: [research/signals-v2-core-20261110]
+    paths:
+      - 'signals_v3/**'
+      - '.github/workflows/signals-v3-research-contract.yml'
   workflow_dispatch:
 permissions:
   contents: read
