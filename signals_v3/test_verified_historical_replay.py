@@ -17,7 +17,7 @@ class VerifiedReplayTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unverified_historical_universe_provenance"):
                 replay_verified_historical_universe([], [1000], path)
 
-    def test_valid_hashed_artifacts_and_complete_replay(self):
+    def test_checksum_only_artifacts_cannot_authorize_replay(self):
         import hashlib
         import json
         import tempfile
@@ -44,8 +44,8 @@ class VerifiedReplayTests(unittest.TestCase):
                 ask_depth_10bps_usd=20_000.0,min_notional_usd=5.0,
                 status="TRADING",contract_type="PERPETUAL",quote_asset="USDT")
             decisions=[{"decision_ms":1500,"expected_symbols":["SOLUSDT"],"observations":[obs]}]
-            result=replay_verified_historical_universe(decisions,[1500],path)
-            self.assertEqual(result[0]["eligible_symbols"],("SOLUSDT",))
+            with self.assertRaisesRegex(ValueError,"unverified_historical_evidence"):
+                replay_verified_historical_universe(decisions,[1500],path)
             (root/"historical_orderbook.csv").write_bytes(b"tampered after signing")
             with self.assertRaisesRegex(ValueError,"historical_artifact_checksum_mismatch"):
                 replay_verified_historical_universe(decisions,[1500],path)
