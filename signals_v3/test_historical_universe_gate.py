@@ -45,6 +45,18 @@ class HistoricalUniverseGateTests(unittest.TestCase):
             with self.subTest(listing=repr(listing)):
                 with self.assertRaisesRegex(ValueError, "invalid_historical_market_listing"):
                     verify_decision_snapshot([self.obs], self.now, listing)
+    def test_historical_listing_rejects_noncanonical_usdt_symbols(self):
+        # A suffix check alone accepted these strings as a complete listing,
+        # although none can be an eligible USDT-M market identity.
+        for symbol in ("USDT", "aDAUSDT", "ADA-USDT", "ADA_USDT", " ADAUSDT", "ADAUSDT ", "AUSDT"):
+            with self.subTest(symbol=symbol):
+                with self.assertRaisesRegex(ValueError, "invalid_historical_market_listing"):
+                    verify_decision_snapshot([self.obs], self.now, [symbol])
+        self.assertEqual(
+            verify_decision_snapshot([self.obs], self.now, ["ADAUSDT"])["eligible_symbols"],
+            ("ADAUSDT",),
+        )
+
     def test_malformed_observation_fails_closed(self):
         for observations in ([None], [object()], ["ADAUSDT"], {"ADAUSDT": self.obs}):
             with self.subTest(observations=repr(observations)):
