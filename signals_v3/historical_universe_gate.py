@@ -19,6 +19,7 @@ def load_snapshots(path):
         if reader.fieldnames is None or len(reader.fieldnames)!=len(COLUMNS) or set(reader.fieldnames)!=set(COLUMNS):
             raise ValueError("invalid_universe_snapshot_schema")
         observations=[]
+        seen_keys=set()
         for row in reader:
             if None in row or any(v is None or not isinstance(v,str) or not v.strip() for v in row.values()):
                 raise ValueError("invalid_universe_snapshot_row")
@@ -31,6 +32,10 @@ def load_snapshots(path):
                 if any(row[key] != row[key].strip() or "_" in row[key]
                        for key in COLUMNS[2:8]):
                     raise ValueError("invalid_universe_snapshot_row")
+                key=(row["symbol"],timestamp)
+                if key in seen_keys:
+                    raise ValueError("duplicate_historical_universe_observation")
+                seen_keys.add(key)
                 numeric={key:float(row[key]) for key in COLUMNS[2:8]}
             except (ValueError,TypeError,OverflowError) as exc:
                 raise ValueError("invalid_universe_snapshot_row") from exc
