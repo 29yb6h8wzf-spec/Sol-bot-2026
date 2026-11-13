@@ -26,7 +26,7 @@ def load_snapshots(path):
                 timestamp=int(row["observed_at_ms"])
                 if timestamp < 0 or str(timestamp) != row["observed_at_ms"]:
                     raise ValueError("invalid_universe_snapshot_row")
-                numeric={key:float(row[key]) for key in COLUMNS[2:8]}
+                # Python float() accepts whitespace and underscore separators that\n                # are ambiguous in external CSV evidence. Reject them explicitly.\n                if any(row[key] != row[key].strip() or "_" in row[key]\n                       for key in COLUMNS[2:8]):\n                    raise ValueError("invalid_universe_snapshot_row")\n                numeric={key:float(row[key]) for key in COLUMNS[2:8]}
             except (ValueError,TypeError,OverflowError) as exc:
                 raise ValueError("invalid_universe_snapshot_row") from exc
             if not all(isfinite(value) and value>=0 for value in numeric.values()):
