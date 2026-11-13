@@ -28,6 +28,20 @@ class HistoricalUniverseGateTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError,"invalid_universe_snapshot_row"):
                         load_snapshots(path)
 
+    def test_csv_rejects_malformed_market_identity_at_ingestion(self):
+        import csv
+        for symbol in ("ADA-USDT", "adaUSDT", "USDT", " ADAUSDT", "ADAUSDT ", "AUSDT"):
+            with self.subTest(symbol=symbol), tempfile.TemporaryDirectory() as directory:
+                path=Path(directory)/"snap.csv"
+                row=[symbol,str(self.now),"1.25","25000000","3",
+                     "20000","22000","5","TRADING","PERPETUAL","USDT"]
+                with path.open("w",newline="") as handle:
+                    writer=csv.writer(handle)
+                    writer.writerow(COLUMNS)
+                    writer.writerow(row)
+                with self.assertRaisesRegex(ValueError,"invalid_universe_snapshot_row"):
+                    load_snapshots(path)
+
     def test_csv_duplicate_symbol_timestamp_rejected(self):
         import csv
         with tempfile.TemporaryDirectory() as directory:
