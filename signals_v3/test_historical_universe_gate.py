@@ -116,6 +116,19 @@ class HistoricalUniverseGateTests(unittest.TestCase):
         item={"decision_ms":self.now,"observations":[self.obs],"expected_symbols":["ADAUSDT"]}
         with self.assertRaisesRegex(ValueError,"missing_expected_decision_schedule"):
             replay_complete_universe([item],None)
+    def test_replay_rejects_lazy_expected_schedule(self):
+        item={"decision_ms":self.now,"observations":[self.obs],"expected_symbols":["ADAUSDT"]}
+        def truncated_schedule():
+            yield self.now
+            raise OSError("truncated historical schedule")
+        for schedule in ((x for x in [self.now]), iter([self.now]), truncated_schedule(), "1000000", {self.now}):
+            with self.subTest(kind=type(schedule).__name__):
+                with self.assertRaisesRegex(ValueError,"invalid_expected_decision_schedule"):
+                    replay_universe([item],expected_decision_times=schedule)
+    def test_replay_accepts_materialized_expected_schedule(self):
+        item={"decision_ms":self.now,"observations":[self.obs],"expected_symbols":["ADAUSDT"]}
+        for schedule in ([self.now],(self.now,)):
+            self.assertEqual(len(replay_complete_universe([item],schedule)),1)
     def test_replay_explicit_schedule_rejects_gap(self):
         item={"decision_ms":self.now,"observations":[self.obs],"expected_symbols":["ADAUSDT"]}
         with self.assertRaisesRegex(ValueError,"incomplete_historical_decision_schedule"):
