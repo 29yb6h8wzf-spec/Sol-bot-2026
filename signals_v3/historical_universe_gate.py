@@ -35,6 +35,10 @@ def load_snapshots(path):
                 numeric={key:float(row[key]) for key in COLUMNS[2:9]}
             except (ValueError,TypeError,OverflowError) as exc:
                 raise ValueError("invalid_universe_snapshot_row") from exc
+            # Reject malformed market identities at ingestion, before replay can
+            # mistake them for historical listing evidence.
+            if not _SYMBOL_PATTERN.fullmatch(row["symbol"]):
+                raise ValueError("invalid_universe_snapshot_row")
             key=(row["symbol"],timestamp)
             if key in seen_keys:
                 raise ValueError("duplicate_historical_universe_observation")
