@@ -8,6 +8,10 @@ from signals_v3.historical_universe_gate import verify_decision_snapshot
 def replay_universe(decisions, expected_decision_times=None):
     """Replay decisions; strict callers should use replay_complete_universe."""
     if expected_decision_times is not None:
+        # The audit schedule must be materialized before validation. Lazy feeds
+        # can fail midway or change between passes, undermining replay coverage.
+        if type(expected_decision_times) not in (tuple, list):
+            raise ValueError("invalid_expected_decision_schedule")
         expected_decision_times=tuple(expected_decision_times)
         if not expected_decision_times or any(not isinstance(t,int) or isinstance(t,bool) or t<0 for t in expected_decision_times):
             raise ValueError("invalid_expected_decision_schedule")
@@ -26,12 +30,11 @@ def replay_universe(decisions, expected_decision_times=None):
             raise ValueError("nonmonotonic_decision_times")
         if "observations" not in decision or "expected_symbols" not in decision:
             raise ValueError("missing_historical_evidence")
-        # Materialize the listing once: a generator must not be consumed by
-        # validation and then silently appear empty during change tracking.
-        try:
-            listing=tuple(decision["expected_symbols"])
-        except (TypeError, ValueError) as exc:
-            raise ValueError("invalid_historical_market_listing") from exc
+        # Preserve the gate's strict materialized-listing contract. Coercing
+        # generators here would bypass its rejection of lazy historical evidence.
+        listing=decision["expected_symbols"]
+        if type(listing) not in (list,tuple):
+            raise ValueError("invalid_historical_market_listing")
         result=verify_decision_snapshot(
             decision["observations"],timestamp,listing)
         current_listing=frozenset(listing)
@@ -69,6 +72,10 @@ def replay_verified_historical_universe(decisions, expected_decision_times, evid
     from signals_v3.historical_evidence_provenance import verify_historical_evidence_manifest
     if expected_decision_times is None:
         raise ValueError("missing_expected_decision_schedule")
+    # Do not materialize lazy schedules before validating their provenance.
+    # A truncated iterator could otherwise be mistaken for a complete audit grid.
+    if type(expected_decision_times) not in (tuple, list):
+        raise ValueError("invalid_expected_decision_schedule")
     schedule=tuple(expected_decision_times)
     if (not schedule or any(type(t) is not int or t < 0 for t in schedule)
             or any(b <= a for a, b in zip(schedule, schedule[1:]))):

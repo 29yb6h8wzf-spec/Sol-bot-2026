@@ -24,6 +24,8 @@ def load_snapshots(path):
                 raise ValueError("invalid_universe_snapshot_row")
             try:
                 timestamp=int(row["observed_at_ms"])
+                if timestamp < 0 or str(timestamp) != row["observed_at_ms"]:
+                    raise ValueError("invalid_universe_snapshot_row")
                 numeric={key:float(row[key]) for key in COLUMNS[2:8]}
             except (ValueError,TypeError,OverflowError) as exc:
                 raise ValueError("invalid_universe_snapshot_row") from exc
@@ -43,14 +45,24 @@ def load_snapshots(path):
     return tuple(observations)
 
 def verify_decision_snapshot(observations,decision_ms,expected_symbols=None):
+    if type(decision_ms) is not int or decision_ms < 0:
+        raise ValueError("invalid_decision_timestamp")
     if not observations:raise ValueError("missing_point_in_time_universe")
+    if type(observations) not in (tuple,list) or any(type(x) is not UniverseObservation or type(x.symbol) is not str for x in observations):
+        raise ValueError("invalid_historical_universe_observations")
     if len({x.symbol for x in observations})!=len(observations):
         raise ValueError("duplicate_symbol_snapshot")
     if expected_symbols is None:
         raise ValueError("missing_historical_market_listing")
+    # A historical listing must be an already-materialized ordered snapshot.
+    # Generators and other lazy iterables can fail midway or change between reads.
+    if type(expected_symbols) not in (tuple,list):
+        raise ValueError("invalid_historical_market_listing")
     expected_symbols=tuple(expected_symbols)
+    if any(type(s) is not str or not s.endswith("USDT") for s in expected_symbols):
+        raise ValueError("invalid_historical_market_listing")
     expected=set(expected_symbols)
-    if not expected or len(expected)!=len(expected_symbols) or any(not isinstance(s,str) or not s.endswith("USDT") for s in expected):
+    if not expected or len(expected)!=len(expected_symbols):
         raise ValueError("invalid_historical_market_listing")
     observed={x.symbol for x in observations}
     if observed!=expected:

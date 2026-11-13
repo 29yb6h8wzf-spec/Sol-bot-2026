@@ -1,7 +1,7 @@
 name: SignalPilot V3 research contract
 on:
   push:
-    branches: [research/signals-v2-core-20261110]
+    branches: [research/signals-v2-core-20261110, research/v3-stage3-audit-20261112]
     paths:
       - 'signals_v3/**'
       - '.github/workflows/signals-v3-research-contract.yml'

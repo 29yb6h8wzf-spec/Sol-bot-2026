@@ -23,16 +23,24 @@ class HistoricalBars:
     availability_assumption: str = "HISTORICAL_CANDLE_CLOSE_RECONSTRUCTED"
 
     def __post_init__(self):
-        if self.symbol not in SYMBOLS:
+        if type(self.symbol) is not str or self.symbol not in SYMBOLS:
             raise DataRejected("unsupported_symbol")
-        if self.timeframe_ms not in (MINUTE_MS, FIVE_MINUTES_MS):
+        if type(self.timeframe_ms) is not int or self.timeframe_ms not in (MINUTE_MS, FIVE_MINUTES_MS):
             raise DataRejected("unsupported_timeframe")
-        if not self.source or not self.sha256_digest:
+        if not isinstance(self.source, str) or not self.source.strip():
             raise DataRejected("missing_provenance")
+        if not isinstance(self.sha256_digest, str) or not self.sha256_digest:
+            raise DataRejected("invalid_historical_digest")
+        if len(self.sha256_digest) != 64 or any(c not in "0123456789abcdef" for c in self.sha256_digest):
+            raise DataRejected("invalid_historical_digest")
         if self.availability_assumption != "HISTORICAL_CANDLE_CLOSE_RECONSTRUCTED":
             raise DataRejected("invalid_replay_availability")
+        if type(self.bars) is not tuple:
+            raise DataRejected("invalid_historical_bars_container")
         if not self.bars:
             raise DataRejected("no_closed_candles")
+        if any(type(b) is not Candle for b in self.bars):
+            raise DataRejected("invalid_historical_bar")
         for b in self.bars:
             b.validate(self.timeframe_ms, b.available_at_ms)
             if b.available_at_ms != b.open_ms + self.timeframe_ms:
@@ -40,6 +48,10 @@ class HistoricalBars:
         for a, b in zip(self.bars, self.bars[1:]):
             if b.open_ms - a.open_ms != self.timeframe_ms:
                 raise DataRejected("historical_gap_or_duplicate")
+        canonical = [(b.open_ms, b.open, b.high, b.low, b.close, b.volume) for b in self.bars]
+        actual_digest = sha256(dumps(canonical, separators=(",", ":")).encode()).hexdigest()
+        if self.sha256_digest != actual_digest:
+            raise DataRejected("historical_digest_mismatch")
 
 
 def historical_rows(symbol: str, timeframe_ms: int, rows, *,
@@ -51,13 +63,30 @@ def historical_rows(symbol: str, timeframe_ms: int, rows, *,
     This is suitable for exploratory OHLCV-only backtests, not claims about
     real-time latency, microstructure or tradeable execution at the same close.
     """
-    if symbol not in SYMBOLS or timeframe_ms not in (MINUTE_MS, FIVE_MINUTES_MS):
+    if (type(symbol) is not str or symbol not in SYMBOLS
+            or type(timeframe_ms) is not int or timeframe_ms not in (MINUTE_MS, FIVE_MINUTES_MS)):
         raise DataRejected("invalid_symbol_or_timeframe")
     if not isinstance(source, str) or not source.strip():
         raise DataRejected("missing_provenance")
+    if rows is None or isinstance(rows, (str, bytes, dict, set, frozenset)):
+        # Unordered feeds cannot establish deterministic candle chronology.
+        raise DataRejected("invalid_historical_rows")
+    try:
+        iterator = iter(rows)
+    except (TypeError, ValueError, RuntimeError, OSError, EOFError, OverflowError) as exc:
+        # Archive adapters may fail before yielding their first row.
+        raise DataRejected("invalid_historical_rows") from exc
     out = []
-    for row in rows:
-        if not isinstance(row, (tuple, list)) or len(row) < 6 or type(row[0]) is not int:
+    while True:
+        try:
+            row = next(iterator)
+        except StopIteration:
+            break
+        except (TypeError, ValueError, RuntimeError, OSError, EOFError, OverflowError) as exc:
+            # A failed archive stream is not a complete, auditable dataset.
+            raise DataRejected("invalid_historical_rows") from exc
+        if (not isinstance(row, (tuple, list)) or len(row) != 6
+                or type(row[0]) is not int or any(type(x) not in (int, float) for x in row[1:])):
             raise DataRejected("invalid_historical_row")
         try:
             values = tuple(float(x) for x in row[1:6])
@@ -77,10 +106,14 @@ def replay_snapshot(five: HistoricalBars, one: HistoricalBars, *,
                     decision_ms: int, lookback_five: int = 64,
                     lookback_one: int = 10) -> MarketSnapshot:
     """Return an as-of snapshot, never including a candle closed in future."""
+    if type(five) is not HistoricalBars or type(one) is not HistoricalBars:
+        raise DataRejected("invalid_historical_pair")
     if five.symbol != one.symbol or five.timeframe_ms != FIVE_MINUTES_MS or one.timeframe_ms != MINUTE_MS:
         raise DataRejected("historical_pair_mismatch")
     if type(decision_ms) is not int or decision_ms <= 0:
         raise DataRejected("invalid_decision_time")
+    if type(lookback_five) is not int or type(lookback_one) is not int or lookback_five <= 0 or lookback_one <= 0:
+        raise DataRejected("invalid_replay_lookback")
     f = tuple(b for b in five.bars if b.available_at_ms <= decision_ms)[-lookback_five:]
     m = tuple(b for b in one.bars if b.available_at_ms <= decision_ms)[-lookback_one:]
     snapshot = MarketSnapshot(five.symbol, decision_ms, f, m)

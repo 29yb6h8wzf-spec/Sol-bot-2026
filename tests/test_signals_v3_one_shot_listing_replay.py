@@ -1,6 +1,6 @@
-"""Offline regression for one-shot historical market listings.
+"""Offline regression for strict historical market listings.
 
-No exchange calls or orders; these are synthetic snapshots, not historical evidence.
+Synthetic fixtures only: no exchange calls, orders, or historical-data claims.
 """
 import unittest
 
@@ -18,17 +18,29 @@ def observation(symbol, timestamp):
 
 
 class OneShotListingReplayTests(unittest.TestCase):
-    def test_generator_listing_matches_tuple_listing(self):
+    def test_materialized_listing_tracks_changes(self):
         decisions = [
-            {"decision_ms": 1000, "expected_symbols": (s for s in ("SOLUSDT",)),
+            {"decision_ms": 1000, "expected_symbols": ("SOLUSDT",),
              "observations": (observation("SOLUSDT", 1000),)},
-            {"decision_ms": 2000, "expected_symbols": (s for s in ("SOLUSDT", "XRPUSDT")),
+            {"decision_ms": 2000, "expected_symbols": ["SOLUSDT", "XRPUSDT"],
              "observations": (observation("SOLUSDT", 2000), observation("XRPUSDT", 2000))},
         ]
         result = replay_complete_universe(decisions, (1000, 2000))
         self.assertEqual(result[0]["eligible_symbols"], ("SOLUSDT",))
         self.assertEqual(result[1]["listed_added"], ("XRPUSDT",))
         self.assertEqual(result[1]["listed_removed"], ())
+
+    def test_generator_listing_fails_closed_without_consuming(self):
+        def truncated():
+            yield "SOLUSDT"
+            raise OSError("archive truncated")
+        for listing in ((s for s in ("SOLUSDT",)), truncated(), iter(("SOLUSDT",))):
+            with self.subTest(kind=type(listing).__name__):
+                with self.assertRaisesRegex(ValueError, "invalid_historical_market_listing"):
+                    replay_complete_universe((
+                        {"decision_ms": 1000, "expected_symbols": listing,
+                         "observations": (observation("SOLUSDT", 1000),)},
+                    ), (1000,))
 
     def test_non_iterable_listing_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "invalid_historical_market_listing"):
@@ -37,10 +49,10 @@ class OneShotListingReplayTests(unittest.TestCase):
                  "observations": (observation("SOLUSDT", 1000),)},
             ), (1000,))
 
-    def test_generator_duplicate_listing_rejected(self):
+    def test_materialized_duplicate_listing_rejected(self):
         with self.assertRaisesRegex(ValueError, "invalid_historical_market_listing"):
             replay_complete_universe((
-                {"decision_ms": 1000, "expected_symbols": (s for s in ("SOLUSDT", "SOLUSDT")),
+                {"decision_ms": 1000, "expected_symbols": ("SOLUSDT", "SOLUSDT"),
                  "observations": (observation("SOLUSDT", 1000),)},
             ), (1000,))
 
