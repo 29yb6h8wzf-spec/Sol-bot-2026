@@ -10,6 +10,24 @@ class HistoricalUniverseGateTests(unittest.TestCase):
     def setUp(self):
         self.now=1_000_000
         self.obs=UniverseObservation("ADAUSDT",self.now,1.25,25_000_000,3,20_000,22_000,5,"TRADING","PERPETUAL","USDT")
+    def test_csv_min_notional_is_parsed_and_validated(self):
+        import csv
+        for value, valid in (("5", True), ("5_0", False), ("-1", False),
+                             ("nan", False), ("inf", False), (" 5", False)):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as directory:
+                path=Path(directory)/"snap.csv"
+                row=["ADAUSDT",str(self.now),"1.25","25000000","3",
+                     "20000","22000",value,"TRADING","PERPETUAL","USDT"]
+                with path.open("w",newline="") as handle:
+                    writer=csv.writer(handle)
+                    writer.writerow(COLUMNS)
+                    writer.writerow(row)
+                if valid:
+                    self.assertEqual(load_snapshots(path)[0].min_notional_usd,5.0)
+                else:
+                    with self.assertRaisesRegex(ValueError,"invalid_universe_snapshot_row"):
+                        load_snapshots(path)
+
     def test_csv_duplicate_symbol_timestamp_rejected(self):
         import csv
         with tempfile.TemporaryDirectory() as directory:
