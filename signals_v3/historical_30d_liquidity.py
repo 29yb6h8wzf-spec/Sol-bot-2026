@@ -10,7 +10,7 @@ from math import isfinite
 DAY_MS = 86_400_000
 MIN_AVG_DAILY_QUOTE_USD = 20_000_000.0
 LOOKBACK_DAYS = 30
-_SYMBOL_PATTERN = re.compile(r"[A-Z0-9]{2,30}USDT\\Z")
+_SYMBOL_PATTERN = re.compile(r"[A-Z0-9]{2,30}USDT\Z")
 
 
 @dataclass(frozen=True)
