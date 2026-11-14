@@ -32,12 +32,20 @@ def validate_intent(intent, *, equity, day_start_equity, existing_risk=D("0"),
                     used_margin=D("0"), fee_rate=D("0.0006"),
                     slippage_rate=D("0.0005")):
     """Offline guard; conservative estimated loss, not guaranteed maximum."""
+    if intent.source != "verified_85_score_engine" or not isinstance(intent.score, int) or intent.score < 85 or intent.score > 100:
+        raise LiveSafetyError("unverified signal quality")
+    return _validate_trade_risk(intent, equity=equity, day_start_equity=day_start_equity,
+                                existing_risk=existing_risk, used_margin=used_margin,
+                                fee_rate=fee_rate, slippage_rate=slippage_rate)
+
+
+def _validate_trade_risk(intent, *, equity, day_start_equity, existing_risk=D("0"),
+                         used_margin=D("0"), fee_rate=D("0.0006"),
+                         slippage_rate=D("0.0005")):
     if intent.symbol not in ALLOWED:
         raise LiveSafetyError("symbol not allowed")
     if intent.direction not in ("long", "short"):
         raise LiveSafetyError("invalid direction")
-    if intent.source != "verified_85_score_engine" or not isinstance(intent.score, int) or intent.score < 85 or intent.score > 100:
-        raise LiveSafetyError("unverified signal quality")
     if not intent.signal_id or len(intent.signal_id) > 32 or not all(c.isalnum() or c in "-_" for c in intent.signal_id):
         raise LiveSafetyError("invalid idempotency key")
     entry, stop, target, qty = map(D, (intent.entry, intent.stop, intent.target, intent.quantity))
@@ -110,6 +118,11 @@ def execute_protected_entry(exchange, intent, *, journal, account):
     position mode, partial fills and recovery must pass real testnet certification.
     A failure can exceed the planned loss. Keep disabled until certified.
     """
+    return _execute_protected_entry(exchange, intent, journal=journal, account=account,
+                                    validate=validate_intent)
+
+
+def _execute_protected_entry(exchange, intent, *, journal, account, validate):
     require_live_arming()
     if os.getenv("BINANCE_BRACKET_CERTIFIED") != "YES_TESTNET_VERIFIED":
         raise LiveSafetyError("native Binance conditional orders not testnet certified")
@@ -120,7 +133,7 @@ def execute_protected_entry(exchange, intent, *, journal, account):
     entry_side = "buy" if intent.direction == "long" else "sell"
     exit_side = "sell" if entry_side == "buy" else "buy"
     try:
-        validate_intent(intent, **account)
+        validate(intent, **account)
         check_exchange_state(exchange, intent)
         # One-way position mode required for reduceOnly; reject hedge mode.
         mode = exchange.fetch_position_mode(intent.symbol)
