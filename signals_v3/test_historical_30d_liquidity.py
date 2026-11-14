@@ -56,6 +56,18 @@ class Historical30dLiquidityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid_daily_volume_record"):
             verify_30d_liquidity(rows, "SOLUSDT", self.decision)
 
+    def test_short_symbol_rejected(self):
+        with self.assertRaisesRegex(ValueError, "invalid_volume_symbol"):
+            verify_30d_liquidity(self.rows, "USDT", self.decision)
+
+    def test_lowercase_symbol_rejected(self):
+        with self.assertRaisesRegex(ValueError, "invalid_volume_symbol"):
+            verify_30d_liquidity(self.rows, "solUSDT", self.decision)
+
+    def test_pre_history_window_rejected(self):
+        with self.assertRaisesRegex(ValueError, "insufficient_historical_calendar"):
+            verify_30d_liquidity([], "SOLUSDT", 5 * DAY_MS)
+
     def test_boolean_decision_rejected(self):
         with self.assertRaisesRegex(ValueError, "invalid_decision_timestamp"):
             verify_30d_liquidity(self.rows, "SOLUSDT", True)
