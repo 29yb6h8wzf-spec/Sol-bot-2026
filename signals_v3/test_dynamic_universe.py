@@ -25,4 +25,17 @@ class DynamicUniverseTests(unittest.TestCase):
         symbols,reasons=select_universe([self.obs,replace(self.obs,symbol="SOLUSDT",last_price_usd=200)],self.now)
         self.assertEqual(symbols,("ADAUSDT",))
         self.assertEqual(reasons["SOLUSDT"],"outside_price_range")
+    def test_volume_gate_configuration_requires_real_boolean(self):
+        low_volume=replace(self.obs,quote_volume_24h_usd=100)
+        for invalid in (None,0,1,"false",[],{}):
+            with self.subTest(invalid=invalid):
+                self.assertEqual(
+                    eligibility(low_volume,self.now,enforce_24h_volume=invalid),
+                    (False,"invalid_volume_gate_configuration"))
+                with self.assertRaisesRegex(ValueError,"invalid_volume_gate_configuration"):
+                    select_universe([low_volume],self.now,enforce_24h_volume=invalid)
+                with self.assertRaisesRegex(ValueError,"invalid_volume_gate_configuration"):
+                    select_universe([],self.now,enforce_24h_volume=invalid)
+        self.assertEqual(eligibility(low_volume,self.now,enforce_24h_volume=False),(True,"eligible"))
+        self.assertEqual(eligibility(low_volume,self.now,enforce_24h_volume=True)[1],"insufficient_volume")
 if __name__=="__main__":unittest.main()
