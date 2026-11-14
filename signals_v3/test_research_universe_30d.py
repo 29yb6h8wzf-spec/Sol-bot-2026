@@ -21,6 +21,19 @@ class ResearchUniverse30dTests(unittest.TestCase):
             for i in range(1, 31)
         )
 
+    def test_legacy_24h_volume_does_not_override_30d_research_gate(self):
+        from dataclasses import replace
+        from signals_v3.dynamic_universe import select_universe
+        low_24h = replace(self.obs, quote_volume_24h_usd=5_000_000.0)
+        legacy, legacy_reasons = select_universe([low_24h], self.decision)
+        self.assertEqual(legacy, ())
+        self.assertEqual(legacy_reasons["SOLUSDT"], "insufficient_volume")
+        research, research_reasons = select_research_universe_30d(
+            [low_24h], {"SOLUSDT": self.rows}, self.decision
+        )
+        self.assertEqual(research, ())
+        self.assertEqual(research_reasons["SOLUSDT"], "unverified_30d_volume_provenance")
+
     def test_missing_history_fails_closed(self):
         accepted, reasons = select_research_universe_30d([self.obs], {}, self.decision)
         self.assertEqual(accepted, ())
