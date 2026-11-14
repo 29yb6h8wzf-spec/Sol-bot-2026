@@ -121,3 +121,40 @@ def select_universe(observations,decision_ms,limits=UniverseThresholds()):
         reasons[obs.symbol]=reason
         if ok:accepted.append(obs.symbol)
     return tuple(sorted(set(accepted))),reasons
+
+
+def select_research_universe_30d(observations, daily_volume_by_symbol, decision_ms,
+                                 limits=UniverseThresholds()):
+    """Research-only selector requiring trailing 30 closed UTC days per candidate.
+
+    Never used by execution. The historical volume rows are supplied by the
+    caller; this checks completeness and point-in-time arithmetic, NOT source
+    authenticity. Missing, invalid, or unverified rows fail closed.
+    """
+    from signals_v3.historical_30d_liquidity import verify_30d_liquidity
+
+    accepted, reasons = select_universe(observations, decision_ms, limits)
+    if type(daily_volume_by_symbol) is not dict:
+        raise ValueError("invalid_historical_volume_mapping")
+    final = []
+    for symbol in accepted:
+        if symbol not in daily_volume_by_symbol:
+            reasons[symbol] = "missing_30d_volume_evidence"
+            continue
+        try:
+            evidence = verify_30d_liquidity(
+                daily_volume_by_symbol[symbol], symbol, decision_ms
+            )
+        except (ValueError, TypeError, OverflowError):
+            reasons[symbol] = "invalid_30d_volume_evidence"
+            continue
+        if not evidence["meets_30d_liquidity_threshold"]:
+            reasons[symbol] = "insufficient_30d_liquidity"
+            continue
+        # A numerical pass must not be mistaken for verified historical source.
+        # Only an explicit upstream provenance gate can establish authenticity.
+        if not evidence["provider_authenticity_verified"]:
+            reasons[symbol] = "unverified_30d_volume_provenance"
+            continue
+        final.append(symbol)
+    return tuple(final), reasons
