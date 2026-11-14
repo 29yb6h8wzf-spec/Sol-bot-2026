@@ -1,12 +1,11 @@
 """Inspect the historical V3 breakout decision using Binance USD-M public candles.
 
 Run from the checkout with python -m signals_v3.breakout_scan.
-This diagnostic evaluates the latest hourly decision considered by the replay.
+This diagnostic evaluates the latest closed five-minute decision.
 Its output is a research observation. It must never be routed as an order.
 """
 import json
 import time
-from datetime import datetime, timezone
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
@@ -15,16 +14,10 @@ from signals_v3.router import candidates
 
 BASE = "https://fapi.binance.com"
 FIVE = 300_000
-HOUR = 12 * FIVE
 
 
 def latest_decision(now_ms):
-    now = datetime.fromtimestamp(now_ms / 1000, timezone.utc)
-    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    first = int(start.timestamp()) * 1000 + 64 * FIVE
-    if now_ms < first:
-        return None
-    return first + ((now_ms - first) // HOUR) * HOUR
+    return now_ms - now_ms % FIVE
 
 
 def get_json(path):
@@ -63,10 +56,7 @@ def main():
         raise ValueError("clock_disagreement")
     decision = latest_decision(now_ms)
     report = {"server_time_ms": now_ms, "decision_ms": decision, "research_only": True}
-    if decision is None:
-        report["status"] = "monthly_warmup"
-    else:
-        report["symbols"] = {s: scan(s, decision) for s in ("SOLUSDT", "XRPUSDT")}
+    report["symbols"] = {s: scan(s, decision) for s in ("SOLUSDT", "XRPUSDT")}
     print(json.dumps(report, allow_nan=False))
 
 
