@@ -15,7 +15,7 @@ def verify_historical_evidence_manifest(path,decision_ms):
             result[key] = value
         return result
 
-    # Conflicting JSON keys must not be silently resolved by last-value-wins.
+    # Do not follow a manifest symlink outside the supplied evidence bundle.\n    if Path(path).is_symlink():\n        raise ValueError("historical_manifest_symlink_unsafe")\n    # Conflicting JSON keys must not be silently resolved by last-value-wins.
     manifest=json.loads(Path(path).read_text(encoding="utf-8"),
                         object_pairs_hook=reject_duplicate_keys)
     if not isinstance(manifest,dict):
