@@ -30,9 +30,9 @@ def load_snapshots(path):
                 # Python float() accepts whitespace and underscore separators that
                 # are ambiguous in external CSV evidence. Reject them explicitly.
                 if any(row[key] != row[key].strip() or "_" in row[key]
-                       for key in COLUMNS[2:9]):
+                       for key in COLUMNS[2:8]):
                     raise ValueError("invalid_universe_snapshot_row")
-                numeric={key:float(row[key]) for key in COLUMNS[2:9]}
+                numeric={key:float(row[key]) for key in COLUMNS[2:8]}
             except (ValueError,TypeError,OverflowError) as exc:
                 raise ValueError("invalid_universe_snapshot_row") from exc
             # Reject malformed market identities at ingestion, before replay can
