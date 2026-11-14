@@ -55,6 +55,36 @@ class HistoricalEvidenceNoFalsePositiveTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "historical_artifact_checksum_mismatch"):
                 verify_historical_evidence_manifest(path, 1500)
 
+    def test_path_traversal_is_rejected_even_with_matching_checksum(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self._fixture(root)
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            manifest["evidence_artifacts"][0]["path"] = "../outside.json"
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "historical_artifact_missing_or_unsafe"):
+                verify_historical_evidence_manifest(path, 1500)
+
+    def test_duplicate_artifact_path_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self._fixture(root)
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            manifest["evidence_artifacts"].append(dict(manifest["evidence_artifacts"][0]))
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "duplicate_historical_artifact_path"):
+                verify_historical_evidence_manifest(path, 1500)
+
+    def test_invalid_checksum_format_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self._fixture(root)
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            manifest["evidence_artifacts"][0]["sha256"] = "g" * 64
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "invalid_historical_artifact_reference"):
+                verify_historical_evidence_manifest(path, 1500)
+
     def test_out_of_coverage_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             path = self._fixture(Path(directory))
