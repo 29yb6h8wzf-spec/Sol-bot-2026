@@ -7,7 +7,17 @@ import hashlib
 from pathlib import Path
 
 def verify_historical_evidence_manifest(path,decision_ms):
-    manifest=json.loads(Path(path).read_text(encoding="utf-8"))
+    def reject_duplicate_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate_historical_manifest_key")
+            result[key] = value
+        return result
+
+    # Conflicting JSON keys must not be silently resolved by last-value-wins.
+    manifest=json.loads(Path(path).read_text(encoding="utf-8"),
+                        object_pairs_hook=reject_duplicate_keys)
     if not isinstance(manifest,dict):
         raise ValueError("invalid_historical_evidence_manifest")
     if manifest.get("current_only") is not False or manifest.get("historical_universe_verified") is not True:
