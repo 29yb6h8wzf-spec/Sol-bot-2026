@@ -31,7 +31,7 @@ def credentials():
     if not isinstance(obj, dict):
         raise ValueError("invalid credential format")
     fields = {str(k).lower().replace("_", ""): v for k, v in obj.items()}
-    key = next((fields[n] for n in ("binanceapikey", "apikey", "key") if n in fields), None)
+    key = next((fields[n] for n in ("binanceapikey", "apikey", "api", "key") if n in fields), None)
     secret = next((fields[n] for n in ("binanceapisecret", "binancesecretkey", "apisecret",
                                       "apisecretkey", "secretkey", "secret") if n in fields), None)
     return key, secret
