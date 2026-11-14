@@ -68,6 +68,31 @@ class Historical30dLiquidityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "insufficient_historical_calendar"):
             verify_30d_liquidity([], "SOLUSDT", 5 * DAY_MS)
 
+    def test_first_complete_calendar_window(self):
+        rows = tuple(
+            ClosedDailyVolume("SOLUSDT", i * DAY_MS, 20_000_000)
+            for i in range(30)
+        )
+        result = verify_30d_liquidity(rows, "SOLUSDT", 30 * DAY_MS)
+        self.assertTrue(result["meets_30d_liquidity_threshold"])
+        self.assertFalse(result["provider_authenticity_verified"])
+
+    def test_decision_before_utc_midnight_cannot_use_current_day(self):
+        decision = 60 * DAY_MS - 1
+        with self.assertRaisesRegex(ValueError, "non_point_in_time_daily_volume"):
+            verify_30d_liquidity(self.rows, "SOLUSDT", decision)
+
+    def test_infinite_and_negative_volume_rejected(self):
+        for bad in (float("inf"), float("-inf"), -1):
+            with self.subTest(volume=bad):
+                rows = (replace(self.rows[0], quote_volume_usd=bad),) + self.rows[1:]
+                with self.assertRaisesRegex(ValueError, "invalid_daily_volume_value"):
+                    verify_30d_liquidity(rows, "SOLUSDT", self.decision)
+
+    def test_unordered_input_rejected(self):
+        with self.assertRaisesRegex(ValueError, "invalid_daily_volume_records"):
+            verify_30d_liquidity(set(self.rows), "SOLUSDT", self.decision)
+
     def test_boolean_decision_rejected(self):
         with self.assertRaisesRegex(ValueError, "invalid_decision_timestamp"):
             verify_30d_liquidity(self.rows, "SOLUSDT", True)
