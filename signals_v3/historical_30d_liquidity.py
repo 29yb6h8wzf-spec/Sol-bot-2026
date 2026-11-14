@@ -33,13 +33,13 @@ def verify_30d_liquidity(records, symbol, decision_ms):
         raise ValueError("invalid_volume_symbol")
     if type(records) not in (tuple, list):
         raise ValueError("invalid_daily_volume_records")
+    day_start = (decision_ms // DAY_MS) * DAY_MS
+    if day_start < LOOKBACK_DAYS * DAY_MS:
+        raise ValueError("insufficient_historical_calendar")
     # Exactly one row per closed UTC day; reject oversized evidence bundles before
     # iterating provider-controlled records.
     if len(records) != LOOKBACK_DAYS:
         raise ValueError("incomplete_30d_volume_evidence")
-    day_start = (decision_ms // DAY_MS) * DAY_MS
-    if day_start < LOOKBACK_DAYS * DAY_MS:
-        raise ValueError("insufficient_historical_calendar")
     expected = {day_start - offset * DAY_MS for offset in range(1, LOOKBACK_DAYS + 1)}
     seen = set()
     total = 0.0
