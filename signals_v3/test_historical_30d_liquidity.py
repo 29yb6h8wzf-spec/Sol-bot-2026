@@ -97,6 +97,22 @@ class Historical30dLiquidityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid_daily_volume_records"):
             verify_30d_liquidity(set(self.rows), "SOLUSDT", self.decision)
 
+    def test_noninteger_and_negative_decisions_rejected(self):
+        for bad in (-1, 60.5 * DAY_MS, "5184000000", None):
+            with self.subTest(decision=bad):
+                with self.assertRaisesRegex(ValueError, "invalid_decision_timestamp"):
+                    verify_30d_liquidity(self.rows, "SOLUSDT", bad)
+
+    def test_extremely_large_integer_volume_rejected_without_overflow(self):
+        rows = (replace(self.rows[0], quote_volume_usd=10 ** 1000),) + self.rows[1:]
+        with self.assertRaisesRegex(ValueError, "invalid_daily_volume_value"):
+            verify_30d_liquidity(rows, "SOLUSDT", self.decision)
+
+    def test_finite_individual_volumes_with_infinite_sum_rejected(self):
+        rows = tuple(replace(row, quote_volume_usd=1e308) for row in self.rows)
+        with self.assertRaisesRegex(ValueError, "incomplete_30d_volume_evidence"):
+            verify_30d_liquidity(rows, "SOLUSDT", self.decision)
+
     def test_boolean_decision_rejected(self):
         with self.assertRaisesRegex(ValueError, "invalid_decision_timestamp"):
             verify_30d_liquidity(self.rows, "SOLUSDT", True)
