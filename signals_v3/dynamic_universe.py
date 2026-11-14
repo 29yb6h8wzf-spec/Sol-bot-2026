@@ -43,7 +43,7 @@ class UniverseThresholds:
     max_observation_age_ms:int=60_000
     available_notional_usd:float=75.0
 
-def eligibility(obs:UniverseObservation,decision_ms:int,limits:UniverseThresholds=UniverseThresholds()):
+def eligibility(obs:UniverseObservation,decision_ms:int,limits:UniverseThresholds=UniverseThresholds(), *, enforce_24h_volume=True):
     # Untrusted historical/provider data must fail closed rather than crash a replay.
     # Configuration is also an untrusted input. NaN/negative thresholds can
     # otherwise silently disable spread, depth or staleness gates.
@@ -79,7 +79,7 @@ def eligibility(obs:UniverseObservation,decision_ms:int,limits:UniverseThreshold
         return False,"invalid_market_data"
     if not MIN_PRICE_USD<=obs.last_price_usd<=MAX_PRICE_USD:
         return False,"outside_price_range"
-    if obs.quote_volume_24h_usd<limits.min_quote_volume_24h_usd:
+    if enforce_24h_volume and obs.quote_volume_24h_usd<limits.min_quote_volume_24h_usd:
         return False,"insufficient_volume"
     if obs.spread_bps>limits.max_spread_bps:
         return False,"spread_too_wide"
@@ -89,7 +89,7 @@ def eligibility(obs:UniverseObservation,decision_ms:int,limits:UniverseThreshold
         return False,"min_notional_exceeds_allocation"
     return True,"eligible"
 
-def select_universe(observations,decision_ms,limits=UniverseThresholds()):
+def select_universe(observations,decision_ms,limits=UniverseThresholds(), *, enforce_24h_volume=True):
     # Validate configuration even when a replay has no observations. An empty
     # batch must not silently certify an invalid research configuration.
     if not isinstance(limits, UniverseThresholds):
@@ -117,7 +117,7 @@ def select_universe(observations,decision_ms,limits=UniverseThresholds()):
             raise ValueError("invalid_universe_observation_identity")
         if obs.symbol in reasons:
             raise ValueError("duplicate_universe_observation")
-        ok,reason=eligibility(obs,decision_ms,limits)
+        ok,reason=eligibility(obs,decision_ms,limits, enforce_24h_volume=enforce_24h_volume)
         reasons[obs.symbol]=reason
         if ok:accepted.append(obs.symbol)
     return tuple(sorted(set(accepted))),reasons
@@ -133,7 +133,7 @@ def select_research_universe_30d(observations, daily_volume_by_symbol, decision_
     """
     from signals_v3.historical_30d_liquidity import verify_30d_liquidity
 
-    accepted, reasons = select_universe(observations, decision_ms, limits)
+    accepted, reasons = select_universe(observations, decision_ms, limits, enforce_24h_volume=False)
     if type(daily_volume_by_symbol) is not dict:
         raise ValueError("invalid_historical_volume_mapping")
     final = []
