@@ -88,7 +88,7 @@ class HistoricalEvidenceProvenanceTests(unittest.TestCase):
             p.write_text(json.dumps(m))
             with self.assertRaisesRegex(ValueError,"duplicate_historical_artifact_path"):
                 verify_historical_evidence_manifest(p,1500)
-    def test_duplicate_manifest_keys_rejected(self):
+    def test_manifest_symlink_rejected(self):\n        with tempfile.TemporaryDirectory() as directory:\n            root = Path(directory)\n            actual = root / "actual.json"\n            actual.write_text(json.dumps(self.manifest))\n            alias = root / "alias.json"\n            alias.symlink_to(actual)\n            with self.assertRaisesRegex(ValueError, "historical_manifest_symlink_unsafe"):\n                verify_historical_evidence_manifest(alias, 1500)\n\n    def test_duplicate_manifest_keys_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             p = Path(directory) / "manifest.json"
             p.write_text('{"current_only":false,"current_only":true}')
