@@ -47,6 +47,8 @@ def eligibility(obs:UniverseObservation,decision_ms:int,limits:UniverseThreshold
     # Untrusted historical/provider data must fail closed rather than crash a replay.
     # Configuration is also an untrusted input. NaN/negative thresholds can
     # otherwise silently disable spread, depth or staleness gates.
+    if type(enforce_24h_volume) is not bool:
+        return False,"invalid_volume_gate_configuration"
     if not isinstance(limits,UniverseThresholds):
         return False,"invalid_universe_thresholds"
     numeric=(limits.min_quote_volume_24h_usd,limits.max_spread_bps,
@@ -92,6 +94,8 @@ def eligibility(obs:UniverseObservation,decision_ms:int,limits:UniverseThreshold
 def select_universe(observations,decision_ms,limits=UniverseThresholds(), *, enforce_24h_volume=True):
     # Validate configuration even when a replay has no observations. An empty
     # batch must not silently certify an invalid research configuration.
+    if type(enforce_24h_volume) is not bool:
+        raise ValueError("invalid_volume_gate_configuration")
     if not isinstance(limits, UniverseThresholds):
         raise ValueError("invalid_universe_thresholds")
     numeric = (limits.min_quote_volume_24h_usd, limits.max_spread_bps,
