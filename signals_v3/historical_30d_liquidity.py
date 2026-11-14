@@ -4,12 +4,13 @@ Not wired into execution or the legacy 24h selector. Missing daily archives
 must fail closed; never substitute current exchange ticker volume.
 """
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
+import re
 from math import isfinite
 
 DAY_MS = 86_400_000
 MIN_AVG_DAILY_QUOTE_USD = 20_000_000.0
 LOOKBACK_DAYS = 30
+_SYMBOL_PATTERN = re.compile(r"[A-Z0-9]{2,30}USDT\\Z")
 
 
 @dataclass(frozen=True)
@@ -28,11 +29,13 @@ def verify_30d_liquidity(records, symbol, decision_ms):
     """
     if type(decision_ms) is not int or decision_ms < 0:
         raise ValueError("invalid_decision_timestamp")
-    if type(symbol) is not str or not symbol.endswith("USDT") or not symbol:
+    if type(symbol) is not str or _SYMBOL_PATTERN.fullmatch(symbol) is None:
         raise ValueError("invalid_volume_symbol")
     if type(records) not in (tuple, list):
         raise ValueError("invalid_daily_volume_records")
     day_start = (decision_ms // DAY_MS) * DAY_MS
+    if day_start < LOOKBACK_DAYS * DAY_MS:
+        raise ValueError("insufficient_historical_calendar")
     expected = {day_start - offset * DAY_MS for offset in range(1, LOOKBACK_DAYS + 1)}
     seen = set()
     total = 0.0
