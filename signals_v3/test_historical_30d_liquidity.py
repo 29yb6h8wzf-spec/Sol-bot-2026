@@ -118,5 +118,25 @@ class Historical30dLiquidityTests(unittest.TestCase):
             verify_30d_liquidity(self.rows, "SOLUSDT", True)
 
 
+    def test_timestamp_boolean_and_fractional_day_rejected(self):
+        for bad in (True, 59 * DAY_MS + 1, "5097600000", None):
+            with self.subTest(timestamp=bad):
+                rows = (replace(self.rows[0], day_start_ms=bad),) + self.rows[1:]
+                with self.assertRaisesRegex(ValueError, "non_point_in_time_daily_volume"):
+                    verify_30d_liquidity(rows, "SOLUSDT", self.decision)
+
+    def test_wrong_record_type_rejected(self):
+        rows = ({"symbol": "SOLUSDT", "day_start_ms": 59 * DAY_MS,
+                 "quote_volume_usd": 20_000_000},) + self.rows[1:]
+        with self.assertRaisesRegex(ValueError, "invalid_daily_volume_record"):
+            verify_30d_liquidity(rows, "SOLUSDT", self.decision)
+
+    def test_zero_volume_is_valid_but_below_threshold(self):
+        rows = tuple(replace(row, quote_volume_usd=0) for row in self.rows)
+        result = verify_30d_liquidity(rows, "SOLUSDT", self.decision)
+        self.assertEqual(result["average_daily_quote_volume_usd"], 0)
+        self.assertFalse(result["meets_30d_liquidity_threshold"])
+        self.assertFalse(result["provider_authenticity_verified"])
+
 if __name__ == "__main__":
     unittest.main()
