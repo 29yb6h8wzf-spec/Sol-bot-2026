@@ -88,6 +88,20 @@ class HistoricalEvidenceProvenanceTests(unittest.TestCase):
             p.write_text(json.dumps(m))
             with self.assertRaisesRegex(ValueError,"duplicate_historical_artifact_path"):
                 verify_historical_evidence_manifest(p,1500)
+    def test_duplicate_manifest_keys_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            p = Path(directory) / "manifest.json"
+            p.write_text('{"current_only":false,"current_only":true}')
+            with self.assertRaisesRegex(ValueError, "duplicate_historical_manifest_key"):
+                verify_historical_evidence_manifest(p, 1500)
+
+    def test_duplicate_nested_manifest_keys_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            p = Path(directory) / "manifest.json"
+            p.write_text('{"evidence_artifacts":[{"role":"historical_orderbook","role":"point_in_time_listings"}]}')
+            with self.assertRaisesRegex(ValueError, "duplicate_historical_manifest_key"):
+                verify_historical_evidence_manifest(p, 1500)
+
     def test_current_capture_rejected(self):
         self.manifest["current_only"]=True
         self.manifest["historical_universe_verified"]=False
