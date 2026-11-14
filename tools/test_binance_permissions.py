@@ -64,6 +64,10 @@ class PermissionsTest(unittest.TestCase):
     def test_redirect_not_followed(self):
         self.assertEqual(self.simulate(self.pair(status=302))[1], 2)
 
+    def test_existing_secret_format(self):
+        with patch.dict(os.environ, {"BINANCE_CREDENTIALS_JSON": '{"api":"fixture","secret":"fixture-secret"}'}, clear=True):
+            self.assertEqual(probe.credentials(), ("fixture", "fixture-secret"))
+
     def test_missing_credentials(self):
         with patch.dict(os.environ, {}, clear=True), patch.object(probe.http.client, "HTTPSConnection") as factory:
             self.assertEqual(probe.run()[1], 2)
