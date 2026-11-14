@@ -29,6 +29,10 @@ class Historical30dLiquidityTests(unittest.TestCase):
 
     def test_duplicate_day_rejected(self):
         with self.assertRaisesRegex(ValueError, "duplicate_daily_volume"):
+            verify_30d_liquidity(self.rows[:-1] + (self.rows[0],), "SOLUSDT", self.decision)
+
+    def test_oversized_bundle_rejected_before_iteration(self):
+        with self.assertRaisesRegex(ValueError, "incomplete_30d_volume_evidence"):
             verify_30d_liquidity(self.rows + (self.rows[0],), "SOLUSDT", self.decision)
 
     def test_current_day_not_allowed(self):
