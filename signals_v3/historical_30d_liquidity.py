@@ -5,7 +5,7 @@ must fail closed; never substitute current exchange ticker volume.
 """
 from dataclasses import dataclass
 import re
-from math import isfinite
+from math import fsum, isfinite
 
 DAY_MS = 86_400_000
 MIN_AVG_DAILY_QUOTE_USD = 20_000_000.0
@@ -42,7 +42,7 @@ def verify_30d_liquidity(records, symbol, decision_ms):
         raise ValueError("incomplete_30d_volume_evidence")
     expected = {day_start - offset * DAY_MS for offset in range(1, LOOKBACK_DAYS + 1)}
     seen = set()
-    total = 0.0
+    volumes = []
     for record in records:
         if type(record) is not ClosedDailyVolume or record.symbol != symbol:
             raise ValueError("invalid_daily_volume_record")
@@ -61,7 +61,12 @@ def verify_30d_liquidity(records, symbol, decision_ms):
         if not finite:
             raise ValueError("invalid_daily_volume_value")
         seen.add(timestamp)
-        total += value
+        volumes.append(value)
+    # fsum avoids record-order-dependent rounding near the liquidity threshold.
+    try:
+        total = fsum(volumes)
+    except (OverflowError, ValueError):
+        raise ValueError("incomplete_30d_volume_evidence") from None
     if seen != expected or not isfinite(total):
         raise ValueError("incomplete_30d_volume_evidence")
     average = total / LOOKBACK_DAYS
