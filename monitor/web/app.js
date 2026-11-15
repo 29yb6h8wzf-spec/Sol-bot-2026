@@ -39,6 +39,9 @@ function status() {
 }
 function renderChart() {
   const symbol = $("pair").value;
+  const ticker = short(symbol);
+  $("assetName").textContent = names[ticker] || ticker;
+  $("assetIcon").textContent = glyphs[ticker] || "◇";
   const receipts = data.receipts;
   const points = receipts.map(r=>r?.rows.find(x=>x.symbol===symbol && !x.failed)?.price ?? null);
   const numbers = points.filter(Number.isFinite);
@@ -58,31 +61,33 @@ function renderChart() {
     parent.append(e);
     return e;
   };
-  const chart=svg("svg",{viewBox:"0 0 680 178",preserveAspectRatio:"none",role:"img","aria-label":"מחירי סגירה של "+symbol},graph);
+  const width = Math.max(250,graph.clientWidth);
+  const right = width - 66;
+  const chart=svg("svg",{viewBox:"0 0 "+width+" 178",preserveAspectRatio:"xMidYMid meet",role:"img","aria-label":"מחירי סגירה של "+symbol},graph);
   const defs=svg("defs",{},chart), grad=svg("linearGradient",{id:"fill",x2:"0",y2:"1"},defs);
-  svg("stop",{offset:"0%","stop-color":"#77e8b4","stop-opacity":".25"},grad);
-  svg("stop",{offset:"100%","stop-color":"#77e8b4","stop-opacity":"0"},grad);
+  svg("stop",{offset:"0%","stop-color":"#baff63","stop-opacity":".25"},grad);
+  svg("stop",{offset:"100%","stop-color":"#baff63","stop-opacity":"0"},grad);
   const min=Math.min(...numbers), max=Math.max(...numbers);
   const pad=Math.max((max-min)*.15,max*.00015,.000001);
   const lo=min-pad, hi=max+pad;
-  const x=i=>8+i*592/(points.length-1), y=v=>9+(hi-v)*132/(hi-lo);
+  const x=i=>8+i*(right-8)/(points.length-1), y=v=>9+(hi-v)*132/(hi-lo);
   for(let i=0;i<4;i++){
     const value=hi-i*(hi-lo)/3, h=y(value);
-    svg("line",{x1:8,x2:600,y1:h,y2:h,stroke:"#2b3943","stroke-dasharray":"3 5"},chart);
-    svg("text",{x:609,y:h+4,fill:"#90a4b0","font-size":10,"font-family":"monospace"},chart).textContent=price(value);
+    svg("line",{x1:8,x2:right,y1:h,y2:h,stroke:"#6271bc","stroke-dasharray":"3 5"},chart);
+    svg("text",{x:right+6,y:h+4,fill:"#deebff","font-size":11,"font-family":"monospace"},chart).textContent=price(value);
   }
   const end=receipts.at(-1).slot;
   for(const i of [0,8,16,23]){
-    svg("text",{x:x(i),y:166,"text-anchor":i===0?"start":i===23?"end":"middle",fill:"#90a4b0","font-size":10,"font-family":"monospace"},chart).textContent=hour.format(end-(23-i)*data.period);
+    svg("text",{x:x(i),y:166,"text-anchor":i===0?"start":i===23?"end":"middle",fill:"#deebff","font-size":11,"font-family":"monospace"},chart).textContent=hour.format(end-(23-i)*data.period);
   }
   let run=[];
   function flush(){
     if(!run.length) return;
     const line=run.map(([i,v],j)=>(j?"L":"M")+x(i)+" "+y(v)).join(" ");
     svg("path",{d:line+" L"+x(run.at(-1)[0])+" 143 L"+x(run[0][0])+" 143 Z",fill:"url(#fill)"},chart);
-    svg("path",{d:line,fill:"none",stroke:"#98eac3","stroke-width":2.4,"vector-effect":"non-scaling-stroke"},chart);
+    svg("path",{d:line,fill:"none",stroke:"#c6ff70","stroke-width":2.4,"vector-effect":"non-scaling-stroke"},chart);
     for(const [i,v] of run){
-      const point=svg("circle",{cx:x(i),cy:y(v),r:run.length===1||i===23?3:2,fill:"#a8f4cd"},chart);
+      const point=svg("circle",{cx:x(i),cy:y(v),r:run.length===1||i===23?3:2,fill:"#d7ff8b"},chart);
       svg("title",{},point).textContent=hour.format(receipts[i].slot)+" · "+price(v)+" USDT";
     }
     run=[];
@@ -149,6 +154,15 @@ function render(){
   $("symbols").textContent=successful.length;
   $("candidates").textContent=successful.length && successful.every(r=>Number.isInteger(r.candidates)) ? successful.reduce((n,r)=>n+r.candidates,0) : "—";
   $("coverage").textContent=data.receipts.filter(Boolean).length+" / 24";
+  const segments = data.receipts.map((receipt, i) => {
+    const segment = make("i");
+    const label = !receipt ? "חסר" : receipt.rows.some(row => row.failed) ? "חלקי" : "התקבל";
+    segment.className = !receipt ? "missing" : label === "חלקי" ? "partial" : "received";
+    segment.title = hour.format(latest.slot - (23-i)*data.period) + " · " + label;
+    return segment;
+  });
+  $("ribbon").replaceChildren(...segments);
+  $("ribbon").setAttribute("aria-label", segments.map(s => s.title).join(", "));
   const syms=[...new Set(data.receipts.flatMap(r=>(r?.rows||[]).map(x=>x.symbol)))];
   options($("pair"),syms,false); options($("filter"),syms,true);
   renderChart();renderWatch();renderRows();
@@ -171,3 +185,5 @@ $("close").onclick=()=>$("detail").close();
 $("refresh").onclick=refresh;
 document.addEventListener("visibilitychange",()=>{if(!document.hidden) refresh();});
 status();refresh();setInterval(status,1000);setInterval(()=>{if(!document.hidden) refresh();},30000);
+
+new ResizeObserver(() => { if(data) renderChart(); }).observe($("graph"));
