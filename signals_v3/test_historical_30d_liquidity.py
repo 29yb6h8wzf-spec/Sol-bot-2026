@@ -113,6 +113,18 @@ class Historical30dLiquidityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "incomplete_30d_volume_evidence"):
             verify_30d_liquidity(rows, "SOLUSDT", self.decision)
 
+    def test_sum_is_independent_of_valid_record_order(self):
+        rows = tuple(
+            replace(row, quote_volume_usd=(1e16 if i == 0 else 1.0))
+            for i, row in enumerate(self.rows)
+        )
+        forward = verify_30d_liquidity(rows, "SOLUSDT", self.decision)
+        backward = verify_30d_liquidity(tuple(reversed(rows)), "SOLUSDT", self.decision)
+        self.assertEqual(
+            forward["average_daily_quote_volume_usd"],
+            backward["average_daily_quote_volume_usd"],
+        )
+
     def test_boolean_decision_rejected(self):
         with self.assertRaisesRegex(ValueError, "invalid_decision_timestamp"):
             verify_30d_liquidity(self.rows, "SOLUSDT", True)
