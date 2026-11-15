@@ -3,6 +3,7 @@ import fcntl
 import json
 import os
 import sqlite3
+import sys
 import time
 from datetime import datetime, timezone
 from decimal import Decimal as D
@@ -63,8 +64,15 @@ def check_protection(exchange, journal, row, positions, now):
     return "closed"
 
 
-def tick(exchange, journal):
+def tick(exchange, journal, scheduled_minute=None):
     now = int(exchange.fetch_time())
+    if scheduled_minute is not None and now < scheduled_minute + 1000:
+        # Give the exchange one second to publish the newly closed candle.
+        wait_ms = scheduled_minute + 1000 - now
+        if wait_ms > 31_000:
+            raise ValueError("invalid_preparation_window")
+        time.sleep(wait_ms / 1000)
+        now = int(exchange.fetch_time())
     if abs(now-time.time_ns()//1_000_000) > 5000:
         raise ValueError("clock_disagreement")
     decision = latest_decision(now)
@@ -80,6 +88,8 @@ def tick(exchange, journal):
             return status
     if positions or D(snapshot["totalOpenOrderInitialMargin"]) or D(snapshot["totalInitialMargin"]):
         return "existing_exposure"
+    if scheduled_minute is not None and now // 60_000 != scheduled_minute // 60_000:
+        return "outside_scheduled_minute"
     if decision is None or not 0 <= now-decision < 60_000:
         return "waiting_for_decision"
     if equity <= 0 or baseline-equity >= min(D("7.50"), baseline*D(".05")):
@@ -104,6 +114,15 @@ def tick(exchange, journal):
     return "no_candidate"
 
 
+def prepare_minute():
+    # The timer starts at :35 so credential resolution can finish before :00.
+    now = time.time_ns() // 1_000_000
+    os.environ["BREAKOUT_SCHEDULED_MINUTE"] = str(((now + 30_000) // 60_000) * 60_000)
+    launcher = Path(__file__).resolve().parents[1] / "launch.py"
+    os.execv(sys.executable, [sys.executable, "-B", str(launcher), "-B", "-m",
+                              "futures_engine.breakout_runner"])
+
+
 def main():
     root = Path(os.environ["STATE_DIRECTORY"])
     with (root/"runner.lock").open("a") as lock:
@@ -112,13 +131,22 @@ def main():
         try:
             exchange = create_binance_client(*credentials())
             exchange.options["adjustForTimeDifference"] = True
-            print(json.dumps({"status":tick(exchange, Journal(db))}))
+            target = os.environ.get("BREAKOUT_SCHEDULED_MINUTE")
+            scheduled = int(target) if target else None
+            status = tick(exchange, Journal(db), scheduled)
+            report = {"status": status}
+            if scheduled is not None:
+                report.update(scheduled_ms=scheduled,
+                              completed_after_ms=time.time_ns() // 1_000_000 - scheduled)
+            print(json.dumps(report))
         finally:
             db.close()
 
 
 if __name__ == "__main__":
     try:
+        if sys.argv[1:] == ["--prepare-minute"]:
+            prepare_minute()
         main()
     except Exception as error:
         print(json.dumps({"status":"blocked", "error_type": type(error).__name__}))
