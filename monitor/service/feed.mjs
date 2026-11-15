@@ -1,0 +1,54 @@
+const PERIOD = 300_000;
+const symbols = new Set(["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT"]);
+
+function count(value) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function normalize(receipt) {
+  if (receipt?.event !== "scan_complete" || receipt.source !== "kraken_spot" ||
+      !Number.isSafeInteger(receipt.scheduledTime) || !Number.isSafeInteger(receipt.recordedAt) ||
+      !Array.isArray(receipt.results) || !Array.isArray(receipt.failures)) return null;
+  const rows = [];
+  for (const item of receipt.results) {
+    if (!symbols.has(item.symbol)) continue;
+    const checks = (Array.isArray(item.audit?.checks) ? item.audit.checks : [])
+      .filter(x => typeof x === "string").slice(0, 12).map(x => x.slice(0, 450));
+    const breakout = checks.find(x => x.startsWith("BREAKOUT"));
+    const match = breakout?.match(/\bclose=(\d+(?:\.\d+)?)(?:\s|$)/);
+    rows.push({symbol: item.symbol, candle: item.candle || null, price: match ? Number(match[1]) : null,
+      candidates: count(item.candidates), delivered: count(item.audit?.delivered), checks, failed: false});
+  }
+  for (const failure of receipt.failures) {
+    if (symbols.has(failure.symbol)) rows.push({symbol: failure.symbol, failed: true, checks: []});
+  }
+  return {slot: receipt.scheduledTime, at: receipt.recordedAt, rows};
+}
+
+export async function snapshot(kv) {
+  const latest = normalize(await kv.get("health:latest", "json"));
+  if (!latest) throw new Error("Receipt unavailable");
+  const keys = Array.from({length: 23}, (_, i) => "health:cron:" + (latest.slot - (i + 1) * PERIOD));
+  const history = await kv.get(keys, "json");
+  const receipts = keys.slice().reverse().map(key => {
+    const value = normalize(history.get(key));
+    return value && key === "health:cron:" + value.slot ? value : null;
+  });
+  return {source: "kraken_spot", period: PERIOD, receipts: [...receipts, latest]};
+}
+
+export default {
+  async fetch(request, env) {
+    if (request.method !== "GET" || new URL(request.url).pathname !== "/v1/scans") return new Response(null, {status: 404});
+    const token = request.headers.get("Authorization");
+    if (!env.READER_TOKEN || !token || token.length > 256) return new Response(null, {status: 403});
+    const digest = value => crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+    const [actual, expected] = await Promise.all([digest(token), digest("Bearer " + env.READER_TOKEN)]);
+    if (!crypto.subtle.timingSafeEqual(actual, expected)) return new Response(null, {status: 403});
+    try {
+      return Response.json(await snapshot(env.SIGNAL_STATE), {headers: {"Cache-Control":"private, no-store"}});
+    } catch {
+      return new Response("Scan receipts unavailable", {status: 503});
+    }
+  }
+};
