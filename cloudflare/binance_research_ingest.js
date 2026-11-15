@@ -58,7 +58,7 @@ export async function handleBinanceResearch(request, env, { sendOwner } = {}) {
     env.BINANCE_RESEARCH_INGEST_SECRET, timestamp, raw, signature, now)) {
     return new Response("Unauthorized", { status: 401 });
   }
-  let body, testOnly = false;
+  let body, testOnly = false, lifecycle = false;
   try {
     const parsed = JSON.parse(raw);
     if (parsed.type === "SIGNALPILOT_BINANCE_BRIDGE_TEST_V1") {
@@ -71,6 +71,15 @@ export async function handleBinanceResearch(request, env, { sendOwner } = {}) {
       }
       body = parsed;
       testOnly = true;
+    } else if (parsed.type === "SIGNALPILOT_FILL_V1") {
+      if (Object.keys(parsed).sort().join(",") !== "direction,event,fill_ms,order_id,price,symbol,timestamp,type" ||
+          !["SOLUSDT","XRPUSDT"].includes(parsed.symbol) || !["OPEN","CLOSE"].includes(parsed.event) ||
+          !["LONG","SHORT"].includes(parsed.direction) || !/^\d{1,30}$/.test(String(parsed.order_id)) ||
+          !/^\d{1,16}(\.\d{1,18})?$/.test(parsed.price) || Number(parsed.price)<=0 ||
+          !Number.isSafeInteger(parsed.fill_ms) || parsed.fill_ms<=0 || parsed.fill_ms>(now+5)*1000 ||
+          parsed.timestamp!==Number(timestamp)) throw new Error("invalid_fill");
+      body = parsed;
+      lifecycle = true;
     } else {
       body = validateBinanceResearchEnvelope(parsed, now);
     }
@@ -82,7 +91,13 @@ export async function handleBinanceResearch(request, env, { sendOwner } = {}) {
   // BEFORE sending HTTPS. No retries after ambiguous delivery. HMAC + timestamp
   // protect this endpoint; the relay itself does not guarantee replay prevention.
   // Never send from a second publisher or log signed requests.
-  const message = testOnly ? [
+  const message = lifecycle ? [
+    body.event==="OPEN" ? "🟢 SignalPilot | נפתחה פוזיציה" : "🔒 SignalPilot | נסגרה פוזיציה",
+    body.symbol+" | "+body.direction+" | Binance Futures",
+    "מחיר ביצוע: "+body.price+" USDT",
+    "פקודה: "+body.order_id,
+    new Date(body.fill_ms).toISOString()
+  ].join("\n") : testOnly ? [
     "🧪 SIGNALPILOT — בדיקת חיבור",
     "AWS → Cloudflare → Telegram",
     "זו הודעת בדיקה בלבד, לא איתות מסחר.",
@@ -99,7 +114,7 @@ export async function handleBinanceResearch(request, env, { sendOwner } = {}) {
   try {
     if (typeof sendOwner !== "function") throw new Error("missing_delivery_handler");
     await sendOwner(env, String(env.TELEGRAM_CHAT_ID), message);
-    return Response.json({ status: "delivered_owner_only", research_only: true, test_only: testOnly });
+    return Response.json({ status: "delivered_owner_only", research_only: !lifecycle, test_only: testOnly });
   } catch {
     return Response.json({ status: "delivery_unconfirmed", research_only: true }, { status: 502 });
   }
