@@ -46,6 +46,7 @@ def notify(payload):
 
 
 def poll(db, symbol, get):
+    started_ms = int(os.environ["MONITOR_START_MS"])
     state = db.execute("SELECT last_id,qty,owned FROM cursors WHERE symbol=?", (symbol,)).fetchone()
     if not state:
         # Start at today's actual position. Bracket the snapshot to avoid missing a concurrent fill.
@@ -63,7 +64,11 @@ def poll(db, symbol, get):
     last_id, qty, owned = state
     qty = Decimal(qty)
     while True:
-        rows = get("/fapi/v1/userTrades", {"symbol":symbol,"fromId":last_id+1,"limit":1000})
+        if last_id < 0:
+            params = {"symbol": symbol, "startTime": started_ms, "limit": 1000}
+        else:
+            params = {"symbol": symbol, "fromId": last_id+1, "limit": 1000}
+        rows = get("/fapi/v1/userTrades", params)
         for row in sorted(rows,key=lambda r:r["id"]):
             if row["id"] <= last_id:
                 continue
