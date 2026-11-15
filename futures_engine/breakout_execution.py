@@ -1,6 +1,7 @@
 """Recompute a fresh SOL/XRP breakout from public candles before protected execution."""
 from dataclasses import dataclass
 from decimal import Decimal as D
+import json
 import time
 
 from futures_engine.live import LiveSafetyError, _execute_protected_entry, _validate_trade_risk
@@ -37,7 +38,13 @@ def route_breakout(exchange, symbol, decision, *, journal, account):
     levels = quote["asks" if side == "LONG" else "bids"]
     entry = D(str(levels[0][0]))
     reference = D(str(event["entry_reference"]))
+    print(json.dumps({"event": "breakout_entry_quote", "symbol": symbol, "direction": side,
+                      "decision_ms": decision, "observed_ms": time.time_ns() // 1_000_000,
+                      "reference": str(reference), "quote": str(entry),
+                      "max_deviation_bps": 5}), flush=True)
     if not entry.is_finite() or entry <= 0 or abs(entry / reference - 1) > D("0.0005"):
+        print(json.dumps({"event": "breakout_rejected", "symbol": symbol, "decision_ms": decision,
+                          "reason": "entry_price_deviation"}), flush=True)
         raise LiveSafetyError("entry moved beyond slippage budget")
     capital = min(D(str(account["equity"])), D("150"))
     allocation = capital / 2
