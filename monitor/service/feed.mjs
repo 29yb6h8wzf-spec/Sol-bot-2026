@@ -28,22 +28,32 @@ function normalize(receipt) {
 export async function snapshot(kv) {
   const latest = normalize(await kv.get("health:latest", "json"));
   if (!latest) throw new Error("Receipt unavailable");
-  const keys = Array.from({length: 23}, (_, i) => "health:cron:" + (latest.slot - (i + 1) * PERIOD));
-  const history = await kv.get(keys, "json");
-  const receipts = keys.slice().reverse().map(key => {
-    const value = normalize(history.get(key));
-    return value && key === "health:cron:" + value.slot ? value : null;
-  });
+  // Scheduled timestamps include jitter, so discover actual keys before bucketing.
+  const latestBucket = Math.floor(latest.slot / PERIOD);
+  const listing = await kv.list({prefix: "health:cron:", limit: 1000});
+  const bySlot = new Map();
+  for (const {name} of listing.keys) {
+    const raw = Number(name.slice("health:cron:".length));
+    const bucket = Math.floor(raw / PERIOD);
+    if (!Number.isSafeInteger(raw) || bucket < latestBucket - 23 || bucket >= latestBucket) continue;
+    if (!bySlot.has(bucket) || raw > bySlot.get(bucket).raw) bySlot.set(bucket, {raw, name});
+  }
+  const receipts = await Promise.all(Array.from({length:23}, async (_, i) => {
+    const key = bySlot.get(latestBucket - 23 + i);
+    if (!key) return null;
+    const value = normalize(await kv.get(key.name, "json"));
+    return value?.slot === key.raw ? value : null;
+  }));
   return {source: "kraken_spot", period: PERIOD, receipts: [...receipts, latest]};
 }
 
 export default {
   async fetch(request, env) {
     if (request.method !== "GET" || new URL(request.url).pathname !== "/v1/scans") return new Response(null, {status: 404});
-    const token = request.headers.get("Authorization");
+    const token = request.headers.get("X-Scan-Reader");
     if (!env.READER_TOKEN || !token || token.length > 256) return new Response(null, {status: 403});
     const digest = value => crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-    const [actual, expected] = await Promise.all([digest(token), digest("Bearer " + env.READER_TOKEN)]);
+    const [actual, expected] = await Promise.all([digest(token), digest(env.READER_TOKEN)]);
     if (!crypto.subtle.timingSafeEqual(actual, expected)) return new Response(null, {status: 403});
     try {
       return Response.json(await snapshot(env.SIGNAL_STATE), {headers: {"Cache-Control":"private, no-store"}});
