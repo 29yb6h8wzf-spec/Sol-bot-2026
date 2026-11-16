@@ -808,3 +808,32 @@ test('research planner checks available margin when explicitly supplied',()=>{
  assert.ok(allowed);
  assert.equal(allowed.margin,reference.margin);
 });
+
+
+test('Binance position notification retries after Telegram failure without placing orders',async()=>{
+ const savedFetch=globalThis.fetch, savedNow=Date.now;
+ const kv=new Map();let sends=0,reads=0;
+ const env={BINANCE_API_KEY:'dummy',BINANCE_API_SECRET:'dummy',TELEGRAM_BOT_TOKEN:'dummy',TELEGRAM_CHAT_ID:'123',SIGNAL_STATE:{
+  get:async k=>kv.get(k)||null,put:async(k,v)=>{kv.set(k,v);}
+ }};
+ globalThis.fetch=async (url,options={})=>{
+  const u=String(url);
+  if(u.startsWith('https://fapi.binance.com/fapi/v2/positionRisk?')){
+   assert.equal(options.method,'GET');reads++;
+   return new Response(JSON.stringify([{symbol:'SOLUSDT',positionAmt:'-1.5',entryPrice:'70',markPrice:'69',unRealizedProfit:'1.5',leverage:'2',marginType:'isolated'}]));
+  }
+  if(u.startsWith('https://api.telegram.org/')&&u.endsWith('/sendMessage')){
+   sends++;return new Response(JSON.stringify({ok:sends>1}),{status:sends===1?500:200});
+  }
+  throw Error('Unexpected request');
+ };
+ try{
+  assert.equal(await monitorBinanceAccount(env),'error');
+  assert.equal(kv.has('account:positions'),false);
+  assert.equal(await monitorBinanceAccount(env),'connected');
+  assert.equal(sends,2);assert.equal(reads,2);
+  assert.equal(JSON.parse(kv.get('account:positions')).length,1);
+  assert.equal(await monitorBinanceAccount(env),'connected');
+  assert.equal(sends,2);
+ }finally{globalThis.fetch=savedFetch;Date.now=savedNow;}
+});
