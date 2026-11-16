@@ -885,15 +885,16 @@ export async function monitorBinanceAccount(env){
   const before=new Set(old.map(stateKey)),after=new Set(snapshot.map(stateKey));
   const changed=snapshot.filter(p=>!before.has(stateKey(p)));
   const closed=old.filter(p=>!after.has(stateKey(p)));
-  // Store state before sending to avoid repeating alerts after transient Telegram failures.
-  await env.SIGNAL_STATE.put('account:positions',JSON.stringify(snapshot));
-  await env.SIGNAL_STATE.put('account:health',JSON.stringify({status:'connected',checkedAt:Date.now(),openPositions:snapshot.length}),{expirationTtl:86400});
+  // Keep the last acknowledged snapshot until Telegram delivery succeeds.
+  // A failed send must not silently consume the position transition.
   if(changed.length||closed.length){
    const lines=['🔐 Binance Futures — עדכון פוזיציות (קריאה בלבד)'];
    for(const p of changed)lines.push('🟢 '+p.symbol+' '+p.side+' | כמות '+p.quantity+' | כניסה '+p.entry+' | PNL לא ממומש '+p.unrealizedPnl.toFixed(3)+' USDT');
    for(const p of closed)lines.push('⚪ '+p.symbol+' '+p.side+' | הפוזיציה כבר לא מופיעה ב-API; יש לבדוק היסטוריית עסקאות לתוצאה נטו');
    await send(env,lines.join('\n'));
   }
+  await env.SIGNAL_STATE.put('account:positions',JSON.stringify(snapshot));
+  await env.SIGNAL_STATE.put('account:health',JSON.stringify({status:'connected',checkedAt:Date.now(),openPositions:snapshot.length}),{expirationTtl:86400});
   return 'connected';
  }catch(error){
   const reason=error instanceof Error?error.message:'unknown';
