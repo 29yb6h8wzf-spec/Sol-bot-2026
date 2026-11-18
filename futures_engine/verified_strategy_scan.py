@@ -44,9 +44,18 @@ def evaluate(symbol, *, loader=closed_futures_bars, now_ms=None):
     setups, indicators = candidates(datasets["5m"], datasets["4h"])
     eligible = []
     rejected = []
+    below_threshold_count = 0
     for setup in setups:
         score = setup.get("score")
         if type(score) is not int or score < 85:
+            below_threshold_count += 1
+            rejected.append({
+                "strategy": setup.get("strategy"),
+                "direction": setup.get("direction"),
+                "score": score,
+                "reason": "invalid_score" if type(score) is not int else "below_score_threshold",
+                "threshold": 85,
+            })
             continue
         candidate = {
             "strategy": setup["strategy"],
@@ -71,6 +80,13 @@ def evaluate(symbol, *, loader=closed_futures_bars, now_ms=None):
         "closed_4h_candle_ms": datasets["4h"][-1]["time"],
         "candidates_85_plus": eligible,
         "rejected_candidates": rejected,
+        "scan_diagnostics": {
+            "setups_seen": len(setups),
+            "below_threshold": below_threshold_count,
+            "verification_rejected": len(rejected) - below_threshold_count,
+            "eligible": len(eligible),
+            "no_setup": len(setups) == 0,
+        },
         "status": "RESEARCH_ONLY",
         "score_verified_independently": False,
         "sqs_sent": False,
