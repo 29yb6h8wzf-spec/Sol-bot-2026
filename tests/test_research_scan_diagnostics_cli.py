@@ -47,3 +47,25 @@ def test_report_rejects_corrupt_json(tmp_path):
         db.commit()
     with pytest.raises(json.JSONDecodeError):
         report_from_sqlite(str(path))
+
+
+def test_cli_outputs_json_without_touching_database(tmp_path, capsys):
+    from futures_engine.research_scan_diagnostics_cli import main
+    path = tmp_path / "research.sqlite3"
+    with sqlite3.connect(path) as db:
+        db.execute("CREATE TABLE research_scans (id INTEGER PRIMARY KEY, payload TEXT)")
+        db.execute("INSERT INTO research_scans(payload) VALUES (?)", (json.dumps({
+            "symbol": "SOL/USDT:USDT", "status": "RESEARCH_ONLY",
+            "scan_diagnostics": {
+                "setups_seen": 0, "below_threshold": 0, "invalid_score": 0,
+                "verification_rejected": 0, "eligible": 0, "no_setup": True,
+            },
+        }),))
+        db.commit()
+    before = path.read_bytes()
+    main(["--db", str(path)])
+    report = json.loads(capsys.readouterr().out)
+    assert report["totals"]["no_setup_scans"] == 1
+    assert report["totals"]["scans"] == 1
+    assert report["execution_authorized"] is False
+    assert path.read_bytes() == before
