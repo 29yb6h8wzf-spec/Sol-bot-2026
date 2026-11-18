@@ -84,4 +84,4 @@ def verify_decision_snapshot(observations,decision_ms,expected_symbols=None):
     accepted,reasons=select_universe(observations,decision_ms)
     return {"decision_ms":decision_ms,"eligible_symbols":accepted,
             "rejected_reasons":{k:v for k,v in reasons.items() if v!="eligible"},
-            "historical_universe_complete":True}
+            # Coverage of the supplied listing is not independent proof of\n            # historical source authenticity. The separate provenance gate\n            # must verify provider, funding and order-book evidence.\n            "historical_universe_complete":True,\n            "historical_provenance_verified":False}
