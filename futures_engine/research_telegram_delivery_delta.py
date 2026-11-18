@@ -1,10 +1,11 @@
 """Compare research Telegram delivery states against an offline baseline.
 
-Reads SQLite and a local JSON baseline only. No network, writes or retries.
-The baseline contains signal IDs and status categories, never payloads or secrets.
+Reads SQLite and compares a local JSON baseline. Optional explicit baseline creation\nwrites a private local file (0600), never overwrites. No network or retries.
+The baseline contains signal IDs and status categories, never payloads or secrets.\nNever commit or upload a real baseline.
 """
 import argparse
 import json
+import os
 import sqlite3
 from pathlib import Path
 
@@ -58,18 +59,38 @@ def compare(baseline, current):
     }
 
 
+def save_baseline(path, states):
+    """Create a private, exclusive baseline file; never overwrite an existing one."""
+    target = Path(path)
+    if not target.parent.is_dir():
+        raise FileNotFoundError("baseline_parent_missing")
+    data = (json.dumps(states, sort_keys=True) + "\n").encode("utf-8")
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as out:
+            out.write(data)
+            out.flush()
+            os.fsync(out.fileno())
+    except BaseException:
+        target.unlink(missing_ok=True)
+        raise
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", required=True)
-    parser.add_argument("--baseline", help="Existing JSON baseline with signal IDs and categories")
+    action = parser.add_mutually_exclusive_group(required=True)
+    action.add_argument("--baseline", help="Existing private JSON baseline to compare")
+    action.add_argument("--create-baseline", help="Create a new local 0600 baseline, refusing overwrite")
     args = parser.parse_args()
     current = snapshot(args.db)
     if args.baseline:
         baseline = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
         print(json.dumps(compare(baseline, current), sort_keys=True))
     else:
-        # Output may contain signal IDs. Keep locally; never upload as CI artifact.
-        print(json.dumps(current, sort_keys=True))
+        save_baseline(args.create_baseline, current)
+        print(json.dumps({"baseline_created": True, "signals": len(current),
+                          "execution_authorized": False}, sort_keys=True))
 
 
 if __name__ == "__main__":
