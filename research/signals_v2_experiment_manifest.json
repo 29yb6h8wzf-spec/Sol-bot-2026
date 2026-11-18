@@ -1,0 +1,187 @@
+{
+  "schema_version": "signals_v2.research_manifest.1",
+  "status": "DESIGN_ONLY",
+  "scope": {
+    "symbols": [
+      "SOLUSDT",
+      "XRPUSDT"
+    ],
+    "directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "scan_seconds": 300,
+    "primary_timeframe": "5m",
+    "confirmation_timeframe": "1m",
+    "max_holding_minutes": 240,
+    "signal_validity_bars_5m": [
+      1,
+      2
+    ],
+    "free_data_only": true,
+    "hybrid_engine": true,
+    "per_symbol_calibration": true,
+    "market_regimes": [
+      "TREND",
+      "RANGE_COMPRESSION",
+      "BREAKOUT_TRANSITION",
+      "HIGH_VOLATILITY",
+      "UNKNOWN"
+    ],
+    "range_policy": "WAIT_FOR_BREAKOUT",
+    "high_volatility_policy": "CONSIDER_WITH_LIQUIDITY_AND_COST_VETO",
+    "no_daily_signal_quota": true
+  },
+  "non_execution": {
+    "research_only": true,
+    "execution_authorized": false,
+    "orders_sent": false,
+    "change_existing_scanner": false,
+    "change_demo_verifier": false,
+    "change_order_planner": false,
+    "change_risk_limits": false,
+    "change_systemd": false,
+    "change_telegram_production": false,
+    "merge_or_deploy": false
+  },
+  "specialists": [
+    {
+      "id": "trend_continuation",
+      "features": [
+        "structure",
+        "ema_variants",
+        "adx",
+        "momentum",
+        "relative_volume"
+      ],
+      "test": [
+        "rules_baseline",
+        "single_family_ablation",
+        "full"
+      ]
+    },
+    {
+      "id": "breakout_expansion",
+      "features": [
+        "compression",
+        "range_break",
+        "volume",
+        "retest",
+        "sweep_optional"
+      ],
+      "test": [
+        "rules_baseline",
+        "single_family_ablation",
+        "full"
+      ]
+    },
+    {
+      "id": "liquidity_reversal",
+      "features": [
+        "liquidity_sweep",
+        "choch",
+        "fvg",
+        "order_blocks",
+        "atr"
+      ],
+      "test": [
+        "rules_baseline",
+        "single_family_ablation",
+        "full"
+      ]
+    }
+  ],
+  "experimental_features": {
+    "indicators": [
+      "EMA_9_21",
+      "EMA_20_50",
+      "ADX_14",
+      "RSI_14",
+      "MACD",
+      "VWAP_ENTRY_EXIT",
+      "OBV",
+      "MFI",
+      "ROC",
+      "ATR_14"
+    ],
+    "futures": [
+      "OPEN_INTEREST",
+      "FUNDING_RATE",
+      "LIQUIDATIONS",
+      "TRADE_DELTA",
+      "CVD",
+      "ORDERBOOK_IMBALANCE"
+    ],
+    "market_structure": [
+      "BOS",
+      "CHoCH",
+      "SUPPORT_RESISTANCE",
+      "FVG",
+      "ORDER_BLOCK",
+      "LIQUIDITY_SWEEP"
+    ],
+    "availability_rule": "Only backtest feature when timestamped as-of history exists; otherwise prospective shadow evaluation"
+  },
+  "models": [
+    "rules_only",
+    "logistic_regression",
+    "gradient_boosted_trees"
+  ],
+  "calibration": [
+    "platt",
+    "isotonic"
+  ],
+  "target": "P(net_profitable_exit_under_precommitted_stop_target_and_time_policy)",
+  "score_policy": "score_is_not_probability; thresholds_per_specialist_selected_on_development_data",
+  "exits": {
+    "stop": "CONFIRMED_STRUCTURE_PLUS_ATR",
+    "target": "DYNAMIC_STRUCTURE_OR_VOLATILITY",
+    "rr_minimum": "TUNE_ONLY_ON_DEVELOPMENT_DATA",
+    "max_holding_5m_bars": 48,
+    "ambiguous_intrabar_policy": "STOP_FIRST_UNLESS_TIMESTAMPS_PROVE_OTHERWISE",
+    "timeout_policy": "MARK_TO_MARKET_NET_COSTS"
+  },
+  "backtest": {
+    "preferred_months": 24,
+    "minimum_quality_history": "DOCUMENT_ACTUAL_COVERAGE",
+    "chronological_split": true,
+    "purge_embargo_min_5m_bars": 48,
+    "locked_final_test": true,
+    "fees_slippage_funding": true,
+    "stress_double_costs": true,
+    "weekly_block_bootstrap": true,
+    "multiple_testing_correction": true,
+    "provisional_min_independent_trades": 200,
+    "provisional_min_oos_weeks": 8,
+    "provisional_locked_periods": 2,
+    "provisional_require_positive_net_expectancy_each_period": true,
+    "insufficient_evidence_status": "INCONCLUSIVE"
+  },
+  "metrics": [
+    "net_expectancy_r",
+    "signals_per_day",
+    "win_rate",
+    "tp_sl_timeout",
+    "net_profit_r",
+    "max_drawdown",
+    "profit_factor",
+    "turnover",
+    "cost_sensitivity",
+    "brier",
+    "log_loss",
+    "calibration_by_bucket",
+    "confidence_interval"
+  ],
+  "hard_veto": [
+    "STALE_OR_MISSING_INPUT",
+    "UNREPRODUCIBLE_FEATURE",
+    "INVALID_INDEPENDENT_VERIFICATION",
+    "NONPOSITIVE_EXPECTED_NET_EDGE",
+    "SPREAD_OR_COST_TOO_HIGH",
+    "NEWS_RISK_WHEN_DEFINED",
+    "CORRELATION_CONFLICT",
+    "INVALID_CALIBRATION"
+  ],
+  "rejected_signal_channel": "RESEARCH_ONLY_SEPARATE_LOG",
+  "user_preferences_confirmed": 50
+}
