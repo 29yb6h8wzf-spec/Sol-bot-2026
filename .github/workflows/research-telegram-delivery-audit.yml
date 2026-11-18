@@ -5,6 +5,8 @@ on:
     paths:
       - 'futures_engine/research_telegram_delivery_audit.py'
       - 'tests/test_research_telegram_delivery_audit.py'
+      - 'futures_engine/research_telegram_delivery_delta.py'
+      - 'tests/test_research_telegram_delivery_delta.py'
       - '.github/workflows/research-telegram-delivery-audit.yml'
   workflow_dispatch:
 
@@ -22,6 +24,8 @@ jobs:
           python-version: '3.11'
       - name: Run offline read-only reconciliation tests
         run: PYTHONPATH=. python -m unittest discover -s tests -p 'test_research_telegram_delivery_audit.py' -v
+      - name: Run offline receipt delta tests
+        run: PYTHONPATH=. python -m unittest discover -s tests -p 'test_research_telegram_delivery_delta.py' -v
       - name: Generate synthetic Telegram delivery audit artifact
         shell: bash
         run: |
