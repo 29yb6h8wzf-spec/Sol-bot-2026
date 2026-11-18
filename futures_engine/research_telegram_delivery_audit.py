@@ -14,10 +14,10 @@ def audit(db_path):
     try:
         rows = conn.execute(
             "SELECT o.signal_id, d.status, "
-            "CASE WHEN p.signal_id IS NULL THEN 0 ELSE 1 END "
+            "CASE WHEN EXISTS (SELECT 1 FROM sandbox_publish_log p "
+            "WHERE p.signal_id=o.signal_id) THEN 1 ELSE 0 END "
             "FROM research_outbox o "
-            "LEFT JOIN binance_telegram_delivery d ON d.signal_id=o.signal_id "
-            "LEFT JOIN sandbox_publish_log p ON p.signal_id=o.signal_id"
+            "LEFT JOIN binance_telegram_delivery d ON d.signal_id=o.signal_id"
         ).fetchall()
         counts = {"delivered_recorded": 0, "unconfirmed": 0,
                   "missing_delivery_receipt": 0, "other_status": 0,
