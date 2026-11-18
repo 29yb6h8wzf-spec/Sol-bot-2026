@@ -111,6 +111,27 @@ class BridgeTests(unittest.TestCase):
         self.assertNotIn("sensitive", json.dumps(result))
         self.assertEqual(self.run_publish(lambda *args: True)["delivered"], 0)
 
+    def test_network_error_is_classified_and_not_retried(self):
+        from urllib.error import URLError
+        def fail(*args):
+            raise URLError("network disconnected")
+        result = self.run_publish(fail)
+        self.assertEqual(result["failure_categories"], {"network_error": 1})
+        self.assertEqual(self.run_publish(lambda *args: True)["delivered"], 0)
+
+    def test_invalid_response_is_classified_and_not_retried(self):
+        def fail(*args):
+            raise ValueError("malformed response body")
+        result = self.run_publish(fail)
+        self.assertEqual(result["failure_categories"], {"invalid_response": 1})
+        self.assertNotIn("malformed response body", json.dumps(result))
+        self.assertEqual(self.run_publish(lambda *args: True)["delivered"], 0)
+
+    def test_negative_ack_is_unconfirmed_and_not_retried(self):
+        result = self.run_publish(lambda *args: False)
+        self.assertEqual(result["failure_categories"], {"unconfirmed_ack": 1})
+        self.assertEqual(self.run_publish(lambda *args: True)["delivered"], 0)
+
     def test_disabled_by_default(self):
         os.environ.pop(ENABLE_VAR, None)
         with self.assertRaisesRegex(RuntimeError, "disabled"):
