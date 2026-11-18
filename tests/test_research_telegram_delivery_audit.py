@@ -44,6 +44,21 @@ class DeliveryAuditTests(unittest.TestCase):
             self.assertEqual(result["counts"]["delivered_recorded"], 0)
             self.assertFalse(result["delivery_confirmed_by_telegram"])
 
+    def test_multiple_sandbox_logs_do_not_duplicate_outbox_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "audit.sqlite3"
+            with sqlite3.connect(path) as db:
+                db.execute("CREATE TABLE research_outbox (signal_id TEXT PRIMARY KEY)")
+                db.execute("CREATE TABLE binance_telegram_delivery (signal_id TEXT PRIMARY KEY, status TEXT)")
+                db.execute("CREATE TABLE sandbox_publish_log (signal_id TEXT)")
+                db.execute("INSERT INTO research_outbox VALUES ('one')")
+                db.executemany("INSERT INTO sandbox_publish_log VALUES (?)",
+                               [('one',), ('one',)])
+            report = audit(path)
+            self.assertEqual(report["total_outbox"], 1)
+            self.assertEqual(report["counts"]["missing_delivery_receipt"], 1)
+            self.assertEqual(report["counts"]["sandbox_publish_logged"], 1)
+
     def test_missing_db_never_created(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "missing.sqlite3"
