@@ -30,6 +30,20 @@ class DeliveryAuditTests(unittest.TestCase):
             self.assertFalse(result["delivery_confirmed_by_telegram"])
             self.assertEqual(path.read_bytes(), before)
 
+    def test_unknown_delivery_status_is_not_counted_as_success(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "audit.sqlite3"
+            with sqlite3.connect(path) as db:
+                db.execute("CREATE TABLE research_outbox (signal_id TEXT PRIMARY KEY)")
+                db.execute("CREATE TABLE binance_telegram_delivery (signal_id TEXT PRIMARY KEY, status TEXT)")
+                db.execute("CREATE TABLE sandbox_publish_log (signal_id TEXT PRIMARY KEY)")
+                db.execute("INSERT INTO research_outbox VALUES ('unknown')")
+                db.execute("INSERT INTO binance_telegram_delivery VALUES ('unknown','FAILED')")
+            result = audit(path)
+            self.assertEqual(result["counts"]["other_status"], 1)
+            self.assertEqual(result["counts"]["delivered_recorded"], 0)
+            self.assertFalse(result["delivery_confirmed_by_telegram"])
+
     def test_missing_db_never_created(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "missing.sqlite3"
