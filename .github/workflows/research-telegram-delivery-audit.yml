@@ -1,0 +1,24 @@
+name: Research Telegram delivery audit offline
+
+on:
+  pull_request:
+    paths:
+      - 'futures_engine/research_telegram_delivery_audit.py'
+      - 'tests/test_research_telegram_delivery_audit.py'
+      - '.github/workflows/research-telegram-delivery-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run offline read-only reconciliation tests
+        run: PYTHONPATH=. python -m unittest discover -s tests -p 'test_research_telegram_delivery_audit.py' -v
