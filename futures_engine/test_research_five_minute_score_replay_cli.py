@@ -41,6 +41,20 @@ class FiveMinuteReplayTests(unittest.TestCase):
             report_from_five_minute({"SOL/USDT:USDT": candles(48 * 101)},
                                     cutoff_ms=48 * 101 * 300000 + 1)
 
+    def test_malformed_future_candle_not_silently_dropped(self):
+        data = candles(48 * 101)
+        data.append(["bad_timestamp", 100, 101, 99, 100, 10])
+        with self.assertRaisesRegex(ValueError, "invalid_candle_time_or_gap"):
+            report_from_five_minute({"SOL/USDT:USDT": data},
+                                    cutoff_ms=48 * 101 * 300000)
+
+    def test_invalid_ohlcv_before_cutoff_fails_closed(self):
+        data = candles(48 * 101)
+        data[5][2] = 98
+        with self.assertRaisesRegex(ValueError, "invalid_ohlcv"):
+            report_from_five_minute({"SOL/USDT:USDT": data},
+                                    cutoff_ms=48 * 101 * 300000)
+
     def test_gap_fails_closed(self):
         data = candles(48 * 101)
         data[10][0] += 300000
