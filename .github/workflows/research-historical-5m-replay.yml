@@ -11,7 +11,7 @@ permissions:
 jobs:
   replay:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,7 +20,7 @@ jobs:
       - name: Download public closed 5m daily archives (research only)
         run: |
           python -m futures_engine.research_fetch_public_5m_archives \
-            --start-ms 1793145600000 \
+            --start-ms 1787184000000 \
             --cutoff-ms 1794960000000 \
             --output "$RUNNER_TEMP/research_5m.json"
       - name: Replay real strategy candidates without order APIs
@@ -46,6 +46,14 @@ jobs:
             --input "$RUNNER_TEMP/research_5m.json" \
             --output "$RUNNER_TEMP/outcomes.json"
           cp "$RUNNER_TEMP/outcomes.json" outcomes.json
+      - name: Test chronological non-overlap audit
+        run: python -m unittest futures_engine.test_research_nonoverlap_outcome_audit -v
+      - name: Audit non-overlapping hypothetical positions and descriptive split
+        run: |
+          PYTHONPATH=. python -m futures_engine.research_nonoverlap_outcome_audit \
+            --input "$RUNNER_TEMP/outcomes.json" \
+            --output "$RUNNER_TEMP/nonoverlap.json"
+          cp "$RUNNER_TEMP/nonoverlap.json" nonoverlap.json
       - uses: actions/upload-artifact@v4
         if: success()
         with:
@@ -53,4 +61,5 @@ jobs:
           path: |
             score_report.json
             outcomes.json
+            nonoverlap.json
           retention-days: 7
