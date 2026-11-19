@@ -14,11 +14,18 @@ from futures_engine.research_closed_candle_score_replay import replay_report
 from futures_engine.research_setup_score_distribution import ALLOWED_SYMBOLS
 
 
-def report_from_five_minute(datasets):
+def report_from_five_minute(datasets, *, cutoff_ms):
+    if type(cutoff_ms) is not int or cutoff_ms <= 0 or cutoff_ms % 300000:
+        raise ValueError("invalid_utc_cutoff")
     if not isinstance(datasets, dict) or not datasets or set(datasets) - ALLOWED_SYMBOLS:
         raise ValueError("invalid_symbols")
     prepared = {}
     for symbol, rows in datasets.items():
+        if not isinstance(rows, list):
+            raise ValueError("invalid_candles")
+        rows = [r for r in rows if isinstance(r, (list, tuple)) and len(r) == 6 and type(r[0]) is int and r[0] + 300000 <= cutoff_ms]
+        if not rows:
+            raise ValueError("no_closed_candles_before_cutoff")
         four = aggregate_closed_four_hour(rows)
         if len(four) < 100:
             raise ValueError("insufficient_4h_history")
@@ -30,13 +37,15 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--cutoff-ms", required=True, type=int,
+                        help="UTC boundary in milliseconds; only candles closed by this time are included")
     args = parser.parse_args(argv)
     source = Path(args.input).resolve(strict=True)
     dest = Path(args.output).resolve()
     if source == dest:
         parser.error("input_and_output_must_differ")
     with source.open(encoding="utf-8") as f:
-        report = report_from_five_minute(json.load(f))
+        report = report_from_five_minute(json.load(f), cutoff_ms=args.cutoff_ms)
     with dest.open("x", encoding="utf-8") as f:
         json.dump(report, f, sort_keys=True, indent=2)
         f.write("\n")
