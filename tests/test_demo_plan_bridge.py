@@ -56,7 +56,7 @@ class BridgeTests(unittest.TestCase):
         self.assertFalse(p["execution_authorized"])
         self.assertTrue(self.exchange.closed)
         self.assertLessEqual(float(p["estimated_loss_including_buffer"]), 1.50)
-        self.assertLessEqual(float(p["estimated_notional"]), 300)
+        self.assertLessEqual(float(p["estimated_notional"]), 15)
 
     def test_stale_signal_never_fetches_market(self):
         p = payload()

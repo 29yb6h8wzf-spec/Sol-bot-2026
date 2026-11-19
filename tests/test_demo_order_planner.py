@@ -28,7 +28,7 @@ class PlannerTests(unittest.TestCase):
         p = make()
         self.assertEqual(p["status"], "INDICATIVE_PLAN_ONLY_NOT_EXECUTABLE")
         self.assertLessEqual(float(p["estimated_max_stop_loss_before_fees"]), 1.5)
-        self.assertLessEqual(float(p["estimated_notional"]), 300)
+        self.assertLessEqual(float(p["estimated_notional"]), 15)
         self.assertLess(float(p["stop"]), float(p["entry"]))
         self.assertGreater(float(p["target"]), float(p["entry"]))
         self.assertFalse(p["orders_sent"])
