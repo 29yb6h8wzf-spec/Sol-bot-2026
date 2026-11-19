@@ -20,14 +20,14 @@ jobs:
       - name: Download public closed 5m daily archives (research only)
         run: |
           python -m futures_engine.research_fetch_public_5m_archives \
-            --start-ms 1793246400000 \
-            --cutoff-ms 1795043700000 \
+            --start-ms 1793145600000 \
+            --cutoff-ms 1794960000000 \
             --output "$RUNNER_TEMP/research_5m.json"
       - name: Replay real strategy candidates without order APIs
         run: |
           PYTHONPATH=. python -m futures_engine.research_five_minute_score_replay_cli \
             --input "$RUNNER_TEMP/research_5m.json" \
-            --cutoff-ms 1795043700000 \
+            --cutoff-ms 1794960000000 \
             --output "$RUNNER_TEMP/score_report.json"
           cp "$RUNNER_TEMP/score_report.json" score_report.json
           python - <<'PY'
