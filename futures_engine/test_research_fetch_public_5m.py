@@ -56,8 +56,8 @@ class PublicFiveMinuteDownloaderTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid_utc_range"):
             download("SOLUSDT", 1, 300000)
 
-    def test_unclosed_candle_rejected(self):
-        with self.assertRaisesRegex(ValueError, "unclosed_market_candle"):
+    def test_unexpected_candle_time_rejected(self):
+        with self.assertRaisesRegex(ValueError, "market_history_gap_or_duplicate"):
             download("SOLUSDT", 0, 300000,
                      opener=lambda url, timeout:
                      Response(json.dumps([bar(300000)]).encode()))
