@@ -17,9 +17,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Download public closed 5m candles (research only)
+      - name: Download public closed 5m daily archives (research only)
         run: |
-          python -m futures_engine.research_fetch_public_5m \
+          python -m futures_engine.research_fetch_public_5m_archives \
             --start-ms 1793246400000 \
             --cutoff-ms 1795043700000 \
             --output "$RUNNER_TEMP/research_5m.json"
