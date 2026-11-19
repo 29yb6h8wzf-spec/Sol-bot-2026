@@ -1,0 +1,46 @@
+name: Research historical 5m replay (offline execution only)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/research-historical-5m-replay.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download public closed 5m candles (research only)
+        run: |
+          python -m futures_engine.research_fetch_public_5m \
+            --start-ms 1793246400000 \
+            --cutoff-ms 1795043700000 \
+            --output "$RUNNER_TEMP/research_5m.json"
+      - name: Replay real strategy candidates without order APIs
+        run: |
+          PYTHONPATH=. python -m futures_engine.research_five_minute_score_replay_cli \
+            --input "$RUNNER_TEMP/research_5m.json" \
+            --cutoff-ms 1795043700000 \
+            --output "$RUNNER_TEMP/score_report.json"
+          cp "$RUNNER_TEMP/score_report.json" score_report.json
+          python - <<'PY'
+          import json
+          with open("score_report.json", encoding="utf-8") as f:
+              r = json.load(f)
+          print(json.dumps(r["totals"], sort_keys=True))
+          assert r["research_only"] is True
+          assert r["execution_authorized"] is False
+          PY
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: closed-5m-score-report
+          path: score_report.json
+          retention-days: 7
