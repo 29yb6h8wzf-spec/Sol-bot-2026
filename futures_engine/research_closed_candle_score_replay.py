@@ -34,7 +34,7 @@ def _strategy_rows(rows):
              "close": r[4], "volume": r[5]} for r in rows]
 
 
-def replay_symbol(symbol, five, four, *, window=240):
+def replay_symbol(symbol, five, four, *, window=240, include_time=False):
     """Replay each closed 5m candle using only 4h candles closed by that time.
 
     At a 5m candle's close, a 4h bar is usable only when its end <= that close.
@@ -57,9 +57,12 @@ def replay_symbol(symbol, five, four, *, window=240):
         five_window = _strategy_rows(five[i - window + 1:i + 1])
         four_window = _strategy_rows(four[max(0, four_end - window):four_end])
         setups, _ = candidates(five_window, four_window)
-        output.append({"symbol": symbol, "setups": [
+        scan = {"symbol": symbol, "setups": [
             {"strategy": s["strategy"], "direction": s["direction"], "score": s["score"]}
-            for s in setups]})
+            for s in setups]}
+        if include_time:
+            scan["closed_5m_open_ms"] = five[i][0]
+        output.append(scan)
     return output
 
 
