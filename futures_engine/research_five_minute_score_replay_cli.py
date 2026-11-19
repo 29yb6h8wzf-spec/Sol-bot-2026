@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 from futures_engine.research_aggregate_closed_4h import aggregate_closed_four_hour
-from futures_engine.research_closed_candle_score_replay import replay_report
+from futures_engine.research_closed_candle_score_replay import replay_report, _validate, FIVE_MS
 from futures_engine.research_setup_score_distribution import ALLOWED_SYMBOLS
 
 
@@ -23,7 +23,8 @@ def report_from_five_minute(datasets, *, cutoff_ms):
     for symbol, rows in datasets.items():
         if not isinstance(rows, list):
             raise ValueError("invalid_candles")
-        rows = [r for r in rows if isinstance(r, (list, tuple)) and len(r) == 6 and type(r[0]) is int and r[0] + 300000 <= cutoff_ms]
+        _validate(rows, FIVE_MS)
+        rows = [r for r in rows if r[0] + FIVE_MS <= cutoff_ms]
         if not rows:
             raise ValueError("no_closed_candles_before_cutoff")
         four = aggregate_closed_four_hour(rows)
