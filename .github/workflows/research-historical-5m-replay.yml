@@ -38,9 +38,19 @@ jobs:
           assert r["research_only"] is True
           assert r["execution_authorized"] is False
           PY
+      - name: Test causal outcome accounting
+        run: python -m unittest futures_engine.test_research_score85_outcomes -v
+      - name: Evaluate hypothetical 85+ outcomes (not orders)
+        run: |
+          PYTHONPATH=. python -m futures_engine.research_score85_outcomes \\
+            --input "$RUNNER_TEMP/research_5m.json" \\
+            --output "$RUNNER_TEMP/outcomes.json"
+          cp "$RUNNER_TEMP/outcomes.json" outcomes.json
       - uses: actions/upload-artifact@v4
         if: success()
         with:
           name: closed-5m-score-report
-          path: score_report.json
+          path: |
+            score_report.json
+            outcomes.json
           retention-days: 7
