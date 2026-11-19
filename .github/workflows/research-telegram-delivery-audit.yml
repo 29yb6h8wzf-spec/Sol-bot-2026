@@ -1,0 +1,68 @@
+name: Research Telegram delivery audit offline
+
+on:
+  pull_request:
+    paths:
+      - 'futures_engine/research_telegram_delivery_audit.py'
+      - 'tests/test_research_telegram_delivery_audit.py'
+      - 'futures_engine/research_telegram_delivery_delta.py'
+      - 'tests/test_research_telegram_delivery_delta.py'
+      - '.github/workflows/research-telegram-delivery-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run offline read-only reconciliation tests
+        run: PYTHONPATH=. python -m unittest discover -s tests -p 'test_research_telegram_delivery_audit.py' -v
+      - name: Run offline receipt delta tests
+        run: PYTHONPATH=. python -m unittest discover -s tests -p 'test_research_telegram_delivery_delta.py' -v
+      - name: Generate synthetic Telegram delivery audit artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit-artifacts
+          python - <<'PY'
+          import sqlite3
+          from pathlib import Path
+          path = Path('audit-artifacts/synthetic-delivery.sqlite3')
+          with sqlite3.connect(path) as db:
+              db.execute('CREATE TABLE research_outbox (signal_id TEXT PRIMARY KEY)')
+              db.execute('CREATE TABLE binance_telegram_delivery (signal_id TEXT PRIMARY KEY, status TEXT)')
+              db.execute('CREATE TABLE sandbox_publish_log (signal_id TEXT PRIMARY KEY)')
+              db.executemany('INSERT INTO research_outbox VALUES (?)', [('delivered',), ('unconfirmed',), ('missing',)])
+              db.executemany('INSERT INTO binance_telegram_delivery VALUES (?,?)',
+                             [('delivered', 'DELIVERED_OWNER_ONLY'), ('unconfirmed', 'UNCONFIRMED')])
+              db.execute("INSERT INTO sandbox_publish_log VALUES ('missing')")
+          PY
+          PYTHONPATH=. python -m futures_engine.research_telegram_delivery_audit \
+            --db audit-artifacts/synthetic-delivery.sqlite3 \
+            > audit-artifacts/synthetic-delivery-report.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('audit-artifacts/synthetic-delivery-report.json').read_text())
+          assert report['total_outbox'] == 3
+          assert report['counts']['delivered_recorded'] == 1
+          assert report['counts']['unconfirmed'] == 1
+          assert report['counts']['missing_delivery_receipt'] == 1
+          assert report['delivery_confirmed_by_telegram'] is False
+          assert report['execution_authorized'] is False
+          PY
+          rm audit-artifacts/synthetic-delivery.sqlite3
+      - name: Upload synthetic Telegram delivery report
+        uses: actions/upload-artifact@v4
+        with:
+          name: signalpilot-synthetic-telegram-delivery-audit
+          path: audit-artifacts/synthetic-delivery-report.json
+          if-no-files-found: error
+          retention-days: 7

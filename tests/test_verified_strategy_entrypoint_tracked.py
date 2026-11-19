@@ -82,3 +82,73 @@ def test_evaluate_closes_exchanges_on_invalid_4h_candles(monkeypatch):
         scanner.evaluate("SOL/USDT:USDT", loader=loader, now_ms=now_ms)
     assert len(connections) == 2
     assert all(exchange.closed for exchange in connections)
+
+
+def test_evaluate_logs_below_threshold_without_verification_or_orders(monkeypatch):
+    now_ms = 1_800_000_000_000
+
+    def loader(symbol, timeframe):
+        interval = {"5m": 300000, "4h": 14400000}[timeframe]
+        return DummyExchange(), {}, candles(interval, now_ms)
+
+    monkeypatch.setattr(scanner, "candidates", lambda five, four: (
+        [{"strategy": "MACD_VOLUME", "direction": "LONG", "score": 80}],
+        {},
+    ))
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("below-threshold setup must not be verified or published")
+
+    monkeypatch.setattr(scanner, "verify_candidate", forbidden)
+    monkeypatch.setattr(scanner, "stage", forbidden)
+    monkeypatch.setattr(scanner, "record", forbidden)
+    result = scanner.evaluate("SOL/USDT:USDT", loader=loader, now_ms=now_ms)
+    assert result["candidates_85_plus"] == []
+    assert result["rejected_candidates"] == [{
+        "strategy": "MACD_VOLUME", "direction": "LONG", "score": 80,
+        "reason": "below_score_threshold", "threshold": 85,
+    }]
+    assert result["scan_diagnostics"] == {
+        "setups_seen": 1, "below_threshold": 1, "invalid_score": 0,
+        "verification_rejected": 0, "eligible": 0, "no_setup": False,
+    }
+    assert result["orders_sent"] is False
+    assert result["sqs_sent"] is False
+
+
+def test_evaluate_no_setup_is_explicitly_diagnosed(monkeypatch):
+    now_ms = 1_800_000_000_000
+
+    def loader(symbol, timeframe):
+        interval = {"5m": 300000, "4h": 14400000}[timeframe]
+        return DummyExchange(), {}, candles(interval, now_ms)
+
+    monkeypatch.setattr(scanner, "candidates", lambda five, four: ([], {}))
+    result = scanner.evaluate("XRP/USDT:USDT", loader=loader, now_ms=now_ms)
+    assert result["rejected_candidates"] == []
+    assert result["scan_diagnostics"]["no_setup"] is True
+    assert result["scan_diagnostics"]["setups_seen"] == 0
+    assert result["orders_sent"] is False
+
+
+def test_evaluate_distinguishes_invalid_score_from_low_score(monkeypatch):
+    now_ms = 1_800_000_000_000
+
+    def loader(symbol, timeframe):
+        interval = {"5m": 300000, "4h": 14400000}[timeframe]
+        return DummyExchange(), {}, candles(interval, now_ms)
+
+    monkeypatch.setattr(scanner, "candidates", lambda five, four: (
+        [{"strategy": "MACD_VOLUME", "direction": "LONG", "score": None},
+         {"strategy": "MACD_VOLUME", "direction": "SHORT", "score": 84}], {}
+    ))
+    monkeypatch.setattr(scanner, "verify_candidate", lambda *a, **kw: pytest.fail("not eligible"))
+    result = scanner.evaluate("SOL/USDT:USDT", loader=loader, now_ms=now_ms)
+    assert result["scan_diagnostics"] == {
+        "setups_seen": 2, "below_threshold": 1, "invalid_score": 1,
+        "verification_rejected": 0, "eligible": 0, "no_setup": False,
+    }
+    assert [x["reason"] for x in result["rejected_candidates"]] == [
+        "invalid_score", "below_score_threshold",
+    ]
+    assert result["orders_sent"] is False

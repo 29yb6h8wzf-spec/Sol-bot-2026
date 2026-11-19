@@ -88,6 +88,21 @@ def send_https(url, raw, timestamp, signature):
         return True
 
 
+def classify_delivery_failure(exc):
+    """Return a safe category only; never persist URLs, response bodies or secrets."""
+    if isinstance(exc, (TimeoutError,)):
+        return "timeout"
+    if isinstance(exc, urllib.error.HTTPError):
+        return "http_error"
+    if isinstance(exc, urllib.error.URLError):
+        return "network_error"
+    if isinstance(exc, (ValueError, json.JSONDecodeError)):
+        return "invalid_response"
+    if isinstance(exc, RuntimeError):
+        return "unconfirmed_ack"
+    return "other_error"
+
+
 def publish(*, db=DB, url=None, secret_path=None, now=None, transport=send_https):
     if os.environ.get(ENABLE_VAR) != "1":
         raise RuntimeError("binance_research_telegram_disabled")
@@ -95,7 +110,7 @@ def publish(*, db=DB, url=None, secret_path=None, now=None, transport=send_https
     secret = load_ssm_secret() if secret_path is None else load_secret(secret_path)
     now = int(time.time()) if now is None else int(now)
     stats = {"delivered": 0, "expired": 0, "claimed_or_unconfirmed": 0,
-             "send_failed_unconfirmed": 0, "orders_sent": False}
+             "send_failed_unconfirmed": 0, "failure_categories": {}, "orders_sent": False}
     with sqlite3.connect(db, timeout=20) as conn:
         conn.execute(
             "CREATE TABLE IF NOT EXISTS binance_telegram_delivery ("
@@ -136,8 +151,10 @@ def publish(*, db=DB, url=None, secret_path=None, now=None, transport=send_https
             try:
                 if transport(url, raw_body, now, signature) is not True:
                     raise RuntimeError("research_delivery_not_acknowledged")
-            except Exception:
+            except Exception as exc:
                 stats["send_failed_unconfirmed"] += 1
+                category = classify_delivery_failure(exc)
+                stats["failure_categories"][category] = stats["failure_categories"].get(category, 0) + 1
                 continue
             conn.execute("UPDATE binance_telegram_delivery SET status=? WHERE signal_id=?",
                          ("DELIVERED_OWNER_ONLY", sid))

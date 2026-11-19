@@ -92,6 +92,7 @@ class BridgeTests(unittest.TestCase):
             raise TimeoutError("ambiguous")
         result = self.run_publish(fail)
         self.assertEqual(result["send_failed_unconfirmed"], 1)
+        self.assertEqual(result["failure_categories"], {"timeout": 1})
         self.assertEqual(self.run_publish(lambda *args: True)["delivered"], 0)
         with sqlite3.connect(self.db) as db:
             self.assertEqual(db.execute(
@@ -100,6 +101,36 @@ class BridgeTests(unittest.TestCase):
 
     def test_false_acknowledgement_fails_closed(self):
         self.assertEqual(self.run_publish(lambda *args: False)["delivered"], 0)
+
+    def test_http_error_is_classified_without_retry(self):
+        from urllib.error import HTTPError
+        def fail(*args):
+            raise HTTPError(URL, 502, "sensitive response", {}, None)
+        result = self.run_publish(fail)
+        self.assertEqual(result["failure_categories"], {"http_error": 1})
+        self.assertNotIn("sensitive", json.dumps(result))
+        self.assertEqual(self.run_publish(lambda *args: True)["delivered"], 0)
+
+    def test_network_error_is_classified_and_not_retried(self):
+        from urllib.error import URLError
+        def fail(*args):
+            raise URLError("network disconnected")
+        result = self.run_publish(fail)
+        self.assertEqual(result["failure_categories"], {"network_error": 1})
+        self.assertEqual(self.run_publish(lambda *args: True)["delivered"], 0)
+
+    def test_invalid_response_is_classified_and_not_retried(self):
+        def fail(*args):
+            raise ValueError("malformed response body")
+        result = self.run_publish(fail)
+        self.assertEqual(result["failure_categories"], {"invalid_response": 1})
+        self.assertNotIn("malformed response body", json.dumps(result))
+        self.assertEqual(self.run_publish(lambda *args: True)["delivered"], 0)
+
+    def test_negative_ack_is_unconfirmed_and_not_retried(self):
+        result = self.run_publish(lambda *args: False)
+        self.assertEqual(result["failure_categories"], {"unconfirmed_ack": 1})
+        self.assertEqual(self.run_publish(lambda *args: True)["delivered"], 0)
 
     def test_disabled_by_default(self):
         os.environ.pop(ENABLE_VAR, None)

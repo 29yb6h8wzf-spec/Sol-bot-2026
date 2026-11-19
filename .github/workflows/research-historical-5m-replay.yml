@@ -1,0 +1,65 @@
+name: Research historical 5m replay (offline execution only)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/research-historical-5m-replay.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download public closed 5m daily archives (research only)
+        run: |
+          python -m futures_engine.research_fetch_public_5m_archives \
+            --start-ms 1787184000000 \
+            --cutoff-ms 1794960000000 \
+            --output "$RUNNER_TEMP/research_5m.json"
+      - name: Replay real strategy candidates without order APIs
+        run: |
+          PYTHONPATH=. python -m futures_engine.research_five_minute_score_replay_cli \
+            --input "$RUNNER_TEMP/research_5m.json" \
+            --cutoff-ms 1794960000000 \
+            --output "$RUNNER_TEMP/score_report.json"
+          cp "$RUNNER_TEMP/score_report.json" score_report.json
+          python - <<'PY'
+          import json
+          with open("score_report.json", encoding="utf-8") as f:
+              r = json.load(f)
+          print(json.dumps(r["totals"], sort_keys=True))
+          assert r["research_only"] is True
+          assert r["execution_authorized"] is False
+          PY
+      - name: Test causal outcome accounting
+        run: python -m unittest futures_engine.test_research_score85_outcomes -v
+      - name: Evaluate hypothetical 85+ outcomes (not orders)
+        run: |
+          PYTHONPATH=. python -m futures_engine.research_score85_outcomes \
+            --input "$RUNNER_TEMP/research_5m.json" \
+            --output "$RUNNER_TEMP/outcomes.json"
+          cp "$RUNNER_TEMP/outcomes.json" outcomes.json
+      - name: Test chronological non-overlap audit
+        run: python -m unittest futures_engine.test_research_nonoverlap_outcome_audit -v
+      - name: Audit non-overlapping hypothetical positions and descriptive split
+        run: |
+          PYTHONPATH=. python -m futures_engine.research_nonoverlap_outcome_audit \
+            --input "$RUNNER_TEMP/outcomes.json" \
+            --output "$RUNNER_TEMP/nonoverlap.json"
+          cp "$RUNNER_TEMP/nonoverlap.json" nonoverlap.json
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: closed-5m-score-report
+          path: |
+            score_report.json
+            outcomes.json
+            nonoverlap.json
+          retention-days: 7
