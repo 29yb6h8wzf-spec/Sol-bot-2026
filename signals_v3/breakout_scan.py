@@ -1,7 +1,7 @@
 """Inspect the historical V3 breakout decision using Binance USD-M public candles.
 
 Run from the checkout with python -m signals_v3.breakout_scan.
-This diagnostic evaluates the latest closed five-minute decision.
+This diagnostic evaluates the latest closed one-minute decision.
 Its output is a research observation. It must never be routed as an order.
 """
 import json
@@ -17,7 +17,7 @@ FIVE = 300_000
 
 
 def latest_decision(now_ms):
-    return now_ms - now_ms % FIVE
+    return now_ms - now_ms % 60_000
 
 
 def get_json(path):
@@ -37,7 +37,7 @@ def candles(symbol, interval, count, duration, decision):
 
 
 def scan(symbol, decision):
-    five = candles(symbol, "5m", 64, FIVE, decision)
+    five = candles(symbol, "5m", 64, FIVE, decision - decision % FIVE)
     one = candles(symbol, "1m", 45, 60_000, decision)
     proposals = candidates(symbol, five, one, decision)
     if not proposals:
