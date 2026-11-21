@@ -24,3 +24,14 @@ test("unavailable input stays unavailable", async()=>{
 test("rejects anonymous requests before reading KV", async()=>{
   assert.equal((await handler.fetch(new Request("https://host/v1/scans"),{})).status,403);
 });
+
+test("reads exact scheduler keys when listing has not exposed them", async()=>{
+  const previous=slot-300000;
+  const kv={async list(){return {keys:[]};},async get(key){
+    if(key==="health:latest")return receipt;
+    return key==="health:cron:"+previous?{...receipt,scheduledTime:previous}:null;
+  }};
+  const result=await snapshot(kv);
+  assert.equal(result.receipts.filter(Boolean).length,2);
+  assert.equal(result.receipts[22].slot,previous);
+});

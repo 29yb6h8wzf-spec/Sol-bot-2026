@@ -40,9 +40,11 @@ export async function snapshot(kv) {
   }
   const receipts = await Promise.all(Array.from({length:23}, async (_, i) => {
     const key = bySlot.get(latestBucket - 23 + i);
-    if (!key) return null;
-    const value = normalize(await kv.get(key.name, "json"));
-    return value?.slot === key.raw ? value : null;
+    const expected = latest.slot - (23 - i) * PERIOD;
+    const raw = key?.raw ?? expected;
+    const name = key?.name ?? "health:cron:" + raw;
+    const value = normalize(await kv.get(name, "json"));
+    return value?.slot === raw ? value : null;
   }));
   return {source: "kraken_spot", period: PERIOD, receipts: [...receipts, latest]};
 }
