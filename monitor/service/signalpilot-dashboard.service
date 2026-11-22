@@ -1,0 +1,16 @@
+[Unit]
+Description=SignalPilot read-only dashboard telemetry
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/signalpilot/.venv/bin/python -B /opt/signalpilot-dashboard/publisher.py
+TimeoutStartSec=45
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+Nice=15
+CPUQuota=20%
+MemoryMax=128M

@@ -1,3 +1,4 @@
+import {liveRoute} from "./live.mjs";
 const PERIOD = 300_000;
 const symbols = new Set(["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT"]);
 
@@ -51,6 +52,7 @@ export async function snapshot(kv) {
 
 export default {
   async fetch(request, env) {
+    if(new URL(request.url).pathname === "/v1/live") return liveRoute(request, env);
     if (request.method !== "GET" || new URL(request.url).pathname !== "/v1/scans") return new Response(null, {status: 404});
     const token = request.headers.get("X-Scan-Reader");
     if (!env.READER_TOKEN || !token || token.length > 256) return new Response(null, {status: 403});
