@@ -11,6 +11,7 @@ from pathlib import Path
 
 from binance_permissions import credentials
 from futures_engine.breakout_execution import route_breakout
+from futures_engine.close_reconciliation import reconcile_closing
 from futures_engine.live import create_binance_client
 from signals_v3.breakout_scan import latest_decision, scan
 
@@ -39,6 +40,12 @@ class Journal:
 
 def check_protection(exchange, journal, row, positions, now):
     signal_id, state = row
+    if state == "CLOSING":
+        status = reconcile_closing(exchange, signal_id)
+        if status == "closed":
+            journal.mark(signal_id, "CLOSED")
+            return "reconciled_close"
+        return status
     if state != "PROTECTED":
         return "halt_unresolved_execution"
     _, raw_symbol, ts = signal_id.split("-")
