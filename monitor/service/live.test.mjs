@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {normalizeLive} from './live.mjs';
+const now=1795352942718;const valid=()=>({source:'binance_usdm_live',collected_at:now,runs:[{at:now-1000,status:'halt_unresolved_execution',scheduled_ms:now-2000,completed_after_ms:1000}],fills:[{symbol:'SOLUSDT',event:'CLOSE',fill_ms:now-10000,price:'68.95',direction:'LONG',delivery:'delivered',secret:'omit'}],entries:[{id:'vb-SOLUSDT-1795200480000',state:'CLOSED'}],errors:[]});
+test('preserves live halt and confirmed fills but strips extra properties',()=>{const r=normalizeLive(valid(),now);assert.equal(r.runs[0].status,'halt_unresolved_execution');assert.equal(r.fills[0].price,'68.95');assert.equal(r.fills[0].secret,undefined)});
+test('rejects research source and stale uploads',()=>{assert.throws(()=>normalizeLive({...valid(),source:'kraken_spot'},now));assert.throws(()=>normalizeLive(valid(),now+180000))});
+test('rejects invalid symbols and timestamps',()=>{const v=valid();v.fills[0].symbol='BTCUSDT';assert.throws(()=>normalizeLive(v,now));const w=valid();w.runs[0].at=now+120000;assert.throws(()=>normalizeLive(w,now))});
+test('unknown engine status never becomes healthy implicitly',()=>{const v=valid();v.runs[0].status='unexpected';assert.equal(normalizeLive(v,now).runs[0].status,'unknown')});
