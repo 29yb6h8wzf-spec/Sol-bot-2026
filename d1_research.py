@@ -21,6 +21,9 @@ import pandas as pd
 from h1_research import SWAP_PER_NIGHT, costs, load
 
 TRAIN_END = pd.Timestamp("2019-01-01", tz="UTC")
+# FTMO symbol spec (ftmo.com/en/symbols, 2026-11-23): swap long, swap short, point size.
+# Today's swaps applied to history are an approximation: rate differentials changed over time.
+SWAP_POINTS = {"EURUSD": (-9.25, 0.3, 0.00001)}
 
 
 def prep(df):
@@ -89,7 +92,12 @@ def trades_for(symbol, df, cfg):
             path.append(d * (c[j] - entry) / risk_px)
         exit_px *= (1 - d * k["half_spread"])
         days = (idx[j] - idx[e]).days
-        cost_r = (k["fee"] * 2 * entry + SWAP_PER_NIGHT * days * entry) / risk_px
+        if symbol in SWAP_POINTS:
+            lng, sht, point = SWAP_POINTS[symbol]
+            swap_px = -(lng if d > 0 else sht) * point * days  # negative swap = cost
+        else:
+            swap_px = SWAP_PER_NIGHT * days * entry
+        cost_r = (k["fee"] * 2 * entry + swap_px) / risk_px
         final_r = d * (exit_px - entry) / risk_px - cost_r
         path.append(final_r)
         out.append({"sym": symbol, "entry_t": idx[e], "exit_t": idx[j], "r": final_r,
