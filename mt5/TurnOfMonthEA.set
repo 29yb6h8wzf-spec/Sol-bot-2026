@@ -1,6 +1,6 @@
 InpSymbol=US500.cash
 InpInitialCapital=0
-InpNotionalMultiple=1.0
+InpNotionalMultiple=3.0
 InpEntryHour=22
 InpEntryMinute=50
 InpExitTradingDay=3

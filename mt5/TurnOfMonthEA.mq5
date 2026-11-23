@@ -134,7 +134,7 @@ double LotsForNotional()
 //--- lifecycle -------------------------------------------------------
 int OnInit()
 {
-   if(InpInitialCapital < 0 || InpNotionalMultiple <= 0 || InpNotionalMultiple > 2.0 ||
+   if(InpInitialCapital < 0 || InpNotionalMultiple <= 0 || InpNotionalMultiple > 3.0 ||
       InpDailyStopPct <= 0 || InpDailyStopPct >= 5 || InpTotalStopPct <= 0 || InpTotalStopPct >= 10 ||
       InpExitTradingDay < 1 || InpExitTradingDay > 5)
    { Print("Invalid inputs (fail-closed)"); return INIT_PARAMETERS_INCORRECT; }
