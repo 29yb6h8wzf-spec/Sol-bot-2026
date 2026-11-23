@@ -16,7 +16,7 @@
 #include <Trade/Trade.mqh>
 
 input string InpSymbol            = "US500.cash"; // check exact name in Market Watch
-input double InpInitialCapital    = 10000;        // FTMO initial capital (ISC)
+input double InpInitialCapital    = 0;            // FTMO initial capital (ISC); 0 = balance at first start
 input double InpNotionalMultiple  = 1.0;          // position notional = ISC x this
 input int    InpEntryHour         = 22;           // server time (FTMO server = New York + 7h)
 input int    InpEntryMinute       = 50;           // 22:50 server = 15:50 New York
@@ -32,6 +32,7 @@ CTrade   trade;
 datetime g_holidays[];
 datetime g_dayStart      = 0;
 double   g_dayStartBal   = 0;
+double   g_isc           = 0;      // initial capital actually used
 bool     g_blockedToday  = false;
 bool     g_disabled      = false;
 int      g_enteredMonth  = -1;   // yyyymm of the month whose turn we already traded
@@ -123,7 +124,7 @@ double LotsForNotional()
    double vmax  = SymbolInfoDouble(InpSymbol, SYMBOL_VOLUME_MAX);
    if(price <= 0 || csize <= 0 || step <= 0) return 0;
    // Assumes account currency USD and a USD-quoted index (US500). Verify on the Free Trial.
-   double lots = InpInitialCapital * InpNotionalMultiple / (price * csize);
+   double lots = g_isc * InpNotionalMultiple / (price * csize);
    lots = MathFloor(lots / step) * step;
    if(lots < vmin) { PrintFormat("Notional too small for min lot (%.2f < %.2f)", lots, vmin); return 0; }
    return MathMin(lots, vmax);
@@ -132,7 +133,7 @@ double LotsForNotional()
 //--- lifecycle -------------------------------------------------------
 int OnInit()
 {
-   if(InpInitialCapital <= 0 || InpNotionalMultiple <= 0 || InpNotionalMultiple > 2.0 ||
+   if(InpInitialCapital < 0 || InpNotionalMultiple <= 0 || InpNotionalMultiple > 2.0 ||
       InpDailyStopPct <= 0 || InpDailyStopPct >= 5 || InpTotalStopPct <= 0 || InpTotalStopPct >= 10 ||
       InpExitTradingDay < 1 || InpExitTradingDay > 5)
    { Print("Invalid inputs (fail-closed)"); return INIT_PARAMETERS_INCORRECT; }
@@ -148,10 +149,17 @@ int OnInit()
       if(d <= 0) { PrintFormat("Bad holiday date '%s'", parts[i]); return INIT_PARAMETERS_INCORRECT; }
       int k = ArraySize(g_holidays); ArrayResize(g_holidays, k + 1); g_holidays[k] = DayOf(d);
    }
+   // initial capital: explicit input, else remembered first-start balance for this login
+   string gv = StringFormat("TOM_ISC_%I64d", AccountInfoInteger(ACCOUNT_LOGIN));
+   if(InpInitialCapital > 0) g_isc = InpInitialCapital;
+   else if(GlobalVariableCheck(gv)) g_isc = GlobalVariableGet(gv);
+   else { g_isc = AccountInfoDouble(ACCOUNT_BALANCE); GlobalVariableSet(gv, g_isc); }
+   if(g_isc <= 0) { Print("Initial capital unknown (fail-closed)"); return INIT_FAILED; }
+   if(!(bool)AccountInfoInteger(ACCOUNT_TRADE_ALLOWED)) Print("WARNING: account trading not allowed (investor mode?)");
    trade.SetExpertMagicNumber(InpMagic);
    trade.SetDeviationInPoints(50);
    EventSetTimer(20);
-   PrintFormat("TurnOfMonthEA ready: %s, notional %.2fx of %.0f, %d holidays", InpSymbol, InpNotionalMultiple, InpInitialCapital, ArraySize(g_holidays));
+   PrintFormat("TurnOfMonthEA ready: %s, notional %.2fx of %.0f, %d holidays", InpSymbol, InpNotionalMultiple, g_isc, ArraySize(g_holidays));
    return INIT_SUCCEEDED;
 }
 
@@ -168,12 +176,12 @@ void OnTimer()
    if(today != g_dayStart) { g_dayStart = today; g_dayStartBal = balance; g_blockedToday = false; }
 
    // --- guards first ---
-   if(equity <= InpInitialCapital * (1.0 - InpTotalStopPct / 100.0))
+   if(equity <= g_isc * (1.0 - InpTotalStopPct / 100.0))
    {
       if(!g_disabled) { CloseAll("total stop"); g_disabled = true; Print("EA disabled: total stop hit"); }
       return;
    }
-   if(equity <= g_dayStartBal - InpInitialCapital * InpDailyStopPct / 100.0)
+   if(equity <= g_dayStartBal - g_isc * InpDailyStopPct / 100.0)
    {
       if(!g_blockedToday) { CloseAll("daily stop"); g_blockedToday = true; }
       return;
