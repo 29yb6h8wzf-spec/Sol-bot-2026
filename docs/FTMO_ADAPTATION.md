@@ -19,7 +19,7 @@ Research results (walk-forward, stage3, seal_candidate_v2_1) were produced on Bi
 ## Plan
 
 1. **Rules guard** — `ftmo_rules.py` (this PR). Offline, fail-closed; models 2-Step and 1-Step floors, trailing EOD max loss, profit target, Best Day rule, min trading days, Prague trading day, request budget.
-2. **Cost model** — add FTMO crypto CFD commission/spread/swap to the walk-forward replay; re-run SOL/XRP/BTC/ETH research and compare with the Binance result.
+2. **Cost model** — `spread_rate` + `swap_daily_rate` in `signalpilot_walkforward.evaluate` (defaults 0 = unchanged) and `ftmo_cost_sensitivity.compare` (Binance vs FTMO across a spread grid, break-even spread). Still to do: run it on real SOL/XRP/BTC/ETH history with spreads/swaps from the MT5 symbol spec.
 3. **Data parity** — export FTMO (MT5) history for the same symbols and measure price divergence vs. Binance on the strategy's timeframes (5m/4h).
 4. **Challenge simulator** — Monte Carlo of trade sequences through `ftmo_rules` to estimate pass/fail probability and choose per-trade risk (default 0.5% ISC) before paying for a Challenge.
 5. **Execution adapter** — MT5 Python bridge (Windows/Wine host) or cTrader Open API, demo/Free Trial only, wired behind `approve_entry` and the existing reconciliation and emergency-flatten guards.
