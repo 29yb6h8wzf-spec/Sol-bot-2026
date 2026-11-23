@@ -22,14 +22,20 @@ import pandas as pd
 
 TRAIN_END = pd.Timestamp("2019-01-01", tz="UTC")
 BASE_USD = {"EUR": 1.15, "GBP": 1.3, "AUD": 0.72, "NZD": 0.66, "USD": 1.0, "CAD": 0.76, "CHF": 1.05}
-SPREAD_PIPS = {"EURUSD": 0.2, "USDJPY": 0.3, "GBPUSD": 0.4, "AUDUSD": 0.3, "USDCAD": 0.5, "USDCHF": 0.5,
-               "NZDUSD": 0.5, "EURGBP": 0.5, "EURJPY": 0.6, "GBPJPY": 1.2, "XAUUSD": 20}
+SPREAD_PIPS = {"XAUUSD": 20}
 DEFAULT_SPREAD = 1.0
 COMMISSION_RT_PER_LOT = 5.0
 SLIP_PIPS = 0.1
 SWAP_PER_NIGHT = 0.00007
-# FTMO symbol spec (ftmo.com/en/symbols, 2026-11-23): swap long, swap short (points), point size.
-SWAP_POINTS = {"EURUSD": (-9.25, 0.3, 0.00001)}
+# FTMO symbol specs supplied by the user 2026-11-23 (avg raw spread, swap points).
+_SPEC_PATH = Path(__file__).with_name("research_inputs") / "ftmo_forex_specs_2026-11-23.json"
+SWAP_POINTS = {}
+if _SPEC_PATH.exists():
+    for _sym, _s in json.loads(_SPEC_PATH.read_text()).items():
+        if _s.get("spread_pips") is not None:
+            SPREAD_PIPS[_sym] = float(_s["spread_pips"])
+        if _s.get("swap_long") is not None and _s.get("swap_short") is not None:
+            SWAP_POINTS[_sym] = (float(_s["swap_long"]), float(_s["swap_short"]), float(_s["point"]))
 
 
 def costs(symbol, price):

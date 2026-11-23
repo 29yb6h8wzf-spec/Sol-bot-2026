@@ -13,3 +13,7 @@ Caveats: best of 18 configs (multiple testing); does not generalise (holdout GBP
 Size of the edge if real: ~32 trades/year × 0.059R ≈ **1.9R per year** → 1.9%/yr at 1% risk, ~5.7%/yr at 3% risk. Too slow for a 10% Challenge target.
 
 Everything else (Donchian, EMA pullback, RSI2 lo=10) is negative on EURUSD holdout after costs.
+
+## Update: all 17 pairs with real FTMO spreads/swaps (user-supplied spec sheet)
+
+RSI(2) lo=5 on H4, pooled: train 6,806 trades −0.001R (t −0.11), holdout 2,831 trades −0.005R (t −0.54). EURUSD's +0.06R is one of 17 pair results scattered around zero → **noise, not an edge.** Strategy rejected.
