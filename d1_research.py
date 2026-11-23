@@ -18,12 +18,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from h1_research import SWAP_PER_NIGHT, costs, load
+from h1_research import SWAP_PER_NIGHT, SWAP_POINTS, costs, load
 
 TRAIN_END = pd.Timestamp("2019-01-01", tz="UTC")
-# FTMO symbol spec (ftmo.com/en/symbols, 2026-11-23): swap long, swap short, point size.
 # Today's swaps applied to history are an approximation: rate differentials changed over time.
-SWAP_POINTS = {"EURUSD": (-9.25, 0.3, 0.00001)}
 
 
 def prep(df):

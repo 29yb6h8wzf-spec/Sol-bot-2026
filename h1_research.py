@@ -28,6 +28,8 @@ DEFAULT_SPREAD = 1.0
 COMMISSION_RT_PER_LOT = 5.0
 SLIP_PIPS = 0.1
 SWAP_PER_NIGHT = 0.00007
+# FTMO symbol spec (ftmo.com/en/symbols, 2026-11-23): swap long, swap short (points), point size.
+SWAP_POINTS = {"EURUSD": (-9.25, 0.3, 0.00001)}
 
 
 def costs(symbol, price):
@@ -161,7 +163,12 @@ def simulate(symbol, df, ind, cfg):
             exit_px = c[j] * (1 - d * k["slip"])
         exit_px *= (1 - d * k["half_spread"])
         nights = max(0, (prague_day[j] - prague_day[e_i]).days)
-        ret = d * (exit_px - entry) / entry - k["fee"] * 2 - SWAP_PER_NIGHT * nights
+        if symbol in SWAP_POINTS:
+            lng, sht, point = SWAP_POINTS[symbol]
+            swap = -(lng if d > 0 else sht) * point * nights / entry
+        else:
+            swap = SWAP_PER_NIGHT * nights
+        ret = d * (exit_px - entry) / entry - k["fee"] * 2 - swap
         risk = stop_d[i] / entry
         trades.append((idx[i], ret / risk, reason))
         i = j + 1
