@@ -16,7 +16,18 @@ def _prague_midnights(start_ms,end_ms):
     b=datetime.fromtimestamp(end_ms/1000,tz=timezone.utc).astimezone(_PRAGUE).date()
     return max(0,(b-a).days)
 
-def _check(rows, step):
+_MAX_CLOSURE_MS=3*86400000+3600000
+
+def _market_closure(prev_ms,next_ms):
+    """Forex weekend/holiday closure: gap of at most ~3 days that covers a UTC Saturday."""
+    if next_ms-prev_ms>_MAX_CLOSURE_MS:return False
+    day=86400000;t=prev_ms-prev_ms%day
+    while t<next_ms:
+        if datetime.fromtimestamp(t/1000,tz=timezone.utc).weekday()==5:return True
+        t+=day
+    return False
+
+def _check(rows, step, allow_closures=False):
     if not isinstance(rows,list) or len(rows)<210: raise ValueError("insufficient_history")
     prev=None
     for row in rows:
@@ -24,14 +35,14 @@ def _check(rows, step):
         _,o,h,l,c,v=row
         a=list(map(lambda x:D(str(x)),(o,h,l,c,v)))
         if not all(x.is_finite() for x in a) or min(a[:4])<=0 or a[4]<0 or a[1]<max(a[0],a[3]) or a[2]>min(a[0],a[3]): raise ValueError("invalid_ohlcv")
-        if prev is not None and row[0]!=prev+step: raise ValueError("gapped_candles")
+        if prev is not None and row[0]!=prev+step and not (allow_closures and row[0]>prev and _market_closure(prev,row[0])): raise ValueError("gapped_candles")
         prev=row[0]
 
 def _view(rows):
     return [{"time":r[0],"high":float(r[2]),"low":float(r[3]),"close":float(r[4]),"volume":float(r[5])} for r in rows]
 
-def evaluate(five,four,*,thresholds=(70,75,80,85),fee_rate="0.0006",slippage_rate="0.0005",max_holding_bars=48,allowed_strategies=None,stop_atr="1",target_atr="1.5",min_signal_ms=None,max_exit_ms=None,spread_rate="0",swap_daily_rate="0"):
-    _check(five,300000);_check(four,14400000)
+def evaluate(five,four,*,thresholds=(70,75,80,85),fee_rate="0.0006",slippage_rate="0.0005",max_holding_bars=48,allowed_strategies=None,stop_atr="1",target_atr="1.5",min_signal_ms=None,max_exit_ms=None,spread_rate="0",swap_daily_rate="0",allow_market_closures=False):
+    _check(five,300000,allow_market_closures);_check(four,14400000,allow_market_closures)
     fee,slip,stop_factor,target_factor,spread,swap=map(lambda v:D(str(v)),(fee_rate,slippage_rate,stop_atr,target_atr,spread_rate,swap_daily_rate))
     if not all(x.is_finite() for x in (fee,slip,stop_factor,target_factor,spread,swap)) or spread<0 or spread>=D("0.05") or swap<0: raise ValueError("invalid_assumptions")
     half=spread/2

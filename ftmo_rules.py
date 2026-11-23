@@ -1,4 +1,4 @@
-"""Offline, fail-closed FTMO Trading Objectives guard; never places orders.
+"""Offline, fail-closed FTMO Trading Objectives guard (forex first); never places orders.
 
 Rules modelled (source: ftmo.com/en/trading-objectives, checked 2026-11-23):
 
@@ -30,8 +30,9 @@ D = Decimal
 PRAGUE = ZoneInfo("Europe/Prague")
 FTMO_REQUEST_LIMIT = 2000
 INTERNAL_REQUEST_LIMIT = 1000
-# Conservative crypto CFD leverage (FTMO normal account publishes ~1:3.3).
-CRYPTO_LEVERAGE_CAP = D("3")
+# FTMO normal-account leverage by asset class (Swing accounts are lower: forex 1:30).
+LEVERAGE_CAPS = {"forex": D("100"), "crypto": D("3")}
+CRYPTO_LEVERAGE_CAP = LEVERAGE_CAPS["crypto"]
 
 
 @dataclass(frozen=True)
@@ -117,7 +118,7 @@ def breached(plan_name, isc, equity, midnight_balance, highest_prior_midnight=No
 
 def approve_entry(plan_name, *, isc, equity, midnight_balance, open_risk, proposed_risk,
                   proposed_notional, used_margin, est_costs, requests_today,
-                  highest_prior_midnight=None, leverage=CRYPTO_LEVERAGE_CAP,
+                  highest_prior_midnight=None, asset_class="forex", leverage=D("30"),
                   per_trade_fraction=D("0.005"), safety_fraction=D("0.01")):
     """Approve a new entry only if worst-case equity stays clear of both FTMO floors.
 
@@ -142,7 +143,10 @@ def approve_entry(plan_name, *, isc, equity, midnight_balance, open_risk, propos
         return False, "invalid_account"
     if not (D("0") < per_trade_fraction <= D("0.01")) or not (D("0") <= safety_fraction < plan.daily_loss):
         return False, "invalid_config"
-    if not (D("1") <= leverage <= CRYPTO_LEVERAGE_CAP):
+    cap = LEVERAGE_CAPS.get(asset_class)
+    if cap is None:
+        return False, "invalid_asset_class"
+    if not (D("1") <= leverage <= cap):
         return False, "leverage_cap"
     if requests_today >= INTERNAL_REQUEST_LIMIT:
         return False, "request_budget"

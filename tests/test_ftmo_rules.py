@@ -68,8 +68,11 @@ def test_trailing_max_loss_budget():
 
 
 def test_leverage_and_margin():
-    assert entry(leverage=5) == (False, "leverage_cap")
-    assert entry(proposed_notional=400000) == (False, "insufficient_margin")
+    assert entry(leverage=101) == (False, "leverage_cap")
+    assert entry(asset_class="crypto", leverage=5) == (False, "leverage_cap")
+    assert entry(asset_class="stocks") == (False, "invalid_asset_class")
+    assert entry(proposed_notional=3100000) == (False, "insufficient_margin")
+    assert entry(proposed_notional=2900000)[0] is True  # EURUSD ~25 lots at 1:30
 
 
 def test_request_budget_well_below_ftmo_2000():

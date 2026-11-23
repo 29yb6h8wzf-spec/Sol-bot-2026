@@ -1,20 +1,14 @@
-"""Research-only: does a SignalPilot candidate survive FTMO crypto-CFD costs?
+"""Research-only: does a SignalPilot candidate survive FTMO forex costs?
 
-Runs the same walk-forward candidate under the Binance cost profile and under
-FTMO CFD costs across a spread grid, and reports the break-even spread.
-No orders, no network. Input candles must be preloaded closed 5m/4h rows.
-
-FTMO numbers are assumptions to be replaced with the MT5/cTrader symbol
-specification of the account actually used (spread is quoted per symbol and
-changes with liquidity; swap is per symbol and per direction).
+Runs the same walk-forward candidate with zero costs (gross edge) and with
+FTMO commission + spread + swap across a spread grid (in pips), and reports the
+widest tested spread that still leaves a positive mean per trade.
+No orders, no network. Input: closed 5m forex candles; 4h is rebuilt in UTC.
 """
-from decimal import Decimal as D
+from forex_research import forex_costs, resample_4h
 from signalpilot_walkforward import evaluate
 
-BINANCE = {"fee_rate": "0.0006", "slippage_rate": "0.0005", "spread_rate": "0", "swap_daily_rate": "0"}
-# Commission 0.065% of crypto volume per side (published FTMO cTrader conditions).
-FTMO_CRYPTO_BASE = {"fee_rate": "0.00065", "slippage_rate": "0.0005"}
-SPREAD_GRID = ("0.0005", "0.001", "0.002", "0.003")
+SPREAD_GRID_PIPS = ("0.1", "0.3", "0.5", "1.0")
 
 
 def _stats(result, threshold):
@@ -25,25 +19,28 @@ def _stats(result, threshold):
             "sum_net_pct_uncompounded": data["sum_net_return_pct_uncompounded"]}
 
 
-def compare(five, four, candidate, *, swap_daily_rate, spreads=SPREAD_GRID, **window):
+def compare(five, candidate, *, price, pip, commission_round_turn_per_lot, swap_daily_rate,
+            quote_to_usd="1", slippage_rate="0.00002", spreads_pips=SPREAD_GRID_PIPS, **window):
     """candidate: one entry shaped like signalpilot_exit_grid.CANDIDATES.
-    swap_daily_rate is required (fraction of notional per rollover) so nobody
-    forgets it; pass "0" only after checking the symbol spec."""
+    commission and swap are required so nobody runs with silent zero costs."""
     if candidate.get("strategy") not in ("EMA_ADX", "RSI_BOLL", "MACD_VOLUME"):
         raise ValueError("invalid_strategy")
-    if not spreads:
+    if not spreads_pips:
         raise ValueError("invalid_spread_grid")
+    four = resample_4h(five)
     t = candidate["threshold"]
     args = dict(thresholds=(t,), allowed_strategies=(candidate["strategy"],),
                 stop_atr=candidate["stop_atr"], target_atr=candidate["target_atr"],
-                max_holding_bars=candidate["hold"], **window)
-    binance = _stats(evaluate(five, four, **BINANCE, **args), t)
+                max_holding_bars=candidate["hold"], allow_market_closures=True, **window)
+    gross = _stats(evaluate(five, four, fee_rate="0", slippage_rate="0", **args), t)
     ftmo = []
-    for spread in sorted(spreads, key=D):
-        cost = dict(FTMO_CRYPTO_BASE, spread_rate=spread, swap_daily_rate=swap_daily_rate)
-        ftmo.append({"spread_rate": str(spread), **_stats(evaluate(five, four, **cost, **args), t)})
+    for pips in sorted(spreads_pips, key=float):
+        cost = forex_costs(price=price, spread_pips=pips, pip=pip, quote_to_usd=quote_to_usd,
+                           commission_round_turn_per_lot=commission_round_turn_per_lot)
+        res = evaluate(five, four, slippage_rate=slippage_rate, swap_daily_rate=swap_daily_rate, **cost, **args)
+        ftmo.append({"spread_pips": str(pips), **cost, **_stats(res, t)})
     survivors = [x for x in ftmo if x["mean_net_pct"] is not None and x["mean_net_pct"] > 0]
-    return {"status": "OFFLINE_RESEARCH_ONLY", "orders_sent": False,
-            "candidate": candidate, "binance": binance, "ftmo": ftmo,
-            "max_tested_spread_with_positive_mean": survivors[-1]["spread_rate"] if survivors else None,
+    return {"status": "OFFLINE_RESEARCH_ONLY", "orders_sent": False, "candidate": candidate,
+            "gross_no_costs": gross, "ftmo": ftmo,
+            "max_tested_spread_pips_with_positive_mean": survivors[-1]["spread_pips"] if survivors else None,
             "ftmo_assumptions_verified": False}
