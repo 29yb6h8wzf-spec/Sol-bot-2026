@@ -74,6 +74,9 @@ button[disabled]{opacity:.5}
   </div>
   <div class="err" id="err"></div>
 
+  <h2>בדיקה אחרונה של כל שיטה</h2>
+  <ul class="feed" id="chk"><li class="empty">—</li></ul>
+
   <h2>פוזיציות פתוחות</h2>
   <div class="pos" id="pos"><div class="empty">—</div></div>
 
@@ -93,12 +96,14 @@ $j = Get-ChildItem "$ft\logs\2*.log" | sort Name | select -Last 1
 $n = Get-Content $j.FullName | Select-String "Network.*(authorized|lost|synchronized)" | select -Last 1
 "NET|" + ($n.Line -split [char]9)[-1]
 "NOW|" + (Get-Date).ToUniversalTime().ToString("yyyyMMdd HH:mm:ss")
-Get-ChildItem "$ft\MQL5\Logs\2*.log" | sort Name | select -Last 7 | %{
+$all = Get-ChildItem "$ft\MQL5\Logs\2*.log" | sort Name | select -Last 7 | %{
   $d=$_.BaseName
-  Get-Content $_.FullName | ?{ $_ -match 'US100TripleEA' -and $_ -match 'OrderSend|\] (BUY|SELL)|closed:|stop|disabled|failed|ready' } | %{
+  Get-Content $_.FullName | ?{ $_ -match 'US100TripleEA' -and $_ -match 'OrderSend|\] (BUY|SELL)|closed:|stop|disabled|failed|ready|CHK' } | %{
     $f=$_ -split [char]9; "E|" + $d + "|" + $f[2] + "|" + $f[4]
   }
-} | select -Last 170
+}
+$all | ?{ $_ -notmatch 'CHK' } | select -Last 150
+$all | ?{ $_ -match 'CHK' } | select -Last 8
 '''
 cmd = await call_boto3(service_name="ssm", operation_name="SendCommand", region_name="il-central-1",
     params={"InstanceIds": ["i-0386e781ed9957a89"], "DocumentName": "AWS-RunPowerShellScript",
@@ -141,7 +146,7 @@ function dig(o){
 
 function parse(out){
   const lines = out.split(/\r?\n/);
-  const st = {run:false, net:"", now:null, events:[], open:{}};
+  const st = {run:false, net:"", now:null, events:[], open:{}, chk:{}};
   let last = null;
   for (const ln of lines){
     if (ln.startsWith("RUN|")) st.run = /true/i.test(ln);
@@ -153,6 +158,7 @@ function parse(out){
       if (!dd || !tt) continue;
       const when = new Date(Date.UTC(+dd[1],dd[2]-1,+dd[3],+tt[1],+tt[2],+tt[3]));
       let m;
+      if ((m = msg.match(/^\[CHK (BTM|DIP|TOM)\] (.*)$/))){ st.chk[m[1]] = {when, text:m[2]}; continue; }
       if ((m = msg.match(/OrderSend: market (buy|sell) ([\d.]+) (position #\d+ )?.*\[done at ([\d.]+)\]/))){ last = {price:+m[4]}; continue; }
       if ((m = msg.match(/^\[(TOM|BTM|DIP)[^\]]*\] (BUY|SELL) ([\d.]+) lots/))){
         const mod = m[1], dir = m[2]==="BUY"?1:-1, lots = +m[3], price = last?last.price:null;
@@ -174,6 +180,19 @@ function parse(out){
 
 const WHY = s => /daily stop/.test(s)?"עצירת הפסד יומית":/total stop/.test(s)?"עצירת הפסד כוללת":/session end/.test(s)?"סוף יום מסחר":/signal change/.test(s)?"האות התחלף":/TOM exit/.test(s)?"יום 3 של החודש":/DIP exit/.test(s)?"RSI עלה מעל 50":s;
 
+const fmt = v => Number(v).toLocaleString("en-US",{maximumFractionDigits:0});
+function chkText(mod, t){
+  const g = k => { const m = t.match(new RegExp(k+"=([-\\d.]+)")); return m ? +m[1] : null; };
+  if (mod==="BTM"){
+    if (/not enough|no data/.test(t)) return "אין מספיק היסטוריה עדיין";
+    const tg = g("target"), c = g("c"), ub = g("ub"), lb = g("lb");
+    const what = tg>0 ? "פריצה למעלה – קנייה" : tg<0 ? "פריצה למטה – מכירה" : "אין פריצה";
+    return c!=null ? what+" · מחיר "+fmt(c)+" · טווח "+fmt(lb)+"–"+fmt(ub) : what;
+  }
+  if (mod==="DIP"){ const r = g("rsi"), p = g("pos"); return "RSI "+r+(p?" · מחזיק, יוצא מעל 50":" · קונה מתחת ל-10"); }
+  const td = g("tdom"), ld = g("lastday"), p = g("pos");
+  return p ? "מחזיק, יוצא ביום המסחר ה-3" : ld ? "יום אחרון בחודש – כניסה" : "יום מסחר "+td+" בחודש, אין כניסה";
+}
 function render(st){
   const today = dayKey(new Date()), now = new Date(), weekAgo = now - 7*864e5;
   const closes = st.events.filter(e => e.kind==="close" && e.pnl!=null);
@@ -193,6 +212,8 @@ function render(st){
   $("pos").innerHTML = nOpen ? Object.entries(st.open).map(([k,p]) =>
     '<div class="pcard"><b>'+esc(MOD[k]||k)+'</b><span class="tag '+(p.dir<0?"r":"")+'">'+(p.dir>0?"קנייה":"מכירה")+'</span><span class="num">'+esc(p.lots)+' lots @ '+esc(p.price??"?")+'</span><span class="note">מאז '+esc(dm(p.when)+" "+hm(p.when))+'</span></div>').join("")
     : '<div class="empty">אין כרגע.</div>';
+  $("chk").innerHTML = ["BTM","DIP","TOM"].map(k => { const c = st.chk[k];
+    return '<li><span class="t num">'+(c?esc(hm(c.when))+'<span class="d">'+esc(dm(c.when))+'</span>':'—')+'</span><span><b>'+esc(MOD[k])+'</b> · '+(c?esc(chkText(k,c.text)):'עוד לא בדק')+'</span></li>'; }).join("");
   const ev = st.events.slice().reverse().slice(0,80);
   $("feed").innerHTML = ev.length ? ev.map(e => {
     const t = '<span class="t num">'+esc(hm(e.when))+'<span class="d">'+esc(dm(e.when))+'</span></span>';

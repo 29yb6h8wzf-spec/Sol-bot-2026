@@ -14,7 +14,7 @@
 //| midnight, total stop vs initial capital, server-side price stop  |
 //| on every position. RUN ON THE FREE TRIAL FIRST. Not advice.      |
 //+------------------------------------------------------------------+
-#property version   "1.00"
+#property version   "1.01"
 #include <Trade/Trade.mqh>
 
 input string InpSymbol         = "US100.cash";
@@ -48,6 +48,7 @@ int      g_tomMonth = -1;
 int      g_btmSlotDone = -1;       // minute-of-day of last processed BTM slot
 datetime g_btmSlotDay = 0;
 bool     g_btmFlatDone = false;
+string   g_btmInfo = "";        // last BTM evaluation, for the heartbeat log
 
 long MagicTOM() { return InpMagicBase + 1; }
 long MagicDIP() { return InpMagicBase + 2; }
@@ -183,6 +184,7 @@ int BtmTarget(datetime slotOpen)
 {
    MqlRates r[];
    int n = CopyRates(InpSymbol, PERIOD_M5, TimeCurrent() - (InpBtmLookback + 12) * 86400, TimeCurrent(), r);
+   g_btmInfo = "no data";
    if(n <= 0) return 0;
    datetime today = DayOf(slotOpen);
    int slotMin = (int)((slotOpen - today) / 60);
@@ -214,10 +216,11 @@ int BtmTarget(datetime slotOpen)
       }
    }
    int k = ArraySize(days);
-   if(O <= 0 || cNow <= 0 || vv <= 0 || k < InpBtmLookback) return 0;
+   if(O <= 0 || cNow <= 0 || vv <= 0 || k < InpBtmLookback) { g_btmInfo = StringFormat("not enough history (sessions %d)", k); return 0; }
    prevClose = closes[k - 1];
    double sig = 0; for(int j = k - InpBtmLookback; j < k; j++) sig += moves[j]; sig /= InpBtmLookback;
    double ub = MathMax(O, prevClose) * (1 + sig), lb = MathMin(O, prevClose) * (1 - sig), vwap = vw / vv;
+   g_btmInfo = StringFormat("c=%.2f ub=%.2f lb=%.2f vwap=%.2f", cNow, ub, lb, vwap);
    if(cNow > ub && cNow > vwap) return 1;
    if(cNow < lb && cNow < vwap) return -1;
    return 0;
@@ -278,6 +281,7 @@ void OnTimer()
             g_btmSlotDay = today; g_btmSlotDone = slot;
             int target = BtmTarget(today + (slot - 5) * 60);
             int cur = PosDir(MagicBTM());
+            PrintFormat("[CHK BTM] slot=%02d:%02d target=%d cur=%d %s", slot / 60, slot % 60, target, cur, g_btmInfo);
             if(target != cur)
             {
                if(cur != 0) CloseMagic(MagicBTM(), "BTM signal change");
@@ -293,6 +297,7 @@ void OnTimer()
       g_closeDone = today;
       if(InpUseTOM)
       {
+         PrintFormat("[CHK TOM] tdom=%d lastday=%d pos=%d", TradingDayOfMonth(today), IsLastTradingDayOfMonth(today), PosDir(MagicTOM()));
          if(PosDir(MagicTOM()) != 0)
          {
             datetime opened = PosTime(MagicTOM());
@@ -309,6 +314,7 @@ void OnTimer()
          else
          {
             int cur = PosDir(MagicDIP());
+            PrintFormat("[CHK DIP] rsi=%.1f pos=%d", rsi, cur);
             if(cur != 0 && rsi > InpDipExitRSI) CloseMagic(MagicDIP(), StringFormat("DIP exit rsi %.1f", rsi));
             else if(cur == 0 && rsi < InpDipEntryRSI) Open(MagicDIP(), 1, InpDipStopPct, StringFormat("DIP %.1f", rsi));
          }
