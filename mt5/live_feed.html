@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>בוט US100 – שידור חי</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&family=Heebo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+/* VOICE: station departure board, calm and exact
+   IDEA: a Swiss timetable of trades: hanging times, one line per event
+   PICTURE: the status block with today's P&L in huge numerals
+   COLOUR and TYPE: white/black with signal red; Archivo numerals, Heebo Hebrew
+   LAYOUT: thick top rule, status band, open positions, then the timetable */
+:root{color-scheme:light dark;--bg:light-dark(#fff,#0e0e0e);--ink:light-dark(#0b0b0b,#f2f2f2);--mute:light-dark(#6b6b6b,#9a9a9a);--line:light-dark(#e3e3e3,#262626);--red:#e4002b;--up:light-dark(#0a7d3c,#34c66f);--panel:light-dark(#f4f4f4,#171717)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Heebo,system-ui,sans-serif;overflow-x:clip;border-top:10px solid var(--ink)}
+.num{font-family:Archivo,system-ui,sans-serif;font-variation-settings:"wdth" 112;font-weight:800;font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate;white-space:nowrap}
+.band{padding:clamp(20px,4vw,48px) max(5vw,16px);max-width:1240px;margin:0 auto}
+h1{font-size:clamp(28px,6vw,46px);line-height:1.05;margin:0 0 6px;text-wrap:balance;font-weight:800}
+.sub{color:var(--mute);margin:0;font-size:15px}
+.status{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:0;border-top:3px solid var(--ink);margin-top:18px}
+.big{padding:18px 0 18px 18px;border-left:1px solid var(--line)}
+.big .lbl,.cell .lbl{font-size:14px;color:var(--mute)}
+.big .num{font-size:clamp(44px,12vw,88px);line-height:1}
+.cells{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.cell{padding:14px 16px;border-bottom:1px solid var(--line)}
+.cell .v{font-size:20px;font-weight:700}
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-inline-end:8px;vertical-align:middle;background:var(--mute)}
+.ok{background:var(--up)}.bad{background:var(--red)}
+.up{color:var(--up)}.down{color:var(--red)}
+h2{font-size:20px;margin:28px 0 8px;font-weight:800;border-top:3px solid var(--ink);padding-top:10px}
+.pos{display:grid;gap:8px}
+.pcard{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;background:var(--panel);padding:12px 14px}
+.pcard b{font-size:17px}
+.feed{list-style:none;margin:0;padding:0}
+.feed li{display:grid;grid-template-columns:5.2em minmax(0,1fr);gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.feed .t{font-size:22px;line-height:1.1}.feed .d{font-size:12px;color:var(--mute);display:block;font-weight:400}
+.tag{display:inline-block;font-size:13px;font-weight:700;padding:1px 8px;margin-inline-end:6px;border:1.5px solid currentColor}
+.tag.r{color:var(--red)}
+.empty{color:var(--mute);padding:16px 0}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
+button{font:inherit;font-weight:700;min-height:44px;padding:0 18px;background:var(--ink);color:var(--bg);border:0;cursor:pointer}
+button:focus-visible{outline:3px solid var(--red);outline-offset:2px}
+button[disabled]{opacity:.5}
+.note{font-size:13px;color:var(--mute)}
+.err{background:var(--red);color:#fff;padding:10px 14px;margin-top:12px;display:none}
+@media(max-width:600px){.status{grid-template-columns:minmax(0,1fr)}.big{border-left:0;padding-left:0;border-bottom:1px solid var(--line)}}
+@media(prefers-reduced-motion:no-preference){.pulse{animation:p 1.2s ease-in-out infinite}@keyframes p{50%{opacity:.35}}}
+</style>
+</head>
+<body>
+<main class="band">
+  <h1 id="head">מתחבר לשרת…</h1>
+  <p class="sub">US100TripleEA · חשבון דמו FTMO · 3 שיטות, ‎2×‎ כל אחת</p>
+
+  <section class="status" aria-live="polite">
+    <div class="big">
+      <div class="lbl">רווח/הפסד היום (משוער, עסקאות שנסגרו)</div>
+      <div class="num" id="today">—</div>
+      <div class="lbl" id="week">השבוע: —</div>
+    </div>
+    <div class="cells">
+      <div class="cell"><div class="lbl">הבוט</div><div class="v"><span class="dot" id="rdot"></span><span id="run">—</span></div></div>
+      <div class="cell"><div class="lbl">חיבור ל-FTMO</div><div class="v" id="net">—</div></div>
+      <div class="cell"><div class="lbl">עסקאות היום</div><div class="v num" id="cnt">—</div></div>
+      <div class="cell"><div class="lbl">עודכן</div><div class="v" id="upd">—</div></div>
+    </div>
+  </section>
+  <div class="bar">
+    <button id="refresh" type="button">רענן עכשיו</button>
+    <span class="note">מתרענן לבד כל דקה. יומן הבוט נכתב באיחור של עד כמה דקות.</span>
+  </div>
+  <div class="err" id="err"></div>
+
+  <h2>פוזיציות פתוחות</h2>
+  <div class="pos" id="pos"><div class="empty">—</div></div>
+
+  <h2>מה קרה</h2>
+  <ul class="feed" id="feed"><li class="empty">טוען…</li></ul>
+  <p class="note">רווח/הפסד מחושב מהמחירים ביומן (כיוון × הפרש × לוטים), בלי swap ועמלות. המספר הרשמי נמצא ב-MT5 ובלוח של FTMO.</p>
+</main>
+
+<script>
+{
+const PY = String.raw`ps = r'''
+$ErrorActionPreference="SilentlyContinue"
+$ft="C:\Users\FTMODemo\FTMO"
+$p = Get-CimInstance Win32_Process -Filter "Name='terminal64.exe'" | ?{ $_.CommandLine -like '*\FTMO\terminal64.exe*ftmo-trading.ini*' }
+"RUN|" + [bool]$p
+$j = Get-ChildItem "$ft\logs\2*.log" | sort Name | select -Last 1
+$n = Get-Content $j.FullName | Select-String "Network.*(authorized|lost|synchronized)" | select -Last 1
+"NET|" + ($n.Line -split [char]9)[-1]
+"NOW|" + (Get-Date).ToUniversalTime().ToString("yyyyMMdd HH:mm:ss")
+Get-ChildItem "$ft\MQL5\Logs\2*.log" | sort Name | select -Last 7 | %{
+  $d=$_.BaseName
+  Get-Content $_.FullName | ?{ $_ -match 'US100TripleEA' -and $_ -match 'OrderSend|\] (BUY|SELL)|closed:|stop|disabled|failed|ready' } | %{
+    $f=$_ -split [char]9; "E|" + $d + "|" + $f[2] + "|" + $f[4]
+  }
+} | select -Last 170
+'''
+cmd = await call_boto3(service_name="ssm", operation_name="SendCommand", region_name="il-central-1",
+    params={"InstanceIds": ["i-0386e781ed9957a89"], "DocumentName": "AWS-RunPowerShellScript",
+            "Comment": "read-only: live trade feed page", "Parameters": {"commands": [ps]}, "TimeoutSeconds": 60})
+cid = cmd["Command"]["CommandId"]
+res = None
+for _ in range(25):
+    await asyncio.sleep(2)
+    try:
+        res = await call_boto3(service_name="ssm", operation_name="GetCommandInvocation", region_name="il-central-1",
+                               params={"CommandId": cid, "InstanceId": "i-0386e781ed9957a89"})
+        if res["Status"] not in ("Pending", "InProgress", "Delayed"):
+            break
+    except ClientError:
+        pass
+result = {"status": res["Status"] if res else "none", "out": (res or {}).get("StandardOutputContent", "")}
+result`;
+
+const SERVER = "AWS MCP", TOOL = "aws___run_script";
+const MOD = {TOM:"תחילת חודש", DIP:"קניית ירידות", BTM:"תוך-יומי"};
+const MAGIC = {"20261125":"TOM","20261126":"DIP","20261127":"BTM"};
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const tz = {timeZone:"Asia/Jerusalem"};
+const hm = d => d.toLocaleTimeString("he-IL",{...tz,hour:"2-digit",minute:"2-digit"});
+const dm = d => d.toLocaleDateString("he-IL",{...tz,day:"2-digit",month:"2-digit"});
+const dayKey = d => d.toLocaleDateString("en-CA",tz);
+const money = v => (v>0?"+":v<0?"−":"") + "$" + Math.abs(v).toLocaleString("en-US",{maximumFractionDigits:0});
+const cls = v => v>0?"up":v<0?"down":"";
+
+function dig(o){
+  if (o == null) return null;
+  if (typeof o === "string"){ try { return dig(JSON.parse(o)); } catch(e){ return o.includes("RUN|") ? o : null; } }
+  if (typeof o === "object"){
+    if (typeof o.out === "string" && o.out.includes("RUN|")) return o.out;
+    for (const k of Object.keys(o)){ const r = dig(o[k]); if (r) return r; }
+  }
+  return null;
+}
+
+function parse(out){
+  const lines = out.split(/\r?\n/);
+  const st = {run:false, net:"", now:null, events:[], open:{}};
+  let last = null;
+  for (const ln of lines){
+    if (ln.startsWith("RUN|")) st.run = /true/i.test(ln);
+    else if (ln.startsWith("NET|")) st.net = ln.slice(4);
+    else if (ln.startsWith("NOW|")){ const m = ln.match(/(\d{4})(\d\d)(\d\d) (\d\d):(\d\d):(\d\d)/); if (m) st.now = new Date(Date.UTC(+m[1],m[2]-1,+m[3],+m[4],+m[5],+m[6])); }
+    else if (ln.startsWith("E|")){
+      const [, d, t, ...rest] = ln.split("|"); const msg = rest.join("|").trim();
+      const dd = d.match(/(\d{4})(\d\d)(\d\d)/), tt = (t||"").match(/(\d\d):(\d\d):(\d\d)/);
+      if (!dd || !tt) continue;
+      const when = new Date(Date.UTC(+dd[1],dd[2]-1,+dd[3],+tt[1],+tt[2],+tt[3]));
+      let m;
+      if ((m = msg.match(/OrderSend: market (buy|sell) ([\d.]+) (position #\d+ )?.*\[done at ([\d.]+)\]/))){ last = {price:+m[4]}; continue; }
+      if ((m = msg.match(/^\[(TOM|BTM|DIP)[^\]]*\] (BUY|SELL) ([\d.]+) lots/))){
+        const mod = m[1], dir = m[2]==="BUY"?1:-1, lots = +m[3], price = last?last.price:null;
+        st.open[mod] = {dir, lots, price, when};
+        st.events.push({when, kind:"open", mod, dir, lots, price}); last = null; continue;
+      }
+      if ((m = msg.match(/^\[(\d+)\] closed: (.*)$/))){
+        const mod = MAGIC[m[1]] || "?", p = st.open[mod], price = last?last.price:null;
+        const pnl = p && p.price && price ? p.dir*(price-p.price)*p.lots : null;
+        st.events.push({when, kind:"close", mod, why:m[2], price, pnl, dir:p?p.dir:0}); delete st.open[mod]; last = null; continue;
+      }
+      if (/failed/.test(msg)) st.events.push({when, kind:"err", msg});
+      else if (/EA disabled/.test(msg)) st.events.push({when, kind:"alert", msg:"הבוט נעצר: עצירת הפסד כוללת"});
+      else if (/US100TripleEA ready/.test(msg)) { st.open = {}; st.events.push({when, kind:"start", msg}); }
+    }
+  }
+  return st;
+}
+
+const WHY = s => /daily stop/.test(s)?"עצירת הפסד יומית":/total stop/.test(s)?"עצירת הפסד כוללת":/session end/.test(s)?"סוף יום מסחר":/signal change/.test(s)?"האות התחלף":/TOM exit/.test(s)?"יום 3 של החודש":/DIP exit/.test(s)?"RSI עלה מעל 50":s;
+
+function render(st){
+  const today = dayKey(new Date()), now = new Date(), weekAgo = now - 7*864e5;
+  const closes = st.events.filter(e => e.kind==="close" && e.pnl!=null);
+  const tP = closes.filter(e => dayKey(e.when)===today).reduce((a,e)=>a+e.pnl,0);
+  const wP = closes.filter(e => e.when >= weekAgo).reduce((a,e)=>a+e.pnl,0);
+  const tCnt = st.events.filter(e => e.kind==="open" && dayKey(e.when)===today).length;
+  const anyStop = st.events.some(e => e.kind==="close" && /stop/.test(e.why) && dayKey(e.when)===today);
+  $("today").textContent = money(tP); $("today").className = "num " + cls(tP);
+  $("week").textContent = "7 ימים אחרונים: " + money(wP);
+  $("run").textContent = st.run ? "רץ" : "לא רץ"; $("rdot").className = "dot " + (st.run?"ok":"bad");
+  const lost = /lost/i.test(st.net);
+  $("net").textContent = lost ? "מנותק" : st.net ? "מחובר" : "לא ידוע";
+  $("cnt").textContent = String(tCnt);
+  $("upd").textContent = hm(now);
+  const nOpen = Object.keys(st.open).length;
+  $("head").textContent = !st.run ? "הבוט לא רץ" : anyStop ? "עצירת הפסד הופעלה היום" : nOpen ? (nOpen===1?"פוזיציה אחת פתוחה":nOpen+" פוזיציות פתוחות") : "אין פוזיציות פתוחות";
+  $("pos").innerHTML = nOpen ? Object.entries(st.open).map(([k,p]) =>
+    '<div class="pcard"><b>'+esc(MOD[k]||k)+'</b><span class="tag '+(p.dir<0?"r":"")+'">'+(p.dir>0?"קנייה":"מכירה")+'</span><span class="num">'+esc(p.lots)+' lots @ '+esc(p.price??"?")+'</span><span class="note">מאז '+esc(dm(p.when)+" "+hm(p.when))+'</span></div>').join("")
+    : '<div class="empty">אין כרגע.</div>';
+  const ev = st.events.slice().reverse().slice(0,80);
+  $("feed").innerHTML = ev.length ? ev.map(e => {
+    const t = '<span class="t num">'+esc(hm(e.when))+'<span class="d">'+esc(dm(e.when))+'</span></span>';
+    let body;
+    if (e.kind==="open") body = '<span class="tag '+(e.dir<0?"r":"")+'">נפתח</span><b>'+esc(MOD[e.mod])+'</b> · '+(e.dir>0?"קנייה":"מכירה")+' <span class="num">'+esc(e.lots)+' @ '+esc(e.price??"?")+'</span>';
+    else if (e.kind==="close") body = '<span class="tag">נסגר</span><b>'+esc(MOD[e.mod]||e.mod)+'</b> · '+esc(WHY(e.why))+(e.pnl!=null?' · <span class="num '+cls(e.pnl)+'">'+esc(money(e.pnl))+'</span>':'');
+    else if (e.kind==="start") body = '<span class="tag">הופעל</span>הבוט עלה ומוכן';
+    else body = '<span class="tag r">שגיאה</span>'+esc(e.msg);
+    return '<li>'+t+'<span>'+body+'</span></li>';
+  }).join("") : '<li class="empty">עוד לא היו עסקאות. המסחר התוך-יומי פועל בימי חול 17:00–23:00 שעון ישראל.</li>';
+}
+
+function fail(msg){ const e=$("err"); e.textContent = msg; e.style.display = "block"; }
+function ok(){ $("err").style.display = "none"; }
+
+function handle(payload){
+  const out = dig(payload);
+  if (!out){ fail("השרת לא החזיר נתונים. נסה לרענן."); return; }
+  ok(); render(parse(out));
+}
+
+(async () => {
+  const mcp = await claude.use("mcp");
+  if (!mcp){ $("head").textContent = "אין חיבור"; fail("הדף צריך את החיבור AWS MCP. פתח אותו ב-Claude ואשר את הגישה."); $("feed").innerHTML='<li class="empty">—</li>'; return; }
+  mcp.watchTool(SERVER, TOOL, {code: PY}, ev => {
+    if (ev.type === "data") handle(ev.result && ev.result.payload !== undefined ? ev.result.payload : ev.result);
+    else if (ev.type === "error") fail("שגיאה בקריאת השרת: " + (ev.error && (ev.error.code || ev.error.message) || "לא ידוע"));
+  }, {refetchInterval: 60000});
+  const btn = $("refresh");
+  btn.addEventListener("click", async () => {
+    btn.disabled = true; btn.classList.add("pulse");
+    try { const r = await mcp.callTool(SERVER, TOOL, {code: PY}); handle(r && r.payload !== undefined ? r.payload : r); }
+    catch(e){ fail("הרענון נכשל: " + (e && (e.code || e.message) || "")); }
+    finally { btn.disabled = false; btn.classList.remove("pulse"); }
+  });
+})();
+}
+</script>
+</body>
+</html>
