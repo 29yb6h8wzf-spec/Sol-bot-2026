@@ -25,11 +25,11 @@ ini.write_text(
     "[Common]\n"
     f"Login={LOGIN}\nPassword={pw}\nServer={SERVER}\n"
     "[Experts]\nAllowLiveTrading=1\nEnabled=1\nAccount=0\nProfile=0\n"
-    "[StartUp]\nExpert=TurnOfMonthEA\nSymbol=US500.cash\nPeriod=H1\nExpertParameters=TurnOfMonthEA.set\n",
+    "[StartUp]\nExpert=US100TripleEA\nSymbol=US100.cash\nPeriod=M5\nExpertParameters=US100TripleEA.set\n",
     encoding="utf-16")
 del pw
 try:
-    subprocess.run(["taskkill", "/IM", "terminal64.exe", "/F"], capture_output=True)
+    subprocess.run(["powershell", "-NoProfile", "-Command", "Get-Process terminal64 -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq '" + TERMINAL + "' } | Stop-Process -Force"], capture_output=True)  # only the trading terminal
     time.sleep(3)
     p = subprocess.Popen([TERMINAL, "/portable", "/config:" + str(ini)])
     print("terminal started", p.pid, flush=True)
