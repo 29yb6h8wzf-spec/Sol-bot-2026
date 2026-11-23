@@ -35,7 +35,8 @@ double   g_dayStartBal   = 0;
 double   g_isc           = 0;      // initial capital actually used
 bool     g_blockedToday  = false;
 bool     g_disabled      = false;
-int      g_enteredMonth  = -1;   // yyyymm of the month whose turn we already traded
+int      g_enteredMonth  = -1;     // yyyymm of the month whose turn we already traded
+datetime g_testUntil     = 0;      // one-off execution test
 
 //--- helpers ---------------------------------------------------------
 datetime DayOf(datetime t) { return t - (t % 86400); }
@@ -187,6 +188,25 @@ void OnTimer()
       return;
    }
    if(g_disabled || g_blockedToday) return;
+
+   // --- one-off execution test: create MQL5\Files\tom_test_now.txt to open the minimum lot
+   //     with the normal stop, then close it ~2 minutes later. Same magic, same guards.
+   if(FileIsExist("tom_test_now.txt"))
+   {
+      FileDelete("tom_test_now.txt");
+      if(!HasPosition())
+      {
+         double vmin = SymbolInfoDouble(InpSymbol, SYMBOL_VOLUME_MIN);
+         double ask  = SymbolInfoDouble(InpSymbol, SYMBOL_ASK);
+         int digits  = (int)SymbolInfoInteger(InpSymbol, SYMBOL_DIGITS);
+         double sl   = NormalizeDouble(ask * (1.0 - InpPriceStopPct / 100.0), digits);
+         if(trade.Buy(vmin, InpSymbol, 0.0, sl, 0.0, "TOM-TEST")) { g_testUntil = now + 120; PrintFormat("TEST entry %.2f lots at ~%.2f SL %.2f", vmin, ask, sl); }
+         else PrintFormat("TEST entry failed: %d %s", trade.ResultRetcode(), trade.ResultRetcodeDescription());
+      }
+      return;
+   }
+   if(g_testUntil > 0 && now >= g_testUntil) { CloseAll("test exit"); g_testUntil = 0; return; }
+   if(g_testUntil > 0) return;
 
    MqlDateTime s; TimeToStruct(now, s);
    int minutes = s.hour * 60 + s.min;
