@@ -51,3 +51,36 @@ def forex_costs(*, price, spread_pips, commission_round_turn_per_lot, pip,
         raise ValueError("invalid_costs")
     notional_usd = lot_units * price * q
     return {"fee_rate": str(commission / 2 / notional_usd), "spread_rate": str(spread_pips * pip / price)}
+
+
+def load_m5_tsv(path, *, max_fill_minutes=240):
+    """Load a tab/comma separated M5 file (Time,Open,High,Low,Close,Volume; UTC).
+
+    Missing mid-session bars (quiet periods, gold's daily break) up to
+    max_fill_minutes are filled with flat zero-volume candles at the prior
+    close so the walk-forward sees a regular grid. Longer gaps are left in
+    place and must be weekend/holiday closures or the replay rejects them.
+    """
+    import csv
+    from datetime import datetime, timezone
+    rows = []
+    with open(path, newline="", encoding="utf-8-sig") as fh:
+        sample = fh.readline()
+        delim = "\t" if "\t" in sample else ","
+        for raw in csv.reader(fh, delimiter=delim):
+            if not raw:
+                continue
+            t = int(datetime.strptime(raw[0], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp() * 1000)
+            if t % FIVE_MS:
+                raise ValueError("misaligned_candle")
+            o, h, l, c, v = (D(x) for x in raw[1:6])
+            if rows and t <= rows[-1][0]:
+                raise ValueError("unsorted_candles")
+            if rows:
+                gap = t - rows[-1][0]
+                if FIVE_MS < gap <= max_fill_minutes * 60000:
+                    prev = rows[-1][4]
+                    for k in range(rows[-1][0] + FIVE_MS, t, FIVE_MS):
+                        rows.append([k, prev, prev, prev, prev, D(0)])
+            rows.append([t, o, h, l, c, v])
+    return rows

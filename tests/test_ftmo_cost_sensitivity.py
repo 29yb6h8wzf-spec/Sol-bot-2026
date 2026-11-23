@@ -119,3 +119,16 @@ def test_compare_requires_costs_and_valid_strategy():
         compare(forex_week(), CAND, price="1.1", pip="0.0001")
     with pytest.raises(ValueError, match="invalid_strategy"):
         compare(forex_week(), dict(CAND, strategy="X"), **COSTS)
+
+
+def test_load_m5_fills_short_gaps_only(tmp_path):
+    from forex_research import load_m5_tsv
+    p = tmp_path / "x.csv"
+    p.write_text("Time\tOpen\tHigh\tLow\tClose\tVolume\n"
+                 "2023-01-02 00:00:00\t1\t1.1\t0.9\t1.05\t5\n"
+                 "2023-01-02 00:15:00\t1\t1.1\t0.9\t1\t5\n"
+                 "2023-01-02 09:00:00\t1\t1.1\t0.9\t1\t5\n")
+    rows = load_m5_tsv(p)
+    assert [r[0] - rows[0][0] for r in rows[:4]] == [0, 300000, 600000, 900000]
+    assert rows[1][4] == D("1.05") and rows[1][5] == 0
+    assert rows[-1][0] - rows[-2][0] > 4 * 3600000  # long gap left for the replay to judge
