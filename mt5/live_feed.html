@@ -92,8 +92,7 @@ $ErrorActionPreference="SilentlyContinue"
 $ft="C:\Users\FTMODemo\FTMO"
 $p = Get-CimInstance Win32_Process -Filter "Name='terminal64.exe'" | ?{ $_.CommandLine -like '*\FTMO\terminal64.exe*ftmo-trading.ini*' }
 "RUN|" + [bool]$p
-$j = Get-ChildItem "$ft\logs\2*.log" | sort Name | select -Last 1
-$n = Get-Content $j.FullName | Select-String "Network.*(authorized|lost|synchronized)" | select -Last 1
+$n = Get-ChildItem "$ft\logs\2*.log" | sort Name | select -Last 2 | %{ Get-Content $_.FullName } | Select-String "Network.*(authorized|lost|synchronized)" | select -Last 1
 "NET|" + ($n.Line -split [char]9)[-1]
 "NOW|" + (Get-Date).ToUniversalTime().ToString("yyyyMMdd HH:mm:ss")
 $all = Get-ChildItem "$ft\MQL5\Logs\2*.log" | sort Name | select -Last 7 | %{
