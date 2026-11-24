@@ -226,6 +226,7 @@ function render(st){
   }).join("") : '<li class="empty">עוד לא היו עסקאות. המסחר התוך-יומי פועל בימי חול 17:00–23:00 שעון ישראל.</li>';
 }
 
+function reauth(code){ if (/reauth|auth|unauthor|sign/i.test(String(code||""))){ $("head").textContent = "צריך להתחבר מחדש ל-AWS"; fail("פג תוקף ההתחברות ל-AWS MCP. התחבר מחדש בהגדרות של claude.ai › Connectors ואז לחץ רענן. הבוט עצמו ממשיך לרוץ."); return true; } return false; }
 function fail(msg){ const e=$("err"); e.textContent = msg; e.style.display = "block"; }
 function ok(){ $("err").style.display = "none"; }
 
@@ -240,13 +241,13 @@ function handle(payload){
   if (!mcp){ $("head").textContent = "אין חיבור"; fail("הדף צריך את החיבור AWS MCP. פתח אותו ב-Claude ואשר את הגישה."); $("feed").innerHTML='<li class="empty">—</li>'; return; }
   mcp.watchTool(SERVER, TOOL, {code: PY}, ev => {
     if (ev.type === "data") handle(ev.result && ev.result.payload !== undefined ? ev.result.payload : ev.result);
-    else if (ev.type === "error") fail("שגיאה בקריאת השרת: " + (ev.error && (ev.error.code || ev.error.message) || "לא ידוע"));
+    else if (ev.type === "error" && !reauth(ev.error && (ev.error.code || ev.error.message))) fail("שגיאה בקריאת השרת: " + (ev.error && (ev.error.code || ev.error.message) || "לא ידוע"));
   }, {refetchInterval: 60000});
   const btn = $("refresh");
   btn.addEventListener("click", async () => {
     btn.disabled = true; btn.classList.add("pulse");
     try { const r = await mcp.callTool(SERVER, TOOL, {code: PY}); handle(r && r.payload !== undefined ? r.payload : r); }
-    catch(e){ fail("הרענון נכשל: " + (e && (e.code || e.message) || "")); }
+    catch(e){ if (!reauth(e && (e.code || e.message))) fail("הרענון נכשל: " + (e && (e.code || e.message) || "")); }
     finally { btn.disabled = false; btn.classList.remove("pulse"); }
   });
 })();
