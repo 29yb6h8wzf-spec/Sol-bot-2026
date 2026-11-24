@@ -42,3 +42,20 @@ Net +$9,780, PF 1.51, 439 trades (TOM 20, DIP 30, BTM 389), equity max DD 17.3% 
 - Simulation uses daily closes; FTMO daily loss is intraday equity, so real fail rates are higher.
 - Daily stop at 4% of ISC vs FTMO 5%; total stop 8% vs FTMO 10%.
 - Half-day / holiday list hard-coded through 2027.
+
+## Explicit stop-loss / take-profit test (2026-11-24)
+FTMO M5 2021-10..2026-11, intrabar fills (stop first on ties, gaps fill at the open), 1x per module.
+| Variant | ann | Sharpe | max DD |
+|---|---|---|---|
+| DIP no SL/TP (current) | +11.7% | 1.00 | 9.6% |
+| DIP SL 2% | -0.1% | -0.01 | 19.4% |
+| DIP SL 3% | +5.5% | 0.50 | 20.4% |
+| DIP SL 5% | +10.1% | 0.88 | 13.5% |
+| DIP TP 1.5% | +10.7% | 1.08 | 9.7% |
+| TOM no SL/TP (current) | +1.5% | 0.18 | 13.2% |
+| TOM SL 1.5% | +2.2% | 0.32 | 9.4% |
+| BTM no stop (current) | +7.1% | 0.78 | 12.5% |
+| BTM SL 0.6% | +8.0% | 0.90 | 11.7% |
+Combined at 2x, Phase 1 in 63 days: current 51% pass / 40% fail; with preset stops (DIP 3%, TOM 3%, BTM 0.6%) 45% / 45%; with stops + targets 44% / 43%.
+Conclusion: tight stops destroy the dip-buy edge (mean reversion needs room); other effects are within noise. Keep only wide catastrophic stops.
+(A first run had a BTM stop-accounting bug that inflated BTM-with-stop to Sharpe 2.4; fixed before these numbers.)
