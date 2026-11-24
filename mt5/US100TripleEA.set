@@ -1,6 +1,10 @@
 InpSymbol=US100.cash
 InpInitialCapital=0
 InpMult=2.0
+InpMultTOM=1.0
+InpMultDIP=0
+InpMultBTM=0
+InpMaxGrossMult=5.0
 InpUseTOM=true
 InpUseDIP=true
 InpUseBTM=true

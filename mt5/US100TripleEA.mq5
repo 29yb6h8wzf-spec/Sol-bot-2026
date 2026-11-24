@@ -14,12 +14,16 @@
 //| midnight, total stop vs initial capital, server-side price stop  |
 //| on every position. RUN ON THE FREE TRIAL FIRST. Not advice.      |
 //+------------------------------------------------------------------+
-#property version   "1.01"
+#property version   "1.02"
 #include <Trade/Trade.mqh>
 
 input string InpSymbol         = "US100.cash";
 input double InpInitialCapital = 0;      // 0 = remembered first-start balance
-input double InpMult           = 2.0;    // notional per module = ISC x this (max 3)
+input double InpMult           = 2.0;    // default notional per module = ISC x this (max 3)
+input double InpMultTOM        = 1.0;    // per-module override (0 = use InpMult)
+input double InpMultDIP        = 0;
+input double InpMultBTM        = 0;
+input double InpMaxGrossMult   = 5.0;    // hard cap: all open notional / ISC, checked before every entry
 input bool   InpUseTOM         = true;
 input bool   InpUseDIP         = true;
 input bool   InpUseBTM         = true;
@@ -119,7 +123,25 @@ void CloseMagic(long magic, string why)
 }
 void CloseAll(string why) { CloseMagic(MagicTOM(), why); CloseMagic(MagicDIP(), why); CloseMagic(MagicBTM(), why); }
 
-double Lots()
+double ModMult(long magic)
+{
+   double m = magic == MagicTOM() ? InpMultTOM : magic == MagicDIP() ? InpMultDIP : InpMultBTM;
+   return m > 0 ? m : InpMult;
+}
+double GrossMult()   // open notional of all three modules / ISC
+{
+   double g = 0, csize = SymbolInfoDouble(InpSymbol, SYMBOL_TRADE_CONTRACT_SIZE);
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong tk = PositionGetTicket(i);
+      if(tk == 0 || PositionGetString(POSITION_SYMBOL) != InpSymbol) continue;
+      long mg = PositionGetInteger(POSITION_MAGIC);
+      if(mg != MagicTOM() && mg != MagicDIP() && mg != MagicBTM()) continue;
+      g += PositionGetDouble(POSITION_VOLUME) * PositionGetDouble(POSITION_PRICE_CURRENT) * csize;
+   }
+   return g / g_isc;
+}
+double Lots(double mult)
 {
    double price = SymbolInfoDouble(InpSymbol, SYMBOL_ASK);
    double csize = SymbolInfoDouble(InpSymbol, SYMBOL_TRADE_CONTRACT_SIZE);
@@ -127,13 +149,16 @@ double Lots()
    double vmin  = SymbolInfoDouble(InpSymbol, SYMBOL_VOLUME_MIN);
    double vmax  = SymbolInfoDouble(InpSymbol, SYMBOL_VOLUME_MAX);
    if(price <= 0 || csize <= 0 || step <= 0) return 0;
-   double lots = MathFloor(g_isc * InpMult / (price * csize) / step) * step;   // USD account, USD index
+   double lots = MathFloor(g_isc * mult / (price * csize) / step) * step;   // USD account, USD index
    if(lots < vmin) { PrintFormat("Notional below min lot (%.2f < %.2f)", lots, vmin); return 0; }
    return MathMin(lots, vmax);
 }
 bool Open(long magic, int dir, double stopPct, string tag)
 {
-   double lots = Lots(); if(lots <= 0) return false;
+   double mult = ModMult(magic), gross = GrossMult();
+   if(gross + mult > InpMaxGrossMult + 1e-9)
+   { PrintFormat("[%s] skipped: gross %.2fx + %.2fx > cap %.2fx", tag, gross, mult, InpMaxGrossMult); return false; }
+   double lots = Lots(mult); if(lots <= 0) return false;
    int digits = (int)SymbolInfoInteger(InpSymbol, SYMBOL_DIGITS);
    trade.SetExpertMagicNumber(magic);
    bool ok;
@@ -229,7 +254,8 @@ int BtmTarget(datetime slotOpen)
 //--- lifecycle --------------------------------------------------------
 int OnInit()
 {
-   if(InpInitialCapital < 0 || InpMult <= 0 || InpMult > 3.0 || InpDailyStopPct <= 0 || InpDailyStopPct >= 5 ||
+   if(InpInitialCapital < 0 || InpMult <= 0 || InpMult > 3.0 || InpMultTOM < 0 || InpMultTOM > 3.0 || InpMultDIP < 0 || InpMultDIP > 3.0 ||
+      InpMultBTM < 0 || InpMultBTM > 3.0 || InpMaxGrossMult <= 0 || InpMaxGrossMult > 6.0 || InpDailyStopPct <= 0 || InpDailyStopPct >= 5 ||
       InpTotalStopPct <= 0 || InpTotalStopPct >= 10 || InpBtmLookback < 5 || InpExitTradingDay < 1 || InpExitTradingDay > 5)
    { Print("Invalid inputs (fail-closed)"); return INIT_PARAMETERS_INCORRECT; }
    if(!SymbolSelect(InpSymbol, true)) { PrintFormat("Symbol %s not found", InpSymbol); return INIT_FAILED; }
@@ -244,7 +270,8 @@ int OnInit()
    trade.SetDeviationInPoints(100);
    trade.SetTypeFillingBySymbol(InpSymbol);
    EventSetTimer(10);
-   PrintFormat("US100TripleEA ready: %s %.1fx per module of %.0f, TOM=%d DIP=%d BTM=%d", InpSymbol, InpMult, g_isc, InpUseTOM, InpUseDIP, InpUseBTM);
+   PrintFormat("US100TripleEA ready: %s TOM %.1fx DIP %.1fx BTM %.1fx (cap %.1fx) of %.0f, TOM=%d DIP=%d BTM=%d", InpSymbol,
+               ModMult(MagicTOM()), ModMult(MagicDIP()), ModMult(MagicBTM()), InpMaxGrossMult, g_isc, InpUseTOM, InpUseDIP, InpUseBTM);
    return INIT_SUCCEEDED;
 }
 void OnDeinit(const int reason) { EventKillTimer(); }
