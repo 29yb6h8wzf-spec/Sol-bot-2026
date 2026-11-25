@@ -5,117 +5,122 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>J.A.R.V.I.S</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-/* VOICE: a suit HUD: quiet, exact, a little dangerous
-   IDEA: the helmet display — reactor core, command keys, readouts, a running console
-   PICTURE: the arc reactor that changes colour with the system state, SOL chart with its two averages
-   COLOUR and TYPE: night navy, reactor cyan, hot-rod red and gold; Rajdhani display, Inter text
-   LAYOUT: reactor + headline, 2x3 command keys, three readouts, SOL chart, ask, console */
-:root{color-scheme:dark;--bg:#05080f;--panel:rgba(14,24,42,.72);--line:#1d2c48;--ink:#e6f0ff;--mute:#7f93b6;--cy:#4fd1ff;--red:#ff3b4e;--gold:#f5b342;--up:#3ddc84}
+/* VOICE: glass, light and quiet — a phone you can see through
+   IDEA: frosted panes floating over a slow aurora, like a visor over the night sky
+   PICTURE: a soft glowing orb that breathes with the system state, live SOL chart behind glass
+   COLOUR and TYPE: deep night, cyan and violet aurora, warm gold accent; Inter light numerals
+   LAYOUT: orb + headline, live price strip, command pills, glass readouts, chart, ask, log */
+:root{color-scheme:dark;--ink:#f2f6ff;--mute:rgba(230,240,255,.58);--glass:rgba(255,255,255,.07);--edge:rgba(255,255,255,.14);--cy:#6fe3ff;--vi:#a78bfa;--gold:#ffc46b;--up:#5cf0a0;--dn:#ff6b7d}
 *{box-sizing:border-box;min-width:0}
-body{margin:0;background:#05080f;color:var(--ink);font:15px/1.5 Inter,system-ui,sans-serif;overflow-x:clip;min-height:100vh}
-body::before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(90% 55% at 50% 0%,rgba(79,209,255,.16),transparent 65%),repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 3px)}
-.wrap{position:relative;max-width:820px;margin:0 auto;padding:14px 14px 40px}
-.disp{font-family:Rajdhani,system-ui,sans-serif;letter-spacing:.04em}
-.num{font-family:Rajdhani,system-ui,sans-serif;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
-.head{display:grid;grid-template-columns:128px minmax(0,1fr);gap:16px;align-items:center}
-.reactor{width:128px;height:128px;filter:drop-shadow(0 0 18px rgba(79,209,255,.35))}
-h1{margin:0;font:700 clamp(30px,7vw,44px)/1 Rajdhani,sans-serif;letter-spacing:.12em;color:var(--gold)}
-#headline{margin:6px 0 0;font:600 18px/1.3 Rajdhani,sans-serif;letter-spacing:.02em}
+html,body{margin:0;min-height:100%;background:#03050b;color:var(--ink);font:15px/1.5 Inter,system-ui,sans-serif;overflow-x:clip}
+.aurora{position:fixed;inset:-20%;z-index:0;pointer-events:none;filter:blur(60px);opacity:.75}
+.aurora i{position:absolute;border-radius:50%}
+.aurora i:nth-child(1){width:55vw;height:55vw;left:5%;top:0;background:radial-gradient(circle,#1fb6ff 0,transparent 65%)}
+.aurora i:nth-child(2){width:50vw;height:50vw;right:0;top:20%;background:radial-gradient(circle,#7c3aed 0,transparent 65%)}
+.aurora i:nth-child(3){width:45vw;height:45vw;left:25%;bottom:0;background:radial-gradient(circle,#0ea5a5 0,transparent 65%)}
+.wrap{position:relative;z-index:1;max-width:820px;margin:0 auto;padding:16px 14px 48px}
+.glass{background:var(--glass);border:1px solid var(--edge);border-radius:22px;backdrop-filter:blur(26px) saturate(170%);-webkit-backdrop-filter:blur(26px) saturate(170%);box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 12px 40px rgba(0,0,0,.35)}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.head{display:flex;gap:16px;align-items:center}
+.orb{flex:none;width:86px;height:86px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff 0,var(--c,#6fe3ff) 28%,rgba(111,227,255,.15) 62%,transparent 72%);box-shadow:0 0 50px 8px color-mix(in srgb,var(--c,#6fe3ff) 45%,transparent)}
+h1{margin:0;font:300 clamp(26px,6vw,36px)/1 Inter,sans-serif;letter-spacing:.32em}
+#headline{margin:6px 0 2px;font:500 17px/1.35 Inter,sans-serif}
 #clock{color:var(--mute);font-size:13px}
-.keys{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:18px}
-.key{position:relative;min-height:74px;border-radius:14px;border:1px solid var(--line);background:linear-gradient(160deg,rgba(79,209,255,.10),rgba(14,24,42,.9));color:var(--ink);font:700 15px/1.1 Rajdhani,sans-serif;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;padding:12px;text-align:left;text-decoration:none;overflow:hidden}
-.key small{font:400 12px/1.2 Inter,sans-serif;letter-spacing:0;text-transform:none;color:var(--mute)}
-.key::after{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:linear-gradient(90deg,transparent,var(--cy),transparent);opacity:.6}
-.key.danger{background:linear-gradient(160deg,rgba(255,59,78,.16),rgba(14,24,42,.9))}.key.danger::after{background:linear-gradient(90deg,transparent,var(--red),transparent)}
-.key:focus-visible,button:focus-visible,textarea:focus-visible{outline:2px solid var(--cy);outline-offset:2px}
-.key[disabled]{opacity:.45}
-.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;backdrop-filter:blur(6px)}
-.card h2{margin:0 0 4px;font:600 12px/1 Rajdhani,sans-serif;letter-spacing:.18em;color:var(--mute);text-transform:uppercase}
-.big{font-size:26px;line-height:1.1}
-.sub{font-size:13px;color:var(--mute)}
-.up{color:var(--up)}.down{color:var(--red)}.warn{color:var(--gold)}
-.fig{position:relative;height:170px;margin-top:8px}.fig svg{position:absolute;inset:0;width:100%;height:100%}
+.ticker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}
+.tk{padding:12px 14px}
+.tk .s{font-size:12px;color:var(--mute)}
+.tk .p{font:300 26px/1.15 Inter,sans-serif;transition:color .6s}
+.tk .c{font-size:13px}
+.flash-up{color:var(--up)!important}.flash-dn{color:var(--dn)!important}
+.pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.pill{min-height:44px;padding:0 16px;border-radius:999px;border:1px solid var(--edge);background:rgba(255,255,255,.06);color:var(--ink);font:500 14px Inter,sans-serif;cursor:pointer;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);text-decoration:none;display:inline-flex;align-items:center}
+.pill.warn{border-color:rgba(255,107,125,.45);color:#ffd2d8}
+.pill:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--cy);outline-offset:2px}
+.pill[disabled]{opacity:.45}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
+.card{padding:14px 16px}
+.lbl{font-size:12px;color:var(--mute)}
+.big{font:300 26px/1.15 Inter,sans-serif;margin-top:2px}
+.sub{font-size:13px;color:var(--mute);margin-top:2px}
+.up{color:var(--up)}.dn{color:var(--dn)}.gold{color:var(--gold)}
+.fig{position:relative;height:180px;margin-top:8px}.fig svg{position:absolute;inset:0;width:100%;height:100%}
 .legend{display:flex;gap:14px;font-size:12px;color:var(--mute);flex-wrap:wrap}
-.legend i{display:inline-block;width:14px;height:2px;vertical-align:middle;margin-right:5px}
-.ask{margin-top:14px;display:flex;gap:8px}
-textarea{flex:1;min-height:48px;resize:none;background:var(--panel);border:1px solid var(--line);border-radius:14px;color:var(--ink);font:16px/1.4 Inter,sans-serif;padding:12px}
-.go{border:0;border-radius:14px;padding:0 18px;background:linear-gradient(135deg,var(--red),var(--gold));color:#fff;font:700 15px Rajdhani,sans-serif;letter-spacing:.1em;cursor:pointer;min-height:48px}
-.answer{margin-top:10px;padding:12px 14px;border-left:3px solid var(--cy);background:var(--panel);border-radius:0 12px 12px 0;white-space:pre-wrap;display:none}
-.console{margin-top:14px;background:rgba(3,6,12,.85);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:12px/1.55 ui-monospace,Menlo,monospace;color:#8fd8ff;max-height:150px;overflow:auto}
-.console div::before{content:"> ";color:var(--gold)}
-.modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;padding:20px;z-index:5}
-.modal .box{max-width:360px;background:#0b1424;border:1px solid var(--red);border-radius:16px;padding:18px}
-.modal .row{display:flex;gap:10px;margin-top:14px}
-.modal button{flex:1;min-height:44px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--ink);font:700 15px Rajdhani,sans-serif;letter-spacing:.08em;cursor:pointer}
-.modal .yes{background:var(--red);border-color:var(--red)}
+.legend i{display:inline-block;width:14px;height:2px;vertical-align:middle;margin-right:6px;border-radius:2px}
+.ask{margin-top:14px;display:none;gap:8px;padding:8px}
+textarea{flex:1;min-height:46px;resize:none;background:transparent;border:0;color:var(--ink);font:16px/1.4 Inter,sans-serif;padding:10px}
+.go{border:0;border-radius:16px;padding:0 18px;background:linear-gradient(135deg,var(--cy),var(--vi));color:#06101c;font:600 14px Inter,sans-serif;cursor:pointer;min-height:46px}
+.answer{margin-top:10px;padding:14px 16px;white-space:pre-wrap;display:none;font-size:16px}
+.log{margin-top:14px;padding:10px 14px;font-size:12px;color:var(--mute);max-height:120px;overflow:auto}
+.modal{position:fixed;inset:0;z-index:5;background:rgba(0,0,0,.45);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;padding:20px}
+.modal .box{max-width:360px;padding:20px}
+.modal .row{display:flex;gap:10px;margin-top:16px}
+.modal button{flex:1;min-height:44px;border-radius:14px;border:1px solid var(--edge);background:rgba(255,255,255,.06);color:var(--ink);font:500 15px Inter,sans-serif;cursor:pointer}
+.modal .yes{background:rgba(255,107,125,.35);border-color:rgba(255,107,125,.6)}
 .note{font-size:12px;color:var(--mute);margin-top:12px}
-@media(max-width:600px){.head{grid-template-columns:96px minmax(0,1fr)}.reactor{width:96px;height:96px}.keys{grid-template-columns:repeat(2,minmax(0,1fr))}.grid{grid-template-columns:minmax(0,1fr)}}
-@media(prefers-reduced-motion:no-preference){.r1{transform-origin:100px 100px;animation:sp 16s linear infinite}.r2{transform-origin:100px 100px;animation:sp 9s linear infinite reverse}@keyframes sp{to{transform:rotate(360deg)}}.busy .core{animation:pl .9s ease-in-out infinite}@keyframes pl{50%{opacity:.35}}}
+@media(max-width:600px){.orb{width:68px;height:68px}.ticker{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:8px}.tk{padding:10px}.tk .p{font-size:19px}.grid{grid-template-columns:minmax(0,1fr)}}
+@media(prefers-reduced-motion:no-preference){.aurora i{animation:drift 26s ease-in-out infinite alternate}.aurora i:nth-child(2){animation-duration:34s}.aurora i:nth-child(3){animation-duration:40s}@keyframes drift{to{transform:translate(8vw,6vh) scale(1.15)}}.orb{animation:breathe 4s ease-in-out infinite}@keyframes breathe{50%{transform:scale(.94);filter:brightness(1.25)}}.busy .orb{animation-duration:.9s}}
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+<div class="wrap" id="wrap">
   <div class="head">
-    <svg class="reactor" id="reactor" viewBox="0 0 200 200" aria-hidden="true">
-      <defs><radialGradient id="g"><stop offset="0" stop-color="#fff"/><stop offset=".3" id="gc" stop-color="#4fd1ff"/><stop offset="1" stop-color="#4fd1ff" stop-opacity="0"/></radialGradient></defs>
-      <circle cx="100" cy="100" r="94" fill="none" stroke="#1d2c48" stroke-width="4"/>
-      <g class="r1"><circle id="ra" cx="100" cy="100" r="84" fill="none" stroke="#4fd1ff" stroke-width="2" stroke-dasharray="4 8" opacity=".7"/></g>
-      <g class="r2"><circle id="rb" cx="100" cy="100" r="70" fill="none" stroke="#4fd1ff" stroke-width="6" stroke-dasharray="30 14" opacity=".55"/></g>
-      <circle class="core" cx="100" cy="100" r="44" fill="url(#g)"/>
-      <circle cx="100" cy="100" r="22" fill="none" stroke="#fff" stroke-width="2" opacity=".75"/>
-    </svg>
+    <div class="orb" id="orb" aria-hidden="true"></div>
     <div>
-      <h1>J.A.R.V.I.S</h1>
-      <p id="headline">Booting systems, sir…</p>
+      <h1>JARVIS</h1>
+      <p id="headline">Waking up, sir…</p>
       <div id="clock" class="num"></div>
     </div>
   </div>
 
-  <div class="keys">
-    <button class="key" id="kScan" type="button">Full scan<small>Bot · market · Solana</small></button>
-    <button class="key" id="kSol" type="button">SOL signal<small>Entry / exit state now</small></button>
-    <button class="key" id="kBrief" type="button">Briefing<small>One-line situation report</small></button>
-    <a class="key" href="https://claude.ai/artifact/7JrRcsxjKEmWkccgXJuVcn">Trade feed<small>Live bot events</small></a>
-    <button class="key" id="kAsk" type="button">Ask<small>Type or dictate</small></button>
-    <button class="key danger" id="kReboot" type="button">Reboot bot<small>Only when flat</small></button>
+  <div class="ticker">
+    <div class="glass tk"><div class="s">SOL · Binance Futures</div><div class="p num" id="pSOL">—</div><div class="c num" id="cSOL">&nbsp;</div></div>
+    <div class="glass tk"><div class="s">BTC</div><div class="p num" id="pBTC">—</div><div class="c num" id="cBTC">&nbsp;</div></div>
+    <div class="glass tk"><div class="s">ETH</div><div class="p num" id="pETH">—</div><div class="c num" id="cETH">&nbsp;</div></div>
   </div>
+
+  <div class="pills">
+    <button class="pill" id="kScan" type="button">Full scan</button>
+    <button class="pill" id="kBrief" type="button">Briefing</button>
+    <button class="pill" id="kAsk" type="button">Ask</button>
+    <a class="pill" href="https://claude.ai/artifact/7JrRcsxjKEmWkccgXJuVcn">Trade feed</a>
+    <button class="pill warn" id="kReboot" type="button">Reboot bot</button>
+  </div>
+
+  <div class="glass ask" id="askRow"><textarea id="q" placeholder="Talk to me, sir"></textarea><button class="go" id="go" type="button">Send</button></div>
+  <div class="glass answer" id="ans" aria-live="polite"></div>
 
   <div class="grid">
-    <div class="card"><h2>FTMO bot · US100</h2><div class="big disp" id="botS">—</div><div class="sub" id="botD">—</div></div>
-    <div class="card"><h2>Crypto market</h2><div class="big num" id="mkS">—</div><div class="sub" id="mkD">—</div></div>
-    <div class="card"><h2>Solana signal</h2><div class="big disp" id="solS">—</div><div class="sub" id="solD">—</div></div>
+    <div class="glass card"><div class="lbl">Solana signal · 10/50-day</div><div class="big" id="solS">—</div><div class="sub" id="solD">—</div></div>
+    <div class="glass card"><div class="lbl">FTMO bot · US100</div><div class="big" id="botS">—</div><div class="sub" id="botD">—</div></div>
   </div>
 
-  <div class="card" style="margin-top:10px"><h2>SOL · 90 days</h2>
-    <div class="legend"><span><i style="background:#e6f0ff"></i>Price</span><span><i style="background:#f5b342"></i>10-day avg</span><span><i style="background:#4fd1ff"></i>50-day avg</span></div>
-    <div class="fig" id="fig"><svg id="chart" aria-label="Solana price with 10 and 50 day averages"></svg></div>
+  <div class="glass card" style="margin-top:10px"><div class="lbl">SOL · 90 days · daily closes</div>
+    <div class="legend" style="margin-top:6px"><span><i style="background:#f2f6ff"></i>Price</span><span><i style="background:#ffc46b"></i>10-day</span><span><i style="background:#6fe3ff"></i>50-day</span></div>
+    <div class="fig" id="fig"><svg id="chart" aria-label="Solana daily closes with 10 and 50 day averages"></svg></div>
   </div>
 
-  <div class="ask" id="askRow" style="display:none"><textarea id="q" placeholder="Speak to me, sir (keyboard mic dictates)"></textarea><button class="go" id="go" type="button">SEND</button></div>
-  <div class="answer" id="ans" aria-live="polite"></div>
-  <div class="console" id="con" aria-live="polite"></div>
-  <p class="note">Data: bot server via AWS (read-only, except Reboot), prices via CoinGecko. Signals are data, not advice — every trade is your call.</p>
+  <div class="glass log" id="log" aria-live="polite"></div>
+  <p class="note">Prices: Binance USDT-M futures via your server, refreshed every ~15 s. Signals are data, not advice — every trade is your call.</p>
 </div>
 
-<div class="modal" id="modal"><div class="box"><div class="disp" style="font-size:20px;font-weight:700;color:var(--red)">REBOOT TRADING TERMINAL?</div>
-  <p class="sub">The bot will restart and reload its settings. Allowed only with no open positions and outside 17:00–23:00.</p>
+<div class="modal" id="modal"><div class="glass box"><div style="font-size:18px;font-weight:600">Reboot the trading bot?</div>
+  <p class="sub">It restarts and reloads its settings. Allowed only with no open positions and outside 17:00–23:00.</p>
   <div class="row"><button type="button" id="mNo">Cancel</button><button type="button" class="yes" id="mYes">Reboot</button></div></div></div>
 
 <script>
 {
 const $ = id => document.getElementById(id);
 const fmt = (v,d=0) => Number(v).toLocaleString("en-US",{maximumFractionDigits:d,minimumFractionDigits:d});
-const pct = v => (v>0?"+":"") + Number(v).toFixed(1) + "%";
 const SSM = (ps, comment) => "ps = r'''" + ps + "'''\n" + String.raw`cmd = await call_boto3(service_name="ssm", operation_name="SendCommand", region_name="il-central-1",
     params={"InstanceIds": ["i-0386e781ed9957a89"], "DocumentName": "AWS-RunPowerShellScript",
             "Comment": "` + comment + String.raw`", "Parameters": {"commands": [ps]}, "TimeoutSeconds": 150})
 cid = cmd["Command"]["CommandId"]
 res = None
-for _ in range(60):
-    await asyncio.sleep(2)
+for _ in range(120):
+    await asyncio.sleep(1)
     try:
         res = await call_boto3(service_name="ssm", operation_name="GetCommandInvocation", region_name="il-central-1",
                                params={"CommandId": cid, "InstanceId": "i-0386e781ed9957a89"})
@@ -125,8 +130,17 @@ for _ in range(60):
         pass
 result = {"out": (res or {}).get("StandardOutputContent", "")}
 result`;
-const BOT_PS = String.raw`
+const TLS = String.raw`
 $ErrorActionPreference="SilentlyContinue"
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+`;
+const PRICE_PS = TLS + String.raw`
+foreach($s in "SOLUSDT","BTCUSDT","ETHUSDT"){ $t=Invoke-RestMethod "https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=$s"; "P|$s|$($t.lastPrice)|$($t.priceChangePercent)" }
+"OK|"
+`;
+const FULL_PS = PRICE_PS + String.raw`
+$k=Invoke-RestMethod "https://fapi.binance.com/fapi/v1/klines?symbol=SOLUSDT&interval=1d&limit=90"
+"K|" + (($k | %{ $_[4] }) -join ",")
 $ft="C:\Users\FTMODemo\FTMO"
 "RUN|" + [bool](Get-CimInstance Win32_Process -Filter "Name='terminal64.exe'" | ?{ $_.CommandLine -like '*\FTMO\terminal64.exe*ftmo-trading.ini*' })
 Get-ChildItem "$ft\MQL5\Logs\2*.log" | sort Name | select -Last 3 | %{ Get-Content $_.FullName } | ?{ $_ -match 'US100TripleEA' -and $_ -match '\] (BUY|SELL)|closed:|CHK|ready|failed|skipped' } | select -Last 40 | %{ "L|" + ($_ -split [char]9)[2] + "|" + ($_ -split [char]9)[4] }
@@ -136,122 +150,109 @@ Start-ScheduledTask FTMOStartTrading
 Start-Sleep 75
 "RUN|" + [bool](Get-CimInstance Win32_Process -Filter "Name='terminal64.exe'" | ?{ $_.CommandLine -like '*\FTMO\terminal64.exe*ftmo-trading.ini*' })
 `;
-let mcp = null, sample = null; const cache = {};
-function log(t){ const d = document.createElement("div"); d.textContent = new Date().toLocaleTimeString("en-GB",{timeZone:"Asia/Jerusalem"}) + "  " + t; $("con").prepend(d); }
+let mcp = null, sample = null; const st = {prices:{}, sol:null, bot:null};
+function log(t){ const d = document.createElement("div"); d.textContent = new Date().toLocaleTimeString("en-GB",{timeZone:"Asia/Jerusalem"}) + " · " + t; $("log").prepend(d); }
 function dig(o, test){ if (o == null) return null;
   if (typeof o === "string"){ try { return dig(JSON.parse(o), test); } catch(e){ return test(o) ? o : null; } }
   if (test(o)) return o; if (typeof o === "object") for (const k of Object.keys(o)){ const r = dig(o[k], test); if (r != null) return r; } return null; }
-async function call(server, tool, input){ const r = await mcp.callTool(server, tool, input); return r && r.payload !== undefined ? r.payload : r; }
-function busy(on){ $("reactor").classList.toggle("busy", on); }
-function color(state){ const c = state === "bad" ? "#ff3b4e" : state === "warn" ? "#f5b342" : "#4fd1ff"; $("ra").setAttribute("stroke", c); $("rb").setAttribute("stroke", c); $("gc").setAttribute("stop-color", c); }
+async function runPS(ps, comment){ const r = await mcp.callTool("AWS MCP", "aws___run_script", {code: SSM(ps, comment)}); const p = r && r.payload !== undefined ? r.payload : r;
+  return dig(p, x => typeof x === "string" && (x.includes("OK|") || x.includes("RUN|"))) || ""; }
+function orb(state){ $("orb").style.setProperty("--c", state === "bad" ? "#ff6b7d" : state === "warn" ? "#ffc46b" : "#6fe3ff"); }
 
-async function getBot(){
-  const p = await call("AWS MCP", "aws___run_script", {code: SSM(BOT_PS, "read-only: jarvis hud status")});
-  const out = dig(p, x => typeof x === "string" && x.includes("RUN|")) || "";
-  const L = out.split(/\r?\n/).filter(l => l.startsWith("L|")).map(l => { const [, t, ...m] = l.split("|"); return {t, m: m.join("|")}; });
-  let open = {}, ver = "", lastChk = "";
-  const MAG = {"20261125":"TOM","20261126":"DIP","20261127":"BTM"};
-  for (const x of L){ let m;
-    if (/ready:/.test(x.m)){ open = {}; ver = x.m.replace(/.*ready:\s*/, "").replace(/, TOM=.*/, ""); }
-    if ((m = x.m.match(/^\[(TOM|DIP|BTM)[^\]]*\] (BUY|SELL)/))) open[m[1]] = m[2];
-    if ((m = x.m.match(/^\[(\d+)\] closed/))) delete open[MAG[m[1]]];
-    if (/\[CHK/.test(x.m)){ const hh = +x.t.slice(0,2), mm = x.t.slice(3,5); lastChk = String((hh+2)%24).padStart(2,"0") + ":" + mm + " " + x.m.replace(/ c=.*/, "").replace(/\[CHK (\w+)\]/, "$1"); }
-  }
-  cache.bot = {running: /RUN\|True/i.test(out), open, version: ver, lastCheck: lastChk}; return cache.bot;
+function applyPrices(out){
+  for (const l of out.split(/\r?\n/)){ const m = l.match(/^P\|(\w+)USDT\|([\d.]+)\|(-?[\d.]+)/); if (!m) continue;
+    const sym = m[1], p = +m[2], ch = +m[3], el = $("p"+sym), prev = st.prices[sym];
+    if (!el) continue;
+    el.textContent = "$" + fmt(p, sym === "SOL" ? 2 : sym === "ETH" ? 2 : 0);
+    if (prev != null && p !== prev){ el.classList.remove("flash-up","flash-dn"); void el.offsetWidth; el.classList.add(p > prev ? "flash-up" : "flash-dn"); setTimeout(() => el.classList.remove("flash-up","flash-dn"), 1200); }
+    const c = $("c"+sym); c.textContent = (ch>0?"+":"") + ch.toFixed(2) + "% 24h"; c.className = "c num " + (ch < 0 ? "dn" : "up");
+    st.prices[sym] = p; }
 }
-async function getMarket(){
-  const g = await call("CoinGecko", "get-global-market", {});
-  const o = dig(g, x => x && typeof x === "object" && "totalMarketCapUsd" in x) || {};
-  cache.market = {chg: o.marketCapChangePercentage24hUsd, dom: o.btcDominancePct, coins: (o.coins||[]).map(c => ({s:String(c.symbol).toUpperCase(), p:c.currentPrice, ch:c.priceChangePercentage24h}))};
-  return cache.market;
-}
-async function getSol(){
-  const ch = await call("CoinGecko", "get-coin-market-chart", {id:"solana", days:"90"});
-  const o = dig(ch, x => x && typeof x === "object" && Array.isArray(x.prices)) || {};
-  const pr = (o.prices||[]).map(v => Array.isArray(v) ? v[1] : v).filter(v => typeof v === "number");
-  if (pr.length < 40) throw {message:"no SOL data"};
-  const span = o.startTs && o.endTs ? (o.endTs-o.startTs)/864e5 : 90, per = (pr.length-1)/span;
-  const ma = d => { const n = Math.max(2, Math.round(d*per)); return pr.map((_,i) => i+1 >= n ? pr.slice(i+1-n, i+1).reduce((a,b)=>a+b,0)/n : null); };
-  const s10 = ma(10), s50 = ma(50), last = pr.length-1;
-  let cross = null; for (let i = last; i > 0; i--){ if (s10[i]!=null && s50[i]!=null && s10[i-1]!=null && s50[i-1]!=null && (s10[i]>s50[i]) !== (s10[i-1]>s50[i-1])){ cross = {i, up: s10[i]>s50[i], price: pr[i], daysAgo: Math.round((last-i)/per)}; break; } }
-  cache.sol = {pr, s10, s50, price: pr[last], up: s10[last] > s50[last], a10: s10[last], a50: s50[last], cross}; return cache.sol;
+function applyFull(out){
+  applyPrices(out);
+  const k = out.split(/\r?\n/).find(l => l.startsWith("K|"));
+  if (k){ const closes = k.slice(2).split(",").map(Number).filter(v => v > 0);
+    const done = closes.slice(0, -1);  // completed daily closes
+    const ma = (arr, n) => arr.map((_,i) => i+1 >= n ? arr.slice(i+1-n, i+1).reduce((a,b)=>a+b,0)/n : null);
+    const s10 = ma(done, 10), s50 = ma(done, 50), L = done.length-1;
+    let cross = null; for (let i = L; i > 0; i--){ if (s10[i]!=null && s50[i]!=null && s10[i-1]!=null && s50[i-1]!=null && (s10[i]>s50[i]) !== (s10[i-1]>s50[i-1])){ cross = {i, up: s10[i]>s50[i], price: done[i], ago: L-i}; break; } }
+    st.sol = {closes: done, s10, s50, up: s10[L] > s50[L], a10: s10[L], a50: s50[L], cross}; }
+  const lines = out.split(/\r?\n/);
+  if (lines.some(l => l.startsWith("RUN|"))){
+    let open = {}, chk = ""; const MAG = {"20261125":"TOM","20261126":"DIP","20261127":"BTM"};
+    for (const l of lines.filter(l => l.startsWith("L|"))){ const [, t, ...mm] = l.split("|"), m0 = mm.join("|"); let m;
+      if (/ready:/.test(m0)) open = {};
+      if ((m = m0.match(/^\[(TOM|DIP|BTM)[^\]]*\] (BUY|SELL)/))) open[m[1]] = m[2];
+      if ((m = m0.match(/^\[(\d+)\] closed/))) delete open[MAG[m[1]]];
+      if (/\[CHK/.test(m0)){ const hh = +t.slice(0,2); chk = String((hh+2)%24).padStart(2,"0") + ":" + t.slice(3,5) + " " + m0.replace(/ c=.*/, "").replace(/\[CHK (\w+)\]/, "$1"); } }
+    st.bot = {running: lines.some(l => /^RUN\|True/i.test(l)), open, chk}; }
+  render();
 }
 function drawChart(){
-  const s = cache.sol, svg = $("chart"); if (!s) return;
-  const W = svg.clientWidth, H = svg.clientHeight, pad = 6;
-  const all = s.pr.concat(s.s10.filter(v=>v!=null), s.s50.filter(v=>v!=null)); const lo = Math.min(...all), hi = Math.max(...all);
-  const X = i => pad + i*(W-2*pad)/(s.pr.length-1), Y = v => H-pad-(v-lo)/(hi-lo||1)*(H-2*pad);
+  const s = st.sol, svg = $("chart"); if (!s) return;
+  const W = svg.clientWidth, H = svg.clientHeight, pad = 6, n = s.closes.length;
+  const all = s.closes.concat(s.s10.filter(v=>v!=null), s.s50.filter(v=>v!=null)); const lo = Math.min(...all), hi = Math.max(...all);
+  const X = i => pad + i*(W-2*pad)/(n-1), Y = v => H-pad-(v-lo)/(hi-lo||1)*(H-2*pad);
   const path = arr => arr.map((v,i) => v==null ? "" : (arr[i-1]==null ? "M" : "L") + X(i).toFixed(1) + "," + Y(v).toFixed(1)).join("");
-  let marks = ""; if (s.cross){ const i = s.cross.i; marks = '<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(s.pr[i]).toFixed(1)+'" r="5" fill="'+(s.cross.up?"#3ddc84":"#ff3b4e")+'"/>'; }
-  svg.innerHTML = '<path d="'+path(s.pr)+'" fill="none" stroke="#e6f0ff" stroke-width="1.6"/><path d="'+path(s.s10)+'" fill="none" stroke="#f5b342" stroke-width="2"/><path d="'+path(s.s50)+'" fill="none" stroke="#4fd1ff" stroke-width="2"/>' + marks;
+  const area = "M" + X(0) + "," + H + s.closes.map((v,i) => "L" + X(i).toFixed(1) + "," + Y(v).toFixed(1)).join("") + "L" + X(n-1) + "," + H + "Z";
+  let mark = ""; if (s.cross){ const i = s.cross.i; mark = '<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(s.closes[i]).toFixed(1)+'" r="5" fill="'+(s.cross.up?"#5cf0a0":"#ff6b7d")+'" stroke="#03050b" stroke-width="2"/>'; }
+  svg.innerHTML = '<defs><linearGradient id="fa" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6fe3ff" stop-opacity=".22"/><stop offset="1" stop-color="#6fe3ff" stop-opacity="0"/></linearGradient></defs><path d="'+area+'" fill="url(#fa)"/><path d="'+path(s.closes)+'" fill="none" stroke="#f2f6ff" stroke-width="1.5" opacity=".9"/><path d="'+path(s.s10)+'" fill="none" stroke="#ffc46b" stroke-width="2"/><path d="'+path(s.s50)+'" fill="none" stroke="#6fe3ff" stroke-width="2"/>' + mark;
 }
 const chartObserver = new ResizeObserver(drawChart); chartObserver.observe($("fig"));
-
 function render(){
-  const b = cache.bot, m = cache.market, s = cache.sol;
-  if (b){ $("botS").textContent = b.running ? "ONLINE" : "OFFLINE"; $("botS").className = "big disp " + (b.running ? "up" : "down");
-    const op = Object.entries(b.open).map(([k,v]) => k+" "+v); $("botD").textContent = (op.length ? "Open: " + op.join(", ") : "Flat — no positions") + (b.lastCheck ? " · last check " + b.lastCheck : ""); }
-  if (m){ const c = k => m.coins.find(x => x.s === k); const btc = c("BTC"), sol = c("SOL");
-    $("mkS").textContent = btc ? "BTC $" + fmt(btc.p) : "—"; $("mkS").className = "big num " + ((btc && btc.ch) < 0 ? "down" : "up");
-    $("mkD").textContent = "Market " + pct(m.chg) + " 24h · BTC dom " + Number(m.dom).toFixed(1) + "%" + (sol ? " · SOL $" + fmt(sol.p,2) + " " + pct(sol.ch) : ""); }
-  if (s){ $("solS").textContent = s.up ? "IN · TREND UP" : "OUT · NO ENTRY"; $("solS").className = "big disp " + (s.up ? "up" : "warn");
-    const live = m && m.coins.find(x => x.s === "SOL");
-    $("solD").textContent = "$" + fmt(live ? live.p : s.price,2) + " live · 10d " + fmt(s.a10,1) + (s.up ? " > " : " < ") + "50d " + fmt(s.a50,1) + (s.cross ? " · last " + (s.cross.up ? "ENTRY" : "EXIT") + " " + s.cross.daysAgo + "d ago at $" + fmt(s.cross.price,2) : "");
-    drawChart(); }
-  let head = "All systems nominal, sir.";
+  const s = st.sol, b = st.bot;
+  if (s){ $("solS").textContent = s.up ? "Entry active · trend up" : "No entry · trend down"; $("solS").className = "big " + (s.up ? "up" : "gold");
+    $("solD").textContent = "10-day " + fmt(s.a10,2) + (s.up ? " above " : " below ") + "50-day " + fmt(s.a50,2) + (s.cross ? " · last " + (s.cross.up ? "entry" : "exit") + " " + s.cross.ago + " days ago at $" + fmt(s.cross.price,2) : ""); drawChart(); }
+  if (b){ $("botS").textContent = b.running ? "Online" : "Offline"; $("botS").className = "big " + (b.running ? "up" : "dn");
+    const op = Object.entries(b.open).map(([k,v]) => k + " " + v.toLowerCase()); $("botD").textContent = (op.length ? "Holding " + op.join(", ") : "Flat — no positions") + (b.chk ? " · last check " + b.chk : ""); }
+  let head = "All quiet, sir.";
   if (b && !b.running) head = "The trading bot is offline, sir.";
-  else if (b && Object.keys(b.open).length) head = "Bot holding " + Object.keys(b.open).join(" + ") + ", sir.";
-  else if (s && s.up) head = "Solana trend is up — entry signal active, sir.";
-  else if (s) head = "Bot flat. Solana: no entry, sir.";
-  $("headline").textContent = head; color(b && !b.running ? "bad" : s && !s.up ? "warn" : "ok");
+  else if (b && Object.keys(b.open).length) head = "The bot is holding " + Object.keys(b.open).join(" and ") + ", sir.";
+  else if (s && s.up) head = "Solana is trending up — entry signal active, sir.";
+  else if (s) head = "Bot flat. Solana has no entry, sir.";
+  $("headline").textContent = head; orb(b && !b.running ? "bad" : s && !s.up ? "warn" : "ok");
 }
-async function scan(){
-  busy(true); log("Scanning bot, market and Solana…");
-  const r = await Promise.allSettled([getBot(), getMarket(), getSol()]); render(); busy(false);
-  const bad = r.filter(x => x.status === "rejected");
-  if (bad.length){ const msg = bad.map(x => x.reason && (x.reason.code || x.reason.message)).join(" "); log(/auth/i.test(msg) ? "AWS needs re-login: Settings › Connectors." : "Some sensors failed: " + msg); }
-  else log("Scan complete.");
-}
+let pricing = false;
+async function tickPrices(){ if (pricing || document.hidden) return; pricing = true;
+  try { applyPrices(await runPS(PRICE_PS, "read-only: jarvis live prices")); } catch(e){ if (/auth/i.test(String(e && (e.code||e.message)))) log("AWS needs re-login: Settings › Connectors."); }
+  pricing = false; }
+async function scan(){ $("wrap").classList.add("busy"); log("Full scan…");
+  try { applyFull(await runPS(FULL_PS, "read-only: jarvis full scan")); log("Scan complete."); }
+  catch(e){ log(/auth/i.test(String(e && (e.code||e.message))) ? "AWS needs re-login: Settings › Connectors." : "Scan failed: " + (e && (e.code||e.message) || "")); }
+  $("wrap").classList.remove("busy"); }
 async function ask(text){
   if (!text.trim()) return; if (!sample){ log("Ask is unavailable in this view."); return; }
-  $("ans").style.display = "block"; $("ans").textContent = "Working on it, sir…"; busy(true);
-  const SYS = "You are J.A.R.V.I.S. Reply in English, calm, precise, dry British wit, call the user 'sir'. Maximum 2 sentences, under 25 words. First sentence challenges an assumption if there is one. Never recommend buying or selling; give state, risk and invalidation. Use the tools for real numbers. Log times are already converted to Israel time. Solana: only the 10/50-day average entry/exit state and price.";
-  const tools = [{name:"bot_status", description:"FTMO bot: running, open positions, last check.", execute: async () => { const b = cache.bot || await getBot(); return {running:b.running, open:b.open, version:b.version, lastCheck:b.lastCheck}; }},
-                 {name:"crypto_market", description:"Crypto market snapshot.", execute: async () => cache.market || getMarket()},
-                 {name:"sol_signal", description:"Solana price, 10/50-day averages, entry/exit state, last cross.", execute: async () => { const s = cache.sol || await getSol(); return {price:s.price, avg10:s.a10, avg50:s.a50, state:s.up?"ENTRY active":"no entry", lastCross:s.cross && {type:s.cross.up?"ENTRY":"EXIT", daysAgo:s.cross.daysAgo, price:s.cross.price}}; }}];
-  try { const r = await sample([{role:"user", content: SYS + "\n\nUser: " + text}], {tools, cache:false, onText: ({text}) => { $("ans").textContent = text; }}); $("ans").textContent = r.text; log("Answered.");
-  } catch(e){ $("ans").textContent = e && e.code === "rate_limited" ? "One moment, sir — rate limited." : "That failed, sir: " + (e && (e.message || e.code) || ""); }
-  busy(false);
-}
+  $("ans").style.display = "block"; $("ans").textContent = "One moment, sir…"; $("wrap").classList.add("busy");
+  const SYS = "You are JARVIS. English, calm, precise, dry British wit, call the user 'sir'. Maximum 2 sentences, under 25 words. Never recommend buying or selling; state, risk, invalidation only. Use the tools. Prices are Binance USDT-M futures. Solana: only the 10/50-day entry/exit state and price.";
+  const tools = [{name:"live_prices", description:"Latest Binance futures prices for SOL, BTC, ETH.", execute: async () => st.prices},
+                 {name:"sol_signal", description:"Solana 10/50-day average entry/exit state and last cross.", execute: async () => st.sol ? {entryActive:st.sol.up, avg10:st.sol.a10, avg50:st.sol.a50, lastCross:st.sol.cross && {type:st.sol.cross.up?"entry":"exit", daysAgo:st.sol.cross.ago, price:st.sol.cross.price}} : {error:"not loaded"}},
+                 {name:"bot_status", description:"FTMO trading bot: running, open positions, last check (Israel time).", execute: async () => st.bot || {error:"not loaded"}}];
+  try { const r = await sample([{role:"user", content: SYS + "\n\nUser: " + text}], {tools, cache:false, onText: ({text}) => { $("ans").textContent = text; }}); $("ans").textContent = r.text; }
+  catch(e){ $("ans").textContent = e && e.code === "rate_limited" ? "A moment, sir — rate limited." : "That failed, sir."; }
+  $("wrap").classList.remove("busy"); }
 $("kScan").addEventListener("click", scan);
-$("kSol").addEventListener("click", async () => { busy(true); log("Computing Solana signal…"); try { await getSol(); render(); const s = cache.sol; log("SOL " + (s.up ? "ENTRY active" : "no entry") + " at $" + fmt(s.price,2)); } catch(e){ log("SOL data failed."); } busy(false); });
-$("kBrief").addEventListener("click", () => { $("askRow").style.display = "flex"; ask("Give me a one-line situation report: bot, crypto market, Solana signal."); });
+$("kBrief").addEventListener("click", () => ask("One-line situation report: Solana price and signal, bot status."));
 $("kAsk").addEventListener("click", () => { $("askRow").style.display = "flex"; $("q").focus(); });
 $("go").addEventListener("click", () => ask($("q").value));
 $("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); ask($("q").value); } });
 $("kReboot").addEventListener("click", async () => {
-  log("Checking positions before reboot…"); busy(true);
-  try { await getBot(); render(); } catch(e){ busy(false); log("Cannot verify positions — reboot blocked."); return; }
-  busy(false);
+  log("Checking positions before reboot…"); await scan();
+  if (!st.bot){ log("Cannot verify positions — reboot blocked."); return; }
   const hr = Number(new Date().toLocaleString("en-GB",{timeZone:"Asia/Jerusalem",hour:"2-digit",hour12:false}));
-  if (Object.keys(cache.bot.open).length){ log("Reboot refused: positions are open."); return; }
-  if (hr >= 17 && hr < 23){ log("Reboot refused during the 17:00–23:00 trading window."); return; }
-  $("modal").style.display = "flex";
-});
+  if (Object.keys(st.bot.open).length){ log("Reboot refused: positions are open."); return; }
+  if (hr >= 17 && hr < 23){ log("Reboot refused during 17:00–23:00."); return; }
+  $("modal").style.display = "flex"; });
 $("mNo").addEventListener("click", () => { $("modal").style.display = "none"; log("Reboot cancelled."); });
-$("mYes").addEventListener("click", async () => {
-  $("modal").style.display = "none"; $("kReboot").disabled = true; busy(true); log("Rebooting trading terminal… (~90 s)");
-  try { const p = await call("AWS MCP", "aws___run_script", {code: SSM(REBOOT_PS, "jarvis hud: user-confirmed reboot of trading terminal")});
-        const out = dig(p, x => typeof x === "string" && x.includes("RUN|")) || ""; log(/RUN\|True/i.test(out) ? "Terminal back online." : "Reboot result unclear — check the feed."); }
-  catch(e){ log("Reboot failed: " + (e && (e.code || e.message) || "")); }
-  $("kReboot").disabled = false; busy(false); scan();
-});
+$("mYes").addEventListener("click", async () => { $("modal").style.display = "none"; $("kReboot").disabled = true; log("Rebooting… (~90 s)");
+  try { const out = await runPS(REBOOT_PS, "jarvis: user-confirmed reboot of trading terminal"); log(/RUN\|True/i.test(out) ? "Bot back online." : "Result unclear — check the feed."); }
+  catch(e){ log("Reboot failed."); } $("kReboot").disabled = false; scan(); });
 setInterval(() => { $("clock").textContent = new Date().toLocaleString("en-GB",{timeZone:"Asia/Jerusalem",weekday:"short",hour:"2-digit",minute:"2-digit",second:"2-digit"}) + " · Israel"; }, 1000);
 (async () => {
   [mcp, sample] = await Promise.all([claude.use("mcp"), claude.use("sample")]);
-  if (!mcp){ $("headline").textContent = "Sensors offline in this view, sir."; log("Open this page inside Claude."); return; }
-  log("J.A.R.V.I.S online."); await scan();
-  setInterval(() => { if (!document.hidden) scan(); }, 180000);
+  if (!mcp){ $("headline").textContent = "Sensors offline in this view, sir."; return; }
+  log("Online."); await scan();
+  setInterval(tickPrices, 15000);
+  setInterval(() => { if (!document.hidden) scan(); }, 300000);
 })();
 }
 </script>
