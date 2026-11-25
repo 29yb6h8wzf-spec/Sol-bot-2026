@@ -5,111 +5,114 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>J.A.R.V.I.S</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap" rel="stylesheet">
 <style>
-/* VOICE: glass, light and quiet — a phone you can see through
-   IDEA: frosted panes floating over a slow aurora, like a visor over the night sky
-   PICTURE: a soft glowing orb that breathes with the system state, live SOL chart behind glass
-   COLOUR and TYPE: deep night, cyan and violet aurora, warm gold accent; Inter light numerals
-   LAYOUT: orb + headline, live price strip, command pills, glass readouts, chart, ask, log */
-:root{color-scheme:dark;--ink:#f2f6ff;--mute:rgba(230,240,255,.58);--glass:rgba(255,255,255,.07);--edge:rgba(255,255,255,.14);--cy:#6fe3ff;--vi:#a78bfa;--gold:#ffc46b;--up:#5cf0a0;--dn:#ff6b7d}
+/* VOICE: you are inside the visor — calm, deep, alive
+   IDEA: a helmet lens: holograms float at different depths in front of you, the world streams behind
+   PICTURE: a live SOL price hanging in mid-air inside three tilted orbit rings, panels on a curved arc
+   COLOUR and TYPE: void black, ice-cyan light, ultraviolet edges, a warm gold signal; Inter 200 numerals
+   LAYOUT: lens frame → depth field canvas → 3D stage (hologram core, curved panels, tilted chart) → command chips */
+:root{color-scheme:dark;--ink:#eaf6ff;--mute:rgba(200,230,255,.55);--cy:#7ef2ff;--vi:#b18cff;--gold:#ffcf7a;--up:#6dffb0;--dn:#ff7a8c}
 *{box-sizing:border-box;min-width:0}
-html,body{margin:0;min-height:100%;background:#03050b;color:var(--ink);font:15px/1.5 Inter,system-ui,sans-serif;overflow-x:clip}
-.aurora{position:fixed;inset:-20%;z-index:0;pointer-events:none;filter:blur(60px);opacity:.75}
-.aurora i{position:absolute;border-radius:50%}
-.aurora i:nth-child(1){width:55vw;height:55vw;left:5%;top:0;background:radial-gradient(circle,#1fb6ff 0,transparent 65%)}
-.aurora i:nth-child(2){width:50vw;height:50vw;right:0;top:20%;background:radial-gradient(circle,#7c3aed 0,transparent 65%)}
-.aurora i:nth-child(3){width:45vw;height:45vw;left:25%;bottom:0;background:radial-gradient(circle,#0ea5a5 0,transparent 65%)}
-.wrap{position:relative;z-index:1;max-width:820px;margin:0 auto;padding:16px 14px 48px}
-.glass{background:var(--glass);border:1px solid var(--edge);border-radius:22px;backdrop-filter:blur(26px) saturate(170%);-webkit-backdrop-filter:blur(26px) saturate(170%);box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 12px 40px rgba(0,0,0,.35)}
-.num{font-variant-numeric:tabular-nums;white-space:nowrap}
-.head{display:flex;gap:16px;align-items:center}
-.orb{flex:none;width:86px;height:86px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff 0,var(--c,#6fe3ff) 28%,rgba(111,227,255,.15) 62%,transparent 72%);box-shadow:0 0 50px 8px color-mix(in srgb,var(--c,#6fe3ff) 45%,transparent)}
-h1{margin:0;font:300 clamp(26px,6vw,36px)/1 Inter,sans-serif;letter-spacing:.32em}
-#headline{margin:6px 0 2px;font:500 17px/1.35 Inter,sans-serif}
-#clock{color:var(--mute);font-size:13px}
-.ticker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}
-.tk{padding:12px 14px}
-.tk .s{font-size:12px;color:var(--mute)}
-.tk .p{font:300 26px/1.15 Inter,sans-serif;transition:color .6s}
-.tk .c{font-size:13px}
-.flash-up{color:var(--up)!important}.flash-dn{color:var(--dn)!important}
-.pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
-.pill{min-height:44px;padding:0 16px;border-radius:999px;border:1px solid var(--edge);background:rgba(255,255,255,.06);color:var(--ink);font:500 14px Inter,sans-serif;cursor:pointer;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);text-decoration:none;display:inline-flex;align-items:center}
-.pill.warn{border-color:rgba(255,107,125,.45);color:#ffd2d8}
-.pill:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--cy);outline-offset:2px}
-.pill[disabled]{opacity:.45}
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
-.card{padding:14px 16px}
-.lbl{font-size:12px;color:var(--mute)}
-.big{font:300 26px/1.15 Inter,sans-serif;margin-top:2px}
-.sub{font-size:13px;color:var(--mute);margin-top:2px}
+html,body{margin:0;height:100%;background:#000;color:var(--ink);font:15px/1.5 Inter,system-ui,sans-serif;overflow-x:clip}
+canvas#space{position:fixed;inset:0;width:100%;height:100%;z-index:0}
+.lens{position:fixed;inset:0;z-index:3;pointer-events:none;
+  background:radial-gradient(120% 90% at 50% 45%,transparent 55%,rgba(0,8,20,.55) 78%,rgba(0,0,0,.92) 100%),
+             conic-gradient(from 210deg at 50% 50%,transparent 0 40deg,rgba(126,242,255,.07) 55deg,transparent 80deg 300deg,rgba(177,140,255,.06) 320deg,transparent 340deg)}
+.lens::before{content:"";position:absolute;inset:3%;border-radius:46% 46% 40% 40%/38% 38% 30% 30%;box-shadow:inset 0 0 0 1px rgba(126,242,255,.12),inset 0 0 80px rgba(126,242,255,.06)}
+.lens::after{content:"";position:absolute;left:8%;top:6%;width:38%;height:18%;border-radius:50%;background:radial-gradient(closest-side,rgba(255,255,255,.07),transparent);transform:rotate(-14deg)}
+.reticle{position:fixed;left:50%;top:34%;width:240px;height:240px;margin:-120px 0 0 -120px;z-index:2;pointer-events:none;opacity:.35}
+.stage{position:relative;z-index:2;min-height:100vh;perspective:900px;perspective-origin:50% 35%;padding:18px 14px 120px}
+.world{transform-style:preserve-3d;transition:transform .25s ease-out;max-width:760px;margin:0 auto}
+.top{display:flex;justify-content:space-between;align-items:baseline;transform:translateZ(40px)}
+.brand{font:200 22px/1 Inter,sans-serif;letter-spacing:.6em;color:var(--cy);text-shadow:0 0 18px rgba(126,242,255,.6)}
+.clock{font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums}
+#headline{margin:10px 0 0;text-align:center;font:300 16px/1.35 Inter,sans-serif;color:var(--ink);text-shadow:0 0 12px rgba(126,242,255,.35);transform:translateZ(60px)}
+.core{position:relative;height:300px;transform-style:preserve-3d;transform:translateZ(110px)}
+.ring{position:absolute;left:50%;top:50%;border-radius:50%;border:1px solid rgba(126,242,255,.55);box-shadow:0 0 24px rgba(126,242,255,.25),inset 0 0 24px rgba(126,242,255,.15)}
+.r1{width:250px;height:250px;margin:-125px 0 0 -125px;transform:rotateX(72deg)}
+.r2{width:210px;height:210px;margin:-105px 0 0 -105px;transform:rotateX(72deg) rotateY(28deg);border-color:rgba(177,140,255,.6)}
+.r3{width:170px;height:170px;margin:-85px 0 0 -85px;transform:rotateY(70deg);border-color:rgba(126,242,255,.35)}
+.price{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.price .sym{font-size:12px;letter-spacing:.4em;color:var(--mute)}
+.price .p{font:200 clamp(52px,15vw,84px)/1 Inter,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.02em;
+  text-shadow:-1.5px 0 rgba(255,60,120,.45),1.5px 0 rgba(60,220,255,.55),0 0 30px rgba(126,242,255,.45);transition:color .5s}
+.price .c{font-size:14px;margin-top:6px}
+.sig{margin-top:10px;padding:4px 12px;border-radius:999px;font-size:12px;letter-spacing:.12em;border:1px solid currentColor}
+.arc{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;transform-style:preserve-3d;margin-top:4px}
+.holo{position:relative;padding:12px 14px;border-radius:18px;background:linear-gradient(160deg,rgba(126,242,255,.09),rgba(177,140,255,.05) 60%,rgba(0,0,0,.15));
+  border:1px solid rgba(126,242,255,.22);box-shadow:0 0 30px rgba(126,242,255,.08),inset 0 1px 0 rgba(255,255,255,.12);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.holo::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(126,242,255,.035) 0 1px,transparent 1px 4px)}
+.arc .holo:nth-child(1){transform:rotateY(22deg) translateZ(-10px)}
+.arc .holo:nth-child(2){transform:translateZ(30px)}
+.arc .holo:nth-child(3){transform:rotateY(-22deg) translateZ(-10px)}
+.lbl{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+.v{font:300 22px/1.15 Inter,sans-serif;margin-top:4px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.d{font-size:12px;color:var(--mute);margin-top:2px}
 .up{color:var(--up)}.dn{color:var(--dn)}.gold{color:var(--gold)}
-.fig{position:relative;height:180px;margin-top:8px}.fig svg{position:absolute;inset:0;width:100%;height:100%}
-.legend{display:flex;gap:14px;font-size:12px;color:var(--mute);flex-wrap:wrap}
-.legend i{display:inline-block;width:14px;height:2px;vertical-align:middle;margin-right:6px;border-radius:2px}
-.ask{margin-top:14px;display:none;gap:8px;padding:8px}
-textarea{flex:1;min-height:46px;resize:none;background:transparent;border:0;color:var(--ink);font:16px/1.4 Inter,sans-serif;padding:10px}
-.go{border:0;border-radius:16px;padding:0 18px;background:linear-gradient(135deg,var(--cy),var(--vi));color:#06101c;font:600 14px Inter,sans-serif;cursor:pointer;min-height:46px}
-.answer{margin-top:10px;padding:14px 16px;white-space:pre-wrap;display:none;font-size:16px}
-.log{margin-top:14px;padding:10px 14px;font-size:12px;color:var(--mute);max-height:120px;overflow:auto}
-.modal{position:fixed;inset:0;z-index:5;background:rgba(0,0,0,.45);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;padding:20px}
-.modal .box{max-width:360px;padding:20px}
-.modal .row{display:flex;gap:10px;margin-top:16px}
-.modal button{flex:1;min-height:44px;border-radius:14px;border:1px solid var(--edge);background:rgba(255,255,255,.06);color:var(--ink);font:500 15px Inter,sans-serif;cursor:pointer}
-.modal .yes{background:rgba(255,107,125,.35);border-color:rgba(255,107,125,.6)}
-.note{font-size:12px;color:var(--mute);margin-top:12px}
-@media(max-width:600px){.orb{width:68px;height:68px}.ticker{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:8px}.tk{padding:10px}.tk .p{font-size:19px}.grid{grid-template-columns:minmax(0,1fr)}}
-@media(prefers-reduced-motion:no-preference){.aurora i{animation:drift 26s ease-in-out infinite alternate}.aurora i:nth-child(2){animation-duration:34s}.aurora i:nth-child(3){animation-duration:40s}@keyframes drift{to{transform:translate(8vw,6vh) scale(1.15)}}.orb{animation:breathe 4s ease-in-out infinite}@keyframes breathe{50%{transform:scale(.94);filter:brightness(1.25)}}.busy .orb{animation-duration:.9s}}
+.floor{margin-top:22px;transform:rotateX(24deg) translateZ(-20px);transform-origin:50% 0}
+.fig{position:relative;height:190px}.fig svg{position:absolute;inset:0;width:100%;height:100%;filter:drop-shadow(0 0 6px rgba(126,242,255,.5))}
+.legend{display:flex;gap:14px;font-size:11px;color:var(--mute);margin-bottom:6px}
+.legend i{display:inline-block;width:14px;height:2px;margin-right:6px;vertical-align:middle}
+.dock{position:fixed;left:0;right:0;bottom:0;z-index:4;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:12px 12px max(14px,env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(0,0,0,.75))}
+.chip{min-height:44px;padding:0 16px;border-radius:999px;border:1px solid rgba(126,242,255,.35);background:rgba(126,242,255,.08);color:var(--ink);font:400 14px Inter,sans-serif;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 0 18px rgba(126,242,255,.15)}
+.chip.warn{border-color:rgba(255,122,140,.5);background:rgba(255,122,140,.08)}
+.chip:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--cy);outline-offset:2px}
+.ask{display:none;gap:8px;margin-top:16px;transform:translateZ(80px)}
+textarea{flex:1;min-height:46px;resize:none;background:rgba(126,242,255,.06);border:1px solid rgba(126,242,255,.3);border-radius:16px;color:var(--ink);font:16px/1.4 Inter,sans-serif;padding:11px}
+.go{border:0;border-radius:16px;padding:0 18px;background:linear-gradient(135deg,var(--cy),var(--vi));color:#031018;font:600 14px Inter,sans-serif;cursor:pointer}
+.answer{display:none;margin-top:12px;font:300 17px/1.45 Inter,sans-serif;text-align:center;text-shadow:0 0 14px rgba(126,242,255,.4);transform:translateZ(90px)}
+.log{margin-top:16px;font-size:11px;color:var(--mute);max-height:84px;overflow:auto;text-align:center;transform:translateZ(10px)}
+.modal{position:fixed;inset:0;z-index:6;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.5);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.modal .holo{max-width:340px;padding:20px}
+.modal .row{display:flex;gap:10px;margin-top:14px}
+.modal button{flex:1;min-height:44px;border-radius:14px;border:1px solid rgba(126,242,255,.3);background:transparent;color:var(--ink);font:500 15px Inter,sans-serif;cursor:pointer}
+.modal .yes{border-color:rgba(255,122,140,.6);background:rgba(255,122,140,.18)}
+@media(max-width:600px){.arc{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:8px}.holo{padding:10px}.v{font-size:16px}.d{font-size:11px}.core{height:260px}.r1{width:220px;height:220px;margin:-110px 0 0 -110px}}
+@media(prefers-reduced-motion:no-preference){.r1{animation:spinA 18s linear infinite}.r2{animation:spinB 12s linear infinite}.r3{animation:spinC 22s linear infinite}
+  @keyframes spinA{to{transform:rotateX(72deg) rotateZ(360deg)}}@keyframes spinB{to{transform:rotateX(72deg) rotateY(28deg) rotateZ(-360deg)}}@keyframes spinC{to{transform:rotateY(70deg) rotateX(360deg)}}
+  .holo{animation:float 7s ease-in-out infinite}.arc .holo:nth-child(2){animation-delay:-2s}.arc .holo:nth-child(3){animation-delay:-4s}
+  @keyframes float{50%{translate:0 -5px}}}
+.flash-up{color:var(--up)!important}.flash-dn{color:var(--dn)!important}
 </style>
 </head>
 <body>
-<div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
-<div class="wrap" id="wrap">
-  <div class="head">
-    <div class="orb" id="orb" aria-hidden="true"></div>
-    <div>
-      <h1>JARVIS</h1>
-      <p id="headline">Waking up, sir…</p>
-      <div id="clock" class="num"></div>
-    </div>
+<canvas id="space" aria-hidden="true"></canvas>
+<svg class="reticle" viewBox="0 0 240 240" aria-hidden="true"><circle cx="120" cy="120" r="116" fill="none" stroke="#7ef2ff" stroke-width=".6" stroke-dasharray="2 6"/><path d="M120 0v18M120 222v18M0 120h18M222 120h18" stroke="#7ef2ff" stroke-width=".8"/></svg>
+<div class="stage" id="stage"><div class="world" id="world">
+  <div class="top"><div class="brand">JARVIS</div><div class="clock" id="clock"></div></div>
+  <p id="headline">Waking up, sir…</p>
+
+  <div class="core" aria-live="polite">
+    <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>
+    <div class="price"><div class="sym">SOL · BINANCE FUTURES</div><div class="p" id="pSOL">—</div><div class="c" id="cSOL">&nbsp;</div><div class="sig" id="sig">—</div></div>
   </div>
 
-  <div class="ticker">
-    <div class="glass tk"><div class="s">SOL · Binance Futures</div><div class="p num" id="pSOL">—</div><div class="c num" id="cSOL">&nbsp;</div></div>
-    <div class="glass tk"><div class="s">BTC</div><div class="p num" id="pBTC">—</div><div class="c num" id="cBTC">&nbsp;</div></div>
-    <div class="glass tk"><div class="s">ETH</div><div class="p num" id="pETH">—</div><div class="c num" id="cETH">&nbsp;</div></div>
+  <div class="arc">
+    <div class="holo"><div class="lbl">Bitcoin</div><div class="v" id="pBTC">—</div><div class="d" id="cBTC">&nbsp;</div></div>
+    <div class="holo"><div class="lbl">FTMO bot</div><div class="v" id="botS">—</div><div class="d" id="botD">—</div></div>
+    <div class="holo"><div class="lbl">Ethereum</div><div class="v" id="pETH">—</div><div class="d" id="cETH">&nbsp;</div></div>
   </div>
 
-  <div class="pills">
-    <button class="pill" id="kScan" type="button">Full scan</button>
-    <button class="pill" id="kBrief" type="button">Briefing</button>
-    <button class="pill" id="kAsk" type="button">Ask</button>
-    <a class="pill" href="https://claude.ai/artifact/7JrRcsxjKEmWkccgXJuVcn">Trade feed</a>
-    <button class="pill warn" id="kReboot" type="button">Reboot bot</button>
-  </div>
-
-  <div class="glass ask" id="askRow"><textarea id="q" placeholder="Talk to me, sir"></textarea><button class="go" id="go" type="button">Send</button></div>
-  <div class="glass answer" id="ans" aria-live="polite"></div>
-
-  <div class="grid">
-    <div class="glass card"><div class="lbl">Solana signal · 10/50-day</div><div class="big" id="solS">—</div><div class="sub" id="solD">—</div></div>
-    <div class="glass card"><div class="lbl">FTMO bot · US100</div><div class="big" id="botS">—</div><div class="sub" id="botD">—</div></div>
-  </div>
-
-  <div class="glass card" style="margin-top:10px"><div class="lbl">SOL · 90 days · daily closes</div>
-    <div class="legend" style="margin-top:6px"><span><i style="background:#f2f6ff"></i>Price</span><span><i style="background:#ffc46b"></i>10-day</span><span><i style="background:#6fe3ff"></i>50-day</span></div>
+  <div class="holo floor"><div class="legend"><span><i style="background:#eaf6ff"></i>SOL daily</span><span><i style="background:#ffcf7a"></i>10-day</span><span><i style="background:#7ef2ff"></i>50-day</span></div>
     <div class="fig" id="fig"><svg id="chart" aria-label="Solana daily closes with 10 and 50 day averages"></svg></div>
-  </div>
+    <div class="d" id="solD">—</div></div>
 
-  <div class="glass log" id="log" aria-live="polite"></div>
-  <p class="note">Prices: Binance USDT-M futures via your server, refreshed every ~15 s. Signals are data, not advice — every trade is your call.</p>
+  <div class="ask" id="askRow"><textarea id="q" placeholder="Talk to me, sir"></textarea><button class="go" id="go" type="button">Send</button></div>
+  <div class="answer" id="ans" aria-live="polite"></div>
+  <div class="log" id="log" aria-live="polite"></div>
+</div></div>
+<div class="lens" aria-hidden="true"></div>
+<div class="dock">
+  <button class="chip" id="kScan" type="button">Scan</button>
+  <button class="chip" id="kBrief" type="button">Briefing</button>
+  <button class="chip" id="kAsk" type="button">Ask</button>
+  <a class="chip" href="https://claude.ai/artifact/7JrRcsxjKEmWkccgXJuVcn">Feed</a>
+  <button class="chip warn" id="kReboot" type="button">Reboot</button>
 </div>
-
-<div class="modal" id="modal"><div class="glass box"><div style="font-size:18px;font-weight:600">Reboot the trading bot?</div>
-  <p class="sub">It restarts and reloads its settings. Allowed only with no open positions and outside 17:00–23:00.</p>
+<div class="modal" id="modal"><div class="holo"><div style="font-size:17px;font-weight:500">Reboot the trading bot?</div>
+  <p class="d">Restarts and reloads its settings. Only with no open positions, outside 17:00–23:00.</p>
   <div class="row"><button type="button" id="mNo">Cancel</button><button type="button" class="yes" id="mYes">Reboot</button></div></div></div>
-
 <script>
 {
 const $ = id => document.getElementById(id);
@@ -157,15 +160,15 @@ function dig(o, test){ if (o == null) return null;
   if (test(o)) return o; if (typeof o === "object") for (const k of Object.keys(o)){ const r = dig(o[k], test); if (r != null) return r; } return null; }
 async function runPS(ps, comment){ const r = await mcp.callTool("AWS MCP", "aws___run_script", {code: SSM(ps, comment)}); const p = r && r.payload !== undefined ? r.payload : r;
   return dig(p, x => typeof x === "string" && (x.includes("OK|") || x.includes("RUN|"))) || ""; }
-function orb(state){ $("orb").style.setProperty("--c", state === "bad" ? "#ff6b7d" : state === "warn" ? "#ffc46b" : "#6fe3ff"); }
+function orb(state){ const c = state === "bad" ? "rgba(255,122,140,.7)" : state === "warn" ? "rgba(255,207,122,.65)" : "rgba(126,242,255,.55)"; document.querySelectorAll(".ring").forEach((r,i) => { if (i !== 1) r.style.borderColor = c; }); }
 
 function applyPrices(out){
   for (const l of out.split(/\r?\n/)){ const m = l.match(/^P\|(\w+)USDT\|([\d.]+)\|(-?[\d.]+)/); if (!m) continue;
     const sym = m[1], p = +m[2], ch = +m[3], el = $("p"+sym), prev = st.prices[sym];
     if (!el) continue;
-    el.textContent = "$" + fmt(p, sym === "SOL" ? 2 : sym === "ETH" ? 2 : 0);
+    el.textContent = (sym === "SOL" ? "" : "$") + fmt(p, sym === "SOL" ? 2 : sym === "ETH" ? 2 : 0);
     if (prev != null && p !== prev){ el.classList.remove("flash-up","flash-dn"); void el.offsetWidth; el.classList.add(p > prev ? "flash-up" : "flash-dn"); setTimeout(() => el.classList.remove("flash-up","flash-dn"), 1200); }
-    const c = $("c"+sym); c.textContent = (ch>0?"+":"") + ch.toFixed(2) + "% 24h"; c.className = "c num " + (ch < 0 ? "dn" : "up");
+    const c = $("c"+sym); c.textContent = (ch>0?"+":"") + ch.toFixed(2) + "% 24h"; c.className = (sym === "SOL" ? "c " : "d ") + (ch < 0 ? "dn" : "up");
     st.prices[sym] = p; }
 }
 function applyFull(out){
@@ -201,10 +204,10 @@ function drawChart(){
 const chartObserver = new ResizeObserver(drawChart); chartObserver.observe($("fig"));
 function render(){
   const s = st.sol, b = st.bot;
-  if (s){ $("solS").textContent = s.up ? "Entry active · trend up" : "No entry · trend down"; $("solS").className = "big " + (s.up ? "up" : "gold");
+  if (s){ $("sig").textContent = s.up ? "ENTRY ACTIVE" : "NO ENTRY"; $("sig").className = "sig " + (s.up ? "up" : "gold");
     $("solD").textContent = "10-day " + fmt(s.a10,2) + (s.up ? " above " : " below ") + "50-day " + fmt(s.a50,2) + (s.cross ? " · last " + (s.cross.up ? "entry" : "exit") + " " + s.cross.ago + " days ago at $" + fmt(s.cross.price,2) : ""); drawChart(); }
-  if (b){ $("botS").textContent = b.running ? "Online" : "Offline"; $("botS").className = "big " + (b.running ? "up" : "dn");
-    const op = Object.entries(b.open).map(([k,v]) => k + " " + v.toLowerCase()); $("botD").textContent = (op.length ? "Holding " + op.join(", ") : "Flat — no positions") + (b.chk ? " · last check " + b.chk : ""); }
+  if (b){ $("botS").textContent = b.running ? "Online" : "Offline"; $("botS").className = "v " + (b.running ? "up" : "dn");
+    const op = Object.entries(b.open).map(([k,v]) => k + " " + v.toLowerCase()); $("botD").textContent = op.length ? "Holding " + op.join(", ") : "Flat" + (b.chk ? " · " + b.chk.slice(0,5) : ""); }
   let head = "All quiet, sir.";
   if (b && !b.running) head = "The trading bot is offline, sir.";
   else if (b && Object.keys(b.open).length) head = "The bot is holding " + Object.keys(b.open).join(" and ") + ", sir.";
@@ -216,20 +219,20 @@ let pricing = false;
 async function tickPrices(){ if (pricing || document.hidden) return; pricing = true;
   try { applyPrices(await runPS(PRICE_PS, "read-only: jarvis live prices")); } catch(e){ if (/auth/i.test(String(e && (e.code||e.message)))) log("AWS needs re-login: Settings › Connectors."); }
   pricing = false; }
-async function scan(){ $("wrap").classList.add("busy"); log("Full scan…");
+async function scan(){ log("Full scan…");
   try { applyFull(await runPS(FULL_PS, "read-only: jarvis full scan")); log("Scan complete."); }
   catch(e){ log(/auth/i.test(String(e && (e.code||e.message))) ? "AWS needs re-login: Settings › Connectors." : "Scan failed: " + (e && (e.code||e.message) || "")); }
-  $("wrap").classList.remove("busy"); }
+}
 async function ask(text){
   if (!text.trim()) return; if (!sample){ log("Ask is unavailable in this view."); return; }
-  $("ans").style.display = "block"; $("ans").textContent = "One moment, sir…"; $("wrap").classList.add("busy");
+  $("ans").style.display = "block"; $("ans").textContent = "One moment, sir…";
   const SYS = "You are JARVIS. English, calm, precise, dry British wit, call the user 'sir'. Maximum 2 sentences, under 25 words. Never recommend buying or selling; state, risk, invalidation only. Use the tools. Prices are Binance USDT-M futures. Solana: only the 10/50-day entry/exit state and price.";
   const tools = [{name:"live_prices", description:"Latest Binance futures prices for SOL, BTC, ETH.", execute: async () => st.prices},
                  {name:"sol_signal", description:"Solana 10/50-day average entry/exit state and last cross.", execute: async () => st.sol ? {entryActive:st.sol.up, avg10:st.sol.a10, avg50:st.sol.a50, lastCross:st.sol.cross && {type:st.sol.cross.up?"entry":"exit", daysAgo:st.sol.cross.ago, price:st.sol.cross.price}} : {error:"not loaded"}},
                  {name:"bot_status", description:"FTMO trading bot: running, open positions, last check (Israel time).", execute: async () => st.bot || {error:"not loaded"}}];
   try { const r = await sample([{role:"user", content: SYS + "\n\nUser: " + text}], {tools, cache:false, onText: ({text}) => { $("ans").textContent = text; }}); $("ans").textContent = r.text; }
   catch(e){ $("ans").textContent = e && e.code === "rate_limited" ? "A moment, sir — rate limited." : "That failed, sir."; }
-  $("wrap").classList.remove("busy"); }
+}
 $("kScan").addEventListener("click", scan);
 $("kBrief").addEventListener("click", () => ask("One-line situation report: Solana price and signal, bot status."));
 $("kAsk").addEventListener("click", () => { $("askRow").style.display = "flex"; $("q").focus(); });
@@ -246,6 +249,31 @@ $("mNo").addEventListener("click", () => { $("modal").style.display = "none"; lo
 $("mYes").addEventListener("click", async () => { $("modal").style.display = "none"; $("kReboot").disabled = true; log("Rebooting… (~90 s)");
   try { const out = await runPS(REBOOT_PS, "jarvis: user-confirmed reboot of trading terminal"); log(/RUN\|True/i.test(out) ? "Bot back online." : "Result unclear — check the feed."); }
   catch(e){ log("Reboot failed."); } $("kReboot").disabled = false; scan(); });
+
+// depth field: particles streaming toward the lens
+const cv = $("space"), cx = cv.getContext("2d"); let SW = 0, SH = 0; const P = [];
+function size(){ SW = cv.width = innerWidth * devicePixelRatio; SH = cv.height = innerHeight * devicePixelRatio; }
+size(); addEventListener("resize", size);
+for (let i = 0; i < 260; i++) P.push({x:(Math.random()-.5)*2, y:(Math.random()-.5)*2, z:Math.random()});
+const calm = matchMedia("(prefers-reduced-motion: reduce)").matches; let tx = 0, ty = 0, cxp = 0, cyp = 0;
+function frame(t){
+  cx.fillStyle = "rgba(0,2,8,.35)"; cx.fillRect(0,0,SW,SH);
+  const f = Math.min(SW,SH)*.9;
+  for (const p of P){ if (!calm) p.z -= .0016; if (p.z <= .02){ p.z = 1; p.x = (Math.random()-.5)*2; p.y = (Math.random()-.5)*2; }
+    const sx = SW/2 + (p.x + cxp*.15) * f / p.z * .5, sy = SH*.38 + (p.y + cyp*.15) * f / p.z * .5;
+    if (sx < 0 || sx > SW || sy < 0 || sy > SH) continue;
+    const a = Math.min(1, (1-p.z)*1.3), r = (1-p.z)*2.2*devicePixelRatio + .3;
+    cx.fillStyle = p.z > .5 ? "rgba(126,242,255," + a*.6 + ")" : "rgba(220,240,255," + a + ")"; cx.beginPath(); cx.arc(sx, sy, r, 0, 6.283); cx.fill(); }
+  // parallax: pointer target + gentle sway
+  const sw = calm ? 0 : Math.sin(t/4200)*.35;
+  cxp += ((tx || sw) - cxp)*.06; cyp += ((ty || Math.cos(t/5300)*.25*(calm?0:1)) - cyp)*.06;
+  $("world").style.transform = "rotateY(" + (cxp*7).toFixed(2) + "deg) rotateX(" + (-cyp*6).toFixed(2) + "deg)";
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+addEventListener("pointermove", e => { tx = (e.clientX/innerWidth - .5)*2; ty = (e.clientY/innerHeight - .5)*2; });
+addEventListener("pointerleave", () => { tx = ty = 0; });
+addEventListener("touchend", () => { setTimeout(() => { tx = ty = 0; }, 1500); });
 setInterval(() => { $("clock").textContent = new Date().toLocaleString("en-GB",{timeZone:"Asia/Jerusalem",weekday:"short",hour:"2-digit",minute:"2-digit",second:"2-digit"}) + " · Israel"; }, 1000);
 (async () => {
   [mcp, sample] = await Promise.all([claude.use("mcp"), claude.use("sample")]);
