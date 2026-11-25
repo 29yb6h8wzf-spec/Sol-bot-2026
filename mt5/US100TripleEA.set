@@ -1,5 +1,5 @@
 InpSymbol=US100.cash
-InpInitialCapital=0
+InpInitialCapital=10000
 InpMult=2.0
 InpMultTOM=1.0
 InpMultDIP=0
