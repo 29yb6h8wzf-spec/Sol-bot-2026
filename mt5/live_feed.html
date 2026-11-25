@@ -103,6 +103,12 @@ $all = Get-ChildItem "$ft\MQL5\Logs\2*.log" | sort Name | select -Last 7 | %{
 }
 $all | ?{ $_ -notmatch 'CHK' } | select -Last 150
 $all | ?{ $_ -match 'CHK' } | select -Last 8
+Get-ChildItem "$ft\logs\2*.log" | sort Name | select -Last 7 | %{
+  $d=$_.BaseName
+  Get-Content $_.FullName | ?{ $_ -match 'Trades' -and $_ -match 'deal #\d+ (buy|sell) [\d.]+ US100\.cash at [\d.]+ done' } | %{
+    $f=$_ -split [char]9; "D|" + $d + "|" + $f[2] + "|" + $f[4]
+  }
+} | select -Last 120
 '''
 cmd = await call_boto3(service_name="ssm", operation_name="SendCommand", region_name="il-central-1",
     params={"InstanceIds": ["i-0386e781ed9957a89"], "DocumentName": "AWS-RunPowerShellScript",
@@ -145,12 +151,17 @@ function dig(o){
 
 function parse(out){
   const lines = out.split(/\r?\n/);
-  const st = {run:false, net:"", now:null, events:[], open:{}, chk:{}};
+  const st = {run:false, net:"", now:null, events:[], open:{}, chk:{}, deals:[]};
   let last = null;
   for (const ln of lines){
     if (ln.startsWith("RUN|")) st.run = /true/i.test(ln);
     else if (ln.startsWith("NET|")) st.net = ln.slice(4);
     else if (ln.startsWith("NOW|")){ const m = ln.match(/(\d{4})(\d\d)(\d\d) (\d\d):(\d\d):(\d\d)/); if (m) st.now = new Date(Date.UTC(+m[1],m[2]-1,+m[3],+m[4],+m[5],+m[6])); }
+    else if (ln.startsWith("D|")){
+      const [, d, t, ...rest] = ln.split("|"); const msg = rest.join("|");
+      const dd = d.match(/(\d{4})(\d\d)(\d\d)/), tt = (t||"").match(/(\d\d):(\d\d):(\d\d)/), m = msg.match(/deal #\d+ (buy|sell) ([\d.]+) US100\.cash at ([\d.]+)/);
+      if (dd && tt && m) st.deals.push({when:new Date(Date.UTC(+dd[1],dd[2]-1,+dd[3],+tt[1],+tt[2],+tt[3])), lots:+m[2], price:+m[3]});
+    }
     else if (ln.startsWith("E|")){
       const [, d, t, ...rest] = ln.split("|"); const msg = rest.join("|").trim();
       const dd = d.match(/(\d{4})(\d\d)(\d\d)/), tt = (t||"").match(/(\d\d):(\d\d):(\d\d)/);
@@ -173,6 +184,13 @@ function parse(out){
       else if (/EA disabled/.test(msg)) st.events.push({when, kind:"alert", msg:"הבוט נעצר: עצירת הפסד כוללת"});
       else if (/US100TripleEA ready/.test(msg)) { st.open = {}; st.events.push({when, kind:"start", msg}); }
     }
+  }
+  const near = (e) => { let best=null, bd=1e9; for (const x of st.deals){ const dt=Math.abs(x.when-e.when); if (dt<=15000 && (e.lots==null || Math.abs(x.lots-e.lots)<1e-9) && dt<bd){ best=x; bd=dt; } } return best; };
+  const openBy = {};
+  for (const e of st.events){
+    if (e.kind==="open"){ if (e.price==null){ const x=near(e); if (x) e.price=x.price; } openBy[e.mod]=e; if (st.open[e.mod] && st.open[e.mod].when===e.when) st.open[e.mod].price=e.price; }
+    else if (e.kind==="close"){ const o=openBy[e.mod]; if (e.price==null){ const x=near({when:e.when, lots:o?o.lots:null}); if (x) e.price=x.price; }
+      if (o && o.price!=null && e.price!=null){ e.dir=o.dir; e.pnl=o.dir*(e.price-o.price)*o.lots; } delete openBy[e.mod]; }
   }
   return st;
 }
