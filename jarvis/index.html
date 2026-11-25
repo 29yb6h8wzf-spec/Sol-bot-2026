@@ -4,133 +4,127 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>JARVIS</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-/* VOICE: loud, confident, playful — an award-site launch page, not a dashboard
-   IDEA: a trading poster that is alive: one giant live number, a running ticker tape, bento tiles
-   PICTURE: the live SOL price set huge over a drifting neon mesh with a glossy sphere
-   COLOUR and TYPE: ink black, acid lime, electric violet, hot coral; Unbounded black display, Inter text
-   LAYOUT: nav pill → hero price → ticker tape → bento (candle read, trend, bot, majors, chart) → ask → actions */
-:root{color-scheme:dark;--bg:#07070a;--ink:#f6f5f2;--mute:rgba(246,245,242,.6);--lime:#d4ff3a;--vio:#7c5cff;--coral:#ff5a47;--card:#121218;--line:rgba(255,255,255,.08)}
+/* VOICE: visionOS — quiet, premium, weightless; the interface floats in your room
+   IDEA: glass windows hovering in a softly lit space, with ornaments docked below
+   PICTURE: a frosted window holding the live SOL price, other windows at different depths behind it
+   COLOUR and TYPE: warm room light (amber lamp, teal window, slate), white glass; SF Pro via system-ui
+   LAYOUT: status capsule → hero window → two side windows → candle window → chart window → ask field → tab ornament */
+:root{color-scheme:dark;--ink:#fff;--mute:rgba(255,255,255,.62);--glass:rgba(118,118,128,.26);--glass2:rgba(118,118,128,.18);--edge:rgba(255,255,255,.28);--mint:#66f2c3;--red:#ff8a80;--blue:#7cc4ff}
 *{box-sizing:border-box;min-width:0}
-html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,sans-serif;overflow-x:clip}
-body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:9;opacity:.06;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
-.wrap{max-width:900px;margin:0 auto;padding:14px 14px 40px}
-.disp{font-family:Unbounded,Inter,sans-serif}
-.num{font-variant-numeric:tabular-nums;white-space:nowrap}
-nav{display:flex;align-items:center;justify-content:space-between;padding:8px 8px 8px 16px;border:1px solid var(--line);border-radius:999px;background:rgba(18,18,24,.7);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);position:sticky;top:10px;z-index:5}
-.logo{font:900 15px/1 Unbounded,sans-serif;letter-spacing:.02em}
-.logo b{color:var(--lime)}
-.live{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mute);padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.05)}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 0 rgba(212,255,58,.6)}
-.hero{position:relative;margin-top:14px;border-radius:32px;overflow:hidden;padding:26px 20px 24px;min-height:360px;background:#0b0b10;isolation:isolate}
-.mesh{position:absolute;inset:-30%;z-index:-2;filter:blur(50px);opacity:.9}
-.mesh i{position:absolute;border-radius:50%}
-.mesh i:nth-child(1){width:60%;height:60%;left:8%;top:10%;background:var(--vio)}
-.mesh i:nth-child(2){width:45%;height:45%;right:6%;top:18%;background:var(--coral)}
-.mesh i:nth-child(3){width:50%;height:50%;left:35%;bottom:4%;background:#1fd1c1}
-.sphere{position:absolute;right:-40px;top:-30px;width:220px;height:220px;border-radius:50%;z-index:-1;background:radial-gradient(circle at 32% 28%,#fff 0,#e9e4ff 10%,#9f8bff 34%,#3b1fa8 70%,#120b33 100%);box-shadow:inset -20px -30px 60px rgba(0,0,0,.45),0 30px 80px rgba(124,92,255,.45)}
-.eyebrow{display:inline-flex;gap:8px;align-items:center;font:600 12px/1 Inter,sans-serif;padding:8px 12px;border-radius:999px;background:rgba(0,0,0,.35);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
-.big{font:900 clamp(64px,21vw,150px)/.88 Unbounded,sans-serif;letter-spacing:-.04em;margin:18px 0 10px;transition:color .5s}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.tag{font:600 13px/1 Inter,sans-serif;padding:9px 13px;border-radius:999px;background:rgba(0,0,0,.4);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
-.tag.lime{background:var(--lime);color:#0b0b10}.tag.coral{background:var(--coral);color:#fff}
-#headline{margin:16px 0 0;font:500 17px/1.35 Inter,sans-serif;max-width:30ch}
-.tape{margin:14px -14px 0;overflow:hidden;border-block:1px solid var(--line);background:#0d0d12;white-space:nowrap}
-.tape .t{display:inline-flex;gap:38px;padding:12px 0;font:600 14px/1 Unbounded,sans-serif;letter-spacing:.01em}
-.tape .t span{display:inline-flex;gap:10px;align-items:center}
-.bento{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:14px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:28px;padding:18px;position:relative;overflow:hidden}
-.card .k{font:600 12px/1 Inter,sans-serif;color:var(--mute)}
-.c2{grid-column:span 2}.c4{grid-column:span 4}.c3{grid-column:span 3}
-.read{min-height:210px;display:flex;flex-direction:column;justify-content:space-between;transition:background .5s,color .5s}
-.read.long{background:var(--lime);color:#0b0b10}.read.long .k,.read.long .d,.read.long .stats{color:rgba(11,11,16,.7)}
-.read.short{background:var(--coral);color:#fff}.read.short .k,.read.short .d,.read.short .stats{color:rgba(255,255,255,.8)}
-.bias{font:900 clamp(40px,11vw,64px)/.95 Unbounded,sans-serif;letter-spacing:-.03em;margin:14px 0 6px}
-.d{font-size:13px;color:var(--mute)}
-.stats{font-size:12px;color:var(--mute);margin-top:10px;line-height:1.45}
-.v{font:800 26px/1.1 Unbounded,sans-serif;margin-top:10px;letter-spacing:-.02em}
-.pulse{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;vertical-align:middle;background:var(--lime)}
-.pulse.off{background:var(--coral)}
-.up{color:var(--lime)}.dn{color:var(--coral)}.gold{color:#ffd166}
-.read.long .up,.read.long .dn{color:inherit}
-.fig{position:relative;height:200px;margin-top:10px}.fig svg{position:absolute;inset:0;width:100%;height:100%}
-.legend{display:flex;gap:14px;font-size:12px;color:var(--mute);margin-top:8px;flex-wrap:wrap}
+html,body{margin:0;min-height:100%;color:var(--ink);font:16px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;overflow-x:clip;background:#2a2622;-webkit-font-smoothing:antialiased}
+.room{position:fixed;inset:0;z-index:0;overflow:hidden;background:linear-gradient(180deg,#3b342d 0%,#2a2724 45%,#1d1f22 100%)}
+.room i{position:absolute;border-radius:50%;filter:blur(70px)}
+.room i:nth-child(1){width:70vmax;height:70vmax;left:-25vmax;top:-20vmax;background:radial-gradient(circle,rgba(255,196,128,.75),transparent 65%)}
+.room i:nth-child(2){width:60vmax;height:60vmax;right:-25vmax;top:10vh;background:radial-gradient(circle,rgba(110,190,210,.55),transparent 65%)}
+.room i:nth-child(3){width:80vmax;height:40vmax;left:-10vmax;bottom:-15vmax;background:radial-gradient(circle,rgba(150,120,100,.55),transparent 70%)}
+.room b{position:absolute;border-radius:50%;background:rgba(255,230,190,.5);filter:blur(2px)}
+.space{position:relative;z-index:1;max-width:760px;margin:0 auto;padding:16px 16px 120px;perspective:1400px}
+.glass{background:var(--glass);border-radius:34px;backdrop-filter:blur(40px) saturate(180%);-webkit-backdrop-filter:blur(40px) saturate(180%);
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.45),inset 0 -1px 1px rgba(255,255,255,.08),0 0 0 .5px var(--edge),0 24px 60px rgba(0,0,0,.28);position:relative;overflow:hidden}
+.glass::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:linear-gradient(160deg,rgba(255,255,255,.22),rgba(255,255,255,0) 38%)}
+.cap{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-radius:999px;font-size:13px;color:var(--mute);margin:0 auto 16px;max-width:420px}
+.cap .me{font-weight:600;color:var(--ink);letter-spacing:.02em}
+.cap .live{display:flex;gap:6px;align-items:center}
+.cap .live::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 10px var(--mint)}
+.win{padding:22px 22px 20px;transition:transform .5s cubic-bezier(.2,.8,.2,1)}
+.hero{text-align:center;padding:26px 22px 22px}
+.title{font:600 13px/1 -apple-system,system-ui,sans-serif;color:var(--mute);letter-spacing:.02em}
+.price{font:200 clamp(64px,19vw,104px)/1 -apple-system,"SF Pro Display",system-ui,sans-serif;letter-spacing:-.04em;margin:10px 0 12px;font-variant-numeric:tabular-nums;transition:color .6s}
+.row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.tag{font:500 14px/1 -apple-system,system-ui,sans-serif;padding:9px 14px;border-radius:999px;background:var(--glass2);box-shadow:inset 0 0 0 .5px var(--edge);font-variant-numeric:tabular-nums}
+.tag.lime{color:var(--mint)}.tag.coral{color:var(--red)}
+#headline{margin:16px auto 0;font:400 17px/1.35 -apple-system,system-ui,sans-serif;color:rgba(255,255,255,.86);max-width:28ch}
+.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}
+.pair .win{transform:translateZ(-30px) scale(.985)}
+.k{font:600 13px/1.2 -apple-system,system-ui,sans-serif;color:var(--mute)}
+.v{font:300 30px/1.1 -apple-system,"SF Pro Display",system-ui,sans-serif;margin-top:8px;letter-spacing:-.02em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.d{font-size:14px;color:var(--mute);margin-top:4px}
+.up{color:var(--mint)}.dn{color:var(--red)}.gold{color:#ffd98a}
+.pulse{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--mint);box-shadow:0 0 10px var(--mint);margin-right:8px;vertical-align:middle}
+.pulse.off{background:var(--red);box-shadow:0 0 10px var(--red)}
+.read{margin-top:14px;text-align:center;transition:background .6s}
+.read.long{background:rgba(70,200,150,.30)}.read.short{background:rgba(255,110,100,.30)}
+.bias{font:200 54px/1 -apple-system,"SF Pro Display",system-ui,sans-serif;letter-spacing:.02em;margin:10px 0 6px}
+.stats{font-size:13px;color:var(--mute);margin-top:10px;line-height:1.45}
+.chartwin{margin-top:14px}
+.fig{position:relative;height:190px;margin-top:12px}.fig svg{position:absolute;inset:0;width:100%;height:100%}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--mute);margin-top:10px;flex-wrap:wrap}
 .legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
-.ask{display:flex;gap:8px;margin-top:14px;padding:8px;border-radius:999px;background:var(--card);border:1px solid var(--line)}
-textarea{flex:1;min-height:44px;height:44px;resize:none;background:transparent;border:0;color:var(--ink);font:16px/1.4 Inter,sans-serif;padding:11px 12px}
-.go{flex:none;border:0;border-radius:999px;padding:0 20px;min-height:44px;background:var(--lime);color:#0b0b10;font:800 13px Unbounded,sans-serif;cursor:pointer}
-.answer{display:none;margin-top:12px;padding:18px 20px;border-radius:24px;background:linear-gradient(135deg,rgba(124,92,255,.25),rgba(255,90,71,.15));border:1px solid var(--line);font:500 17px/1.45 Inter,sans-serif}
-.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
-.btn{min-height:46px;padding:0 18px;border-radius:999px;border:1px solid var(--line);background:#16161d;color:var(--ink);font:600 14px Inter,sans-serif;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:8px}
-.btn.primary{background:var(--ink);color:#0b0b10;border-color:var(--ink)}
-.btn.danger{border-color:rgba(255,90,71,.5);color:#ffb4aa}
-.btn:focus-visible,.go:focus-visible,textarea:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
-.log{margin-top:12px;font-size:12px;color:var(--mute)}
-.note{font-size:12px;color:var(--mute);margin-top:14px}
-.modal{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.6);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
-.modal .card{max-width:360px}
-.modal .acts button{flex:1}
-.reveal{opacity:0;transform:translateY(18px)}
-@media(max-width:640px){.bento{grid-template-columns:repeat(2,minmax(0,1fr))}.c3,.c4{grid-column:span 2}.c2{grid-column:span 2}.half{grid-column:span 1}.sphere{width:170px;height:170px}.hero{min-height:330px}}
-@media(prefers-reduced-motion:no-preference){
- .mesh i{animation:drift 18s ease-in-out infinite alternate}.mesh i:nth-child(2){animation-duration:23s}.mesh i:nth-child(3){animation-duration:29s}
- @keyframes drift{to{transform:translate(12%,10%) scale(1.2)}}
- .sphere{animation:bob 7s ease-in-out infinite}@keyframes bob{50%{transform:translateY(14px) rotate(8deg)}}
- .dot{animation:ping 1.8s infinite}@keyframes ping{70%{box-shadow:0 0 0 10px rgba(212,255,58,0)}100%{box-shadow:0 0 0 0 rgba(212,255,58,0)}}
- .tape .t{animation:tape 26s linear infinite}@keyframes tape{to{transform:translateX(-50%)}}
- .reveal{transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1)}.reveal.in{opacity:1;transform:none}
- .bump{animation:bump .5s ease}@keyframes bump{40%{transform:scale(1.03)}}}
+.ask{display:flex;gap:8px;align-items:center;margin-top:14px;padding:6px 6px 6px 18px;border-radius:999px}
+.ask .s{color:var(--mute);font-size:17px}
+textarea{flex:1;height:44px;min-height:44px;resize:none;background:transparent;border:0;color:var(--ink);font:17px/1.4 -apple-system,system-ui,sans-serif;padding:11px 4px}
+textarea::placeholder{color:rgba(255,255,255,.55)}
+.go{flex:none;width:44px;height:44px;border-radius:50%;border:0;background:rgba(255,255,255,.9);color:#222;font-size:20px;cursor:pointer}
+.answer{display:none;margin-top:14px;padding:18px 22px;font:400 17px/1.45 -apple-system,system-ui,sans-serif}
+.log{margin-top:12px;font-size:12px;color:var(--mute);text-align:center}
+.note{font-size:12px;color:rgba(255,255,255,.5);margin-top:12px;text-align:center}
+.ornament{position:fixed;left:50%;bottom:max(16px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:5;display:flex;gap:4px;padding:6px;border-radius:999px}
+.orn{width:52px;height:52px;border-radius:50%;border:0;background:transparent;color:var(--ink);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;text-decoration:none;flex-direction:column;gap:1px}
+.orn small{font-size:9px;color:var(--mute);letter-spacing:.02em}
+.orn:hover,.orn:active{background:rgba(255,255,255,.16)}
+.orn.warn{color:#ffb3ab}
+.orn:focus-visible,.go:focus-visible,textarea:focus-visible{outline:2px solid rgba(255,255,255,.8);outline-offset:2px}
+.modal{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(0,0,0,.25)}
+.modal .win{max-width:340px;text-align:center}
+.modal .btns{display:flex;gap:10px;margin-top:16px}
+.modal button{flex:1;min-height:46px;border-radius:999px;border:0;background:var(--glass2);color:var(--ink);font:500 16px -apple-system,system-ui,sans-serif;cursor:pointer;box-shadow:inset 0 0 0 .5px var(--edge)}
+.modal .yes{background:rgba(255,110,100,.55)}
+.tapeHolder{display:none}
+.reveal{opacity:0;transform:translateY(16px) scale(.98)}
+@media(prefers-reduced-motion:no-preference){.reveal{transition:opacity .8s cubic-bezier(.2,.8,.2,1),transform .8s cubic-bezier(.2,.8,.2,1)}.reveal.in{opacity:1;transform:none}
+ .room i{animation:breathe 20s ease-in-out infinite alternate}.room i:nth-child(2){animation-duration:26s}@keyframes breathe{to{transform:translate(4vw,3vh) scale(1.08)}}
+ .bump{animation:bump .6s cubic-bezier(.2,.8,.2,1)}@keyframes bump{40%{transform:scale(1.025)}}}
 @media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none}}
-.flash-up{color:var(--lime)!important}.flash-dn{color:var(--coral)!important}
+.flash-up{color:var(--mint)!important}.flash-dn{color:var(--red)!important}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <nav><div class="logo">JARVIS<b>.</b></div><div class="live"><span class="dot"></span><span id="clock" class="num">live</span></div></nav>
+<div class="room" aria-hidden="true"><i></i><i></i><i></i><b style="width:6px;height:6px;left:18%;top:22%"></b><b style="width:10px;height:10px;left:72%;top:14%;opacity:.4"></b><b style="width:4px;height:4px;left:84%;top:58%"></b><b style="width:8px;height:8px;left:9%;top:70%;opacity:.35"></b></div>
+<main class="space" id="world">
+  <div class="glass cap reveal"><span class="me">Jarvis</span><span class="live"><span id="clock">live</span></span></div>
 
-  <section class="hero reveal">
-    <div class="mesh" aria-hidden="true"><i></i><i></i><i></i></div>
-    <div class="sphere" aria-hidden="true"></div>
-    <span class="eyebrow">SOL · Binance Futures</span>
-    <div class="big num" id="pSOL">—</div>
-    <div class="row"><span class="tag num" id="cSOL">24h —</span><span class="tag" id="sig">Trend —</span></div>
-    <p id="headline">Warming up, sir…</p>
+  <section class="glass win hero reveal">
+    <div class="title">Solana · Binance Futures</div>
+    <div class="price" id="pSOL">—</div>
+    <div class="row"><span class="tag" id="cSOL">24h —</span><span class="tag" id="sig">Trend —</span></div>
+    <p id="headline">Good evening, sir.</p>
   </section>
 
-  <div class="tape" aria-hidden="true"><div class="t" id="tape"><span>SOL —</span><span>BTC —</span><span>ETH —</span></div></div>
-
-  <div class="bento">
-    <div class="card c2 read reveal" id="readCard" aria-live="polite">
-      <div class="k">Candle read · 1-minute</div>
-      <div><div class="bias" id="bias">—</div><div class="d" id="biasWhy">waiting for candles…</div></div>
-      <div class="stats" id="biasStats"></div>
-    </div>
-    <div class="card half reveal"><div class="k">FTMO bot · US100</div><div class="v" id="botS">—</div><div class="d" id="botD">—</div></div>
-    <div class="card half reveal"><div class="k">Bitcoin</div><div class="v num" id="pBTC">—</div><div class="d num" id="cBTC">&nbsp;</div><div class="k" style="margin-top:14px">Ethereum</div><div class="v num" id="pETH" style="font-size:20px">—</div><div class="d num" id="cETH">&nbsp;</div></div>
-    <div class="card c4 reveal"><div class="k">SOL · 90 days · trend signal</div>
-      <div class="fig" id="fig"><svg id="chart" aria-label="Solana daily closes with 10 and 50 day averages"></svg></div>
-      <div class="legend"><span><i style="background:#f6f5f2"></i>Daily close</span><span><i style="background:#d4ff3a"></i>10-day</span><span><i style="background:#7c5cff"></i>50-day</span></div>
-      <div class="d" id="solD" style="margin-top:6px">—</div></div>
+  <div class="pair">
+    <div class="glass win reveal"><div class="k">Trading bot · US100</div><div class="v" id="botS">—</div><div class="d" id="botD">—</div></div>
+    <div class="glass win reveal"><div class="k">Bitcoin</div><div class="v" id="pBTC">—</div><div class="d" id="cBTC">&nbsp;</div>
+      <div class="k" style="margin-top:12px">Ethereum</div><div class="v" id="pETH" style="font-size:22px">—</div><div class="d" id="cETH">&nbsp;</div></div>
   </div>
 
-  <div class="ask reveal" id="askRow"><textarea id="q" placeholder="Ask Jarvis anything…"></textarea><button class="go" id="go" type="button">Ask</button></div>
-  <div class="answer" id="ans" aria-live="polite"></div>
+  <section class="glass win read reveal" id="readCard" aria-live="polite">
+    <div class="title">Candle read · SOL 1-minute</div>
+    <div class="bias" id="bias">—</div><div class="d" id="biasWhy">Waiting for candles…</div><div class="stats" id="biasStats"></div>
+  </section>
 
-  <div class="acts">
-    <button class="btn primary" id="kScan" type="button">↻ Refresh all</button>
-    <button class="btn" id="kBrief" type="button">✦ Briefing</button>
-    <button class="btn" id="kAsk" type="button">Ask</button>
-    <a class="btn" href="https://claude.ai/artifact/7JrRcsxjKEmWkccgXJuVcn">Trade feed ↗</a>
-    <button class="btn danger" id="kReboot" type="button">Reboot bot</button>
-  </div>
+  <section class="glass win chartwin reveal"><div class="title">SOL · 90 days</div>
+    <div class="fig" id="fig"><svg id="chart" aria-label="Solana daily closes with 10 and 50 day averages"></svg></div>
+    <div class="legend"><span><i style="background:#fff"></i>Daily close</span><span><i style="background:#66f2c3"></i>10-day</span><span><i style="background:#7cc4ff"></i>50-day</span></div>
+    <div class="d" id="solD" style="margin-top:6px">—</div></section>
+
+  <div class="glass ask reveal" id="askRow"><span class="s">⌕</span><textarea id="q" placeholder="Ask Jarvis"></textarea><button class="go" id="go" type="button" aria-label="Send">↑</button></div>
+  <div class="glass answer" id="ans" aria-live="polite"></div>
   <div class="log" id="log" aria-live="polite"></div>
-  <p class="note">Prices: Binance USDT-M futures via your server, ~15 s. Candle read and trend are rule outputs with their measured record — not advice; every trade is your call.</p>
-</div>
-<div class="modal" id="modal"><div class="card"><div class="disp" style="font-weight:800;font-size:18px">Reboot the bot?</div>
-  <p class="d">Restarts and reloads its settings. Only with no open positions, outside 17:00–23:00.</p>
-  <div class="acts"><button class="btn" type="button" id="mNo">Cancel</button><button class="btn danger" type="button" id="mYes">Reboot</button></div></div></div>
+  <p class="note">Live prices from Binance futures via your server (~15 s). Rule outputs with their measured record — not advice.</p>
+  <div class="tapeHolder"><div id="tape"></div></div>
+</main>
+
+<nav class="glass ornament" aria-label="Actions">
+  <button class="orn" id="kScan" type="button">↻<small>Refresh</small></button>
+  <button class="orn" id="kBrief" type="button">✦<small>Brief</small></button>
+  <button class="orn" id="kAsk" type="button">⌕<small>Ask</small></button>
+  <a class="orn" href="https://claude.ai/artifact/7JrRcsxjKEmWkccgXJuVcn">≋<small>Feed</small></a>
+  <button class="orn warn" id="kReboot" type="button">⏻<small>Reboot</small></button>
+</nav>
+
+<div class="modal" id="modal"><div class="glass win"><div style="font-weight:600;font-size:18px">Reboot the trading bot?</div>
+  <p class="d">It restarts and reloads its settings. Only with no open positions, outside 17:00–23:00.</p>
+  <div class="btns"><button type="button" id="mNo">Cancel</button><button type="button" class="yes" id="mYes">Reboot</button></div></div></div>
 <script>
 {
 const $ = id => document.getElementById(id);
@@ -189,7 +183,7 @@ function applyPrices(out){
     if (!el) continue;
     el.textContent = (sym === "SOL" ? "" : "$") + fmt(p, sym === "SOL" ? 2 : sym === "ETH" ? 2 : 0);
     if (prev != null && p !== prev){ el.classList.remove("flash-up","flash-dn"); void el.offsetWidth; el.classList.add(p > prev ? "flash-up" : "flash-dn"); setTimeout(() => el.classList.remove("flash-up","flash-dn"), 1200); }
-    const c = $("c"+sym); c.textContent = (ch>0?"+":"") + ch.toFixed(2) + "% 24h"; c.className = sym === "SOL" ? "tag num " + (ch < 0 ? "coral" : "lime") : "d num " + (ch < 0 ? "dn" : "up");
+    const c = $("c"+sym); c.textContent = (ch>0?"+":"") + ch.toFixed(2) + "% 24h"; c.className = sym === "SOL" ? "tag " + (ch < 0 ? "coral" : "lime") : "d " + (ch < 0 ? "dn" : "up");
     if (sym === "SOL" && prev != null && p !== prev){ el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); }
     st.prices[sym] = p; ch24[sym] = ch; }
   tape();
@@ -209,7 +203,7 @@ function applyCandles(out){
   let n = 0, hit = 0, sum = 0;
   for (let i = 19; i < c.length - 1; i++){ const b = bias(i); if (!b) continue; const mv = c[i+1]/c[i]-1; n++; if (Math.sign(mv) === b) hit++; sum += b*mv; }
   const L = c.length - 1, b = bias(L), t = new Date(done[L][0] + 60000).toLocaleTimeString("en-GB",{timeZone:"Asia/Jerusalem",hour:"2-digit",minute:"2-digit"});
-  $("bias").textContent = b > 0 ? "LONG" : b < 0 ? "SHORT" : "NEUTRAL"; $("readCard").className = "card c2 read reveal in " + (b > 0 ? "long" : b < 0 ? "short" : "");
+  $("bias").textContent = b > 0 ? "LONG" : b < 0 ? "SHORT" : "NEUTRAL"; $("readCard").className = "glass win read reveal in " + (b > 0 ? "long" : b < 0 ? "short" : "");
   $("biasWhy").textContent = "Candle closed " + t + (c[L] >= o[L] ? " green" : " red") + ", price " + (b ? (b > 0 ? "above" : "below") : "vs") + " its 20-minute average";
   if (n) $("biasStats").textContent = "Same rule, last " + n + " signals: right " + Math.round(hit/n*100) + "% · average next-minute move " + (sum/n*100 >= 0 ? "+" : "") + (sum/n*100).toFixed(3) + "% vs ~0.10% Binance round-trip fees. Rule output, not advice — tested candle rules showed no edge.";
 }
@@ -240,8 +234,8 @@ function drawChart(){
   const X = i => pad + i*(W-2*pad)/(n-1), Y = v => H-pad-(v-lo)/(hi-lo||1)*(H-2*pad);
   const path = arr => arr.map((v,i) => v==null ? "" : (arr[i-1]==null ? "M" : "L") + X(i).toFixed(1) + "," + Y(v).toFixed(1)).join("");
   const area = "M" + X(0) + "," + H + s.closes.map((v,i) => "L" + X(i).toFixed(1) + "," + Y(v).toFixed(1)).join("") + "L" + X(n-1) + "," + H + "Z";
-  let mark = ""; if (s.cross){ const i = s.cross.i; mark = '<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(s.closes[i]).toFixed(1)+'" r="5" fill="'+(s.cross.up?"#d4ff3a":"#ff5a47")+'" stroke="#121218" stroke-width="3"/>'; }
-  svg.innerHTML = '<defs><linearGradient id="fa" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7c5cff" stop-opacity=".45"/><stop offset="1" stop-color="#7c5cff" stop-opacity="0"/></linearGradient></defs><path d="'+area+'" fill="url(#fa)"/><path d="'+path(s.closes)+'" fill="none" stroke="#f6f5f2" stroke-width="1.6"/><path d="'+path(s.s10)+'" fill="none" stroke="#d4ff3a" stroke-width="2.5"/><path d="'+path(s.s50)+'" fill="none" stroke="#7c5cff" stroke-width="2.5"/>' + mark;
+  let mark = ""; if (s.cross){ const i = s.cross.i; mark = '<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(s.closes[i]).toFixed(1)+'" r="5" fill="'+(s.cross.up?"#66f2c3":"#ff8a80")+'" stroke="rgba(255,255,255,.9)" stroke-width="2"/>'; }
+  svg.innerHTML = '<defs><linearGradient id="fa" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".22"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient></defs><path d="'+area+'" fill="url(#fa)"/><path d="'+path(s.closes)+'" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/><path d="'+path(s.s10)+'" fill="none" stroke="#66f2c3" stroke-width="2.5" stroke-linecap="round"/><path d="'+path(s.s50)+'" fill="none" stroke="#7cc4ff" stroke-width="2.5" stroke-linecap="round"/>' + mark;
 }
 const chartObserver = new ResizeObserver(drawChart); chartObserver.observe($("fig"));
 function render(){
@@ -268,7 +262,7 @@ async function scan(){ if (scanning || Date.now() - lastScan < 20000) return; sc
   scanning = false; }
 async function ask(text){
   if (!text.trim()) return; if (!sample){ log("Ask is unavailable in this view."); return; }
-  $("ans").style.display = "block"; $("ans").textContent = "One moment, sir…";
+  $("ans").style.display = "block"; $("ans").scrollIntoView({behavior:"smooth", block:"center"}); $("ans").textContent = "One moment, sir…";
   const SYS = "You are JARVIS. English, calm, precise, dry British wit, call the user 'sir'. Maximum 2 sentences, under 25 words. Never recommend buying or selling; state, risk, invalidation only. Use the tools. Prices are Binance USDT-M futures. Solana: report the 10/50-day trend state and the 1-minute candle-rule reading with its measured hit rate; never phrase it as your recommendation.";
   const tools = [{name:"live_prices", description:"Latest Binance futures prices for SOL, BTC, ETH.", execute: async () => st.prices},
                  {name:"sol_signal", description:"Solana 10/50-day average entry/exit state and last cross.", execute: async () => st.sol ? {entryActive:st.sol.up, avg10:st.sol.a10, avg50:st.sol.a50, lastCross:st.sol.cross && {type:st.sol.cross.up?"entry":"exit", daysAgo:st.sol.cross.ago, price:st.sol.cross.price}} : {error:"not loaded"}},
@@ -279,7 +273,7 @@ async function ask(text){
 }
 $("kScan").addEventListener("click", scan);
 $("kBrief").addEventListener("click", () => ask("One-line situation report: Solana price and signal, bot status."));
-$("kAsk").addEventListener("click", () => { $("q").focus(); });
+$("kAsk").addEventListener("click", () => { $("askRow").scrollIntoView({behavior:"smooth", block:"center"}); $("q").focus(); });
 $("go").addEventListener("click", () => ask($("q").value));
 $("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); ask($("q").value); } });
 $("kReboot").addEventListener("click", async () => {
@@ -294,6 +288,7 @@ $("mYes").addEventListener("click", async () => { $("modal").style.display = "no
   try { const out = await runPS(REBOOT_PS, "jarvis: user-confirmed reboot of trading terminal"); log(/RUN\|True/i.test(out) ? "Bot back online." : "Result unclear — check the feed."); }
   catch(e){ log("Reboot failed."); } $("kReboot").disabled = false; scan(); });
 
+addEventListener("pointermove", e => { const x = (e.clientX/innerWidth - .5), y = (e.clientY/innerHeight - .5); $("world").style.transform = "rotateY(" + (x*2.2).toFixed(2) + "deg) rotateX(" + (-y*1.6).toFixed(2) + "deg)"; });
 const revealer = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting){ e.target.classList.add("in"); revealer.unobserve(e.target); } }), {threshold:.12});
 document.querySelectorAll(".reveal").forEach((el,i) => { el.style.transitionDelay = (i*70) + "ms"; revealer.observe(el); });
 setInterval(() => { $("clock").textContent = new Date().toLocaleString("en-GB",{timeZone:"Asia/Jerusalem",weekday:"short",hour:"2-digit",minute:"2-digit",second:"2-digit"}) ; }, 1000);
