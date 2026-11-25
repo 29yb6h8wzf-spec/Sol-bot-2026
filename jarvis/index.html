@@ -195,7 +195,8 @@ function render(){
     $("mkS").textContent = btc ? "BTC $" + fmt(btc.p) : "—"; $("mkS").className = "big num " + ((btc && btc.ch) < 0 ? "down" : "up");
     $("mkD").textContent = "Market " + pct(m.chg) + " 24h · BTC dom " + Number(m.dom).toFixed(1) + "%" + (sol ? " · SOL $" + fmt(sol.p,2) + " " + pct(sol.ch) : ""); }
   if (s){ $("solS").textContent = s.up ? "IN · TREND UP" : "OUT · NO ENTRY"; $("solS").className = "big disp " + (s.up ? "up" : "warn");
-    $("solD").textContent = "$" + fmt(s.price,2) + " · 10d " + fmt(s.a10,1) + (s.up ? " > " : " < ") + "50d " + fmt(s.a50,1) + (s.cross ? " · last " + (s.cross.up ? "ENTRY" : "EXIT") + " " + s.cross.daysAgo + "d ago at $" + fmt(s.cross.price,2) : "");
+    const live = m && m.coins.find(x => x.s === "SOL");
+    $("solD").textContent = "$" + fmt(live ? live.p : s.price,2) + " live · 10d " + fmt(s.a10,1) + (s.up ? " > " : " < ") + "50d " + fmt(s.a50,1) + (s.cross ? " · last " + (s.cross.up ? "ENTRY" : "EXIT") + " " + s.cross.daysAgo + "d ago at $" + fmt(s.cross.price,2) : "");
     drawChart(); }
   let head = "All systems nominal, sir.";
   if (b && !b.running) head = "The trading bot is offline, sir.";
