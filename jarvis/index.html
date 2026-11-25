@@ -21,14 +21,14 @@ canvas#space{position:fixed;inset:0;width:100%;height:100%;z-index:0}
              conic-gradient(from 210deg at 50% 50%,transparent 0 40deg,rgba(126,242,255,.07) 55deg,transparent 80deg 300deg,rgba(177,140,255,.06) 320deg,transparent 340deg)}
 .lens::before{content:"";position:absolute;inset:3%;border-radius:46% 46% 40% 40%/38% 38% 30% 30%;box-shadow:inset 0 0 0 1px rgba(126,242,255,.12),inset 0 0 80px rgba(126,242,255,.06)}
 .lens::after{content:"";position:absolute;left:8%;top:6%;width:38%;height:18%;border-radius:50%;background:radial-gradient(closest-side,rgba(255,255,255,.07),transparent);transform:rotate(-14deg)}
-.reticle{position:fixed;left:50%;top:34%;width:240px;height:240px;margin:-120px 0 0 -120px;z-index:2;pointer-events:none;opacity:.35}
-.stage{position:relative;z-index:2;min-height:100vh;perspective:900px;perspective-origin:50% 35%;padding:18px 14px 120px}
-.world{transform-style:preserve-3d;transition:transform .25s ease-out;max-width:760px;margin:0 auto}
+.reticle{position:fixed;left:50%;top:30%;width:240px;height:240px;margin:-120px 0 0 -120px;z-index:2;pointer-events:none;opacity:.35}
+.stage{position:relative;z-index:2;min-height:100vh;perspective:1100px;perspective-origin:50% 30%;padding:18px 16px 130px;overflow-x:clip}
+.world{transform-style:preserve-3d;width:100%;transition:transform .25s ease-out;max-width:760px;margin:0 auto}
 .top{display:flex;justify-content:space-between;align-items:baseline;transform:translateZ(40px)}
 .brand{font:200 22px/1 Inter,sans-serif;letter-spacing:.6em;color:var(--cy);text-shadow:0 0 18px rgba(126,242,255,.6)}
 .clock{font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums}
 #headline{margin:10px 0 0;text-align:center;font:300 16px/1.35 Inter,sans-serif;color:var(--ink);text-shadow:0 0 12px rgba(126,242,255,.35);transform:translateZ(60px)}
-.core{position:relative;height:300px;transform-style:preserve-3d;transform:translateZ(110px)}
+.core{position:relative;height:280px;transform-style:preserve-3d;transform:translateZ(60px)}
 .ring{position:absolute;left:50%;top:50%;border-radius:50%;border:1px solid rgba(126,242,255,.55);box-shadow:0 0 24px rgba(126,242,255,.25),inset 0 0 24px rgba(126,242,255,.15)}
 .r1{width:250px;height:250px;margin:-125px 0 0 -125px;transform:rotateX(72deg)}
 .r2{width:210px;height:210px;margin:-105px 0 0 -105px;transform:rotateX(72deg) rotateY(28deg);border-color:rgba(177,140,255,.6)}
@@ -43,14 +43,15 @@ canvas#space{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 .holo{position:relative;padding:12px 14px;border-radius:18px;background:linear-gradient(160deg,rgba(126,242,255,.09),rgba(177,140,255,.05) 60%,rgba(0,0,0,.15));
   border:1px solid rgba(126,242,255,.22);box-shadow:0 0 30px rgba(126,242,255,.08),inset 0 1px 0 rgba(255,255,255,.12);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
 .holo::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(126,242,255,.035) 0 1px,transparent 1px 4px)}
-.arc .holo:nth-child(1){transform:rotateY(22deg) translateZ(-10px)}
-.arc .holo:nth-child(2){transform:translateZ(30px)}
-.arc .holo:nth-child(3){transform:rotateY(-22deg) translateZ(-10px)}
+@media(min-width:601px){.arc .holo:nth-child(1){transform:rotateY(14deg)}.arc .holo:nth-child(3){transform:rotateY(-14deg)}}
+.read{margin-top:10px;padding:16px;text-align:center}
+.bias{font:200 46px/1 Inter,sans-serif;letter-spacing:.08em;margin:6px 0}
+.stats{font-size:12px;color:var(--mute);line-height:1.5}
 .lbl{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
 .v{font:300 22px/1.15 Inter,sans-serif;margin-top:4px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .d{font-size:12px;color:var(--mute);margin-top:2px}
 .up{color:var(--up)}.dn{color:var(--dn)}.gold{color:var(--gold)}
-.floor{margin-top:22px;transform:rotateX(24deg) translateZ(-20px);transform-origin:50% 0}
+.floor{margin-top:14px;transform:rotateX(10deg);transform-origin:50% 0}
 .fig{position:relative;height:190px}.fig svg{position:absolute;inset:0;width:100%;height:100%;filter:drop-shadow(0 0 6px rgba(126,242,255,.5))}
 .legend{display:flex;gap:14px;font-size:11px;color:var(--mute);margin-bottom:6px}
 .legend i{display:inline-block;width:14px;height:2px;margin-right:6px;vertical-align:middle}
@@ -58,11 +59,11 @@ canvas#space{position:fixed;inset:0;width:100%;height:100%;z-index:0}
 .chip{min-height:44px;padding:0 16px;border-radius:999px;border:1px solid rgba(126,242,255,.35);background:rgba(126,242,255,.08);color:var(--ink);font:400 14px Inter,sans-serif;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 0 18px rgba(126,242,255,.15)}
 .chip.warn{border-color:rgba(255,122,140,.5);background:rgba(255,122,140,.08)}
 .chip:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--cy);outline-offset:2px}
-.ask{display:none;gap:8px;margin-top:16px;transform:translateZ(80px)}
+.ask{display:none;gap:8px;margin-top:14px}
 textarea{flex:1;min-height:46px;resize:none;background:rgba(126,242,255,.06);border:1px solid rgba(126,242,255,.3);border-radius:16px;color:var(--ink);font:16px/1.4 Inter,sans-serif;padding:11px}
-.go{border:0;border-radius:16px;padding:0 18px;background:linear-gradient(135deg,var(--cy),var(--vi));color:#031018;font:600 14px Inter,sans-serif;cursor:pointer}
-.answer{display:none;margin-top:12px;font:300 17px/1.45 Inter,sans-serif;text-align:center;text-shadow:0 0 14px rgba(126,242,255,.4);transform:translateZ(90px)}
-.log{margin-top:16px;font-size:11px;color:var(--mute);max-height:84px;overflow:auto;text-align:center;transform:translateZ(10px)}
+.go{flex:none;min-height:46px;border:0;border-radius:16px;padding:0 18px;background:linear-gradient(135deg,var(--cy),var(--vi));color:#031018;font:600 14px Inter,sans-serif;cursor:pointer}
+.answer{display:none;margin-top:12px;padding:14px 16px;font:300 16px/1.45 Inter,sans-serif;text-shadow:0 0 12px rgba(126,242,255,.35)}
+.log{margin-top:12px;font-size:11px;color:var(--mute);max-height:48px;overflow:hidden;text-align:center}
 .modal{position:fixed;inset:0;z-index:6;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.5);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 .modal .holo{max-width:340px;padding:20px}
 .modal .row{display:flex;gap:10px;margin-top:14px}
@@ -88,6 +89,9 @@ textarea{flex:1;min-height:46px;resize:none;background:rgba(126,242,255,.06);bor
     <div class="price"><div class="sym">SOL · BINANCE FUTURES</div><div class="p" id="pSOL">—</div><div class="c" id="cSOL">&nbsp;</div><div class="sig" id="sig">—</div></div>
   </div>
 
+  <div class="holo read" aria-live="polite"><div class="lbl">Candle read · SOL 1-minute · Binance</div>
+    <div class="bias" id="bias">—</div><div class="d" id="biasWhy">waiting for candles…</div><div class="stats" id="biasStats"></div></div>
+
   <div class="arc">
     <div class="holo"><div class="lbl">Bitcoin</div><div class="v" id="pBTC">—</div><div class="d" id="cBTC">&nbsp;</div></div>
     <div class="holo"><div class="lbl">FTMO bot</div><div class="v" id="botS">—</div><div class="d" id="botD">—</div></div>
@@ -99,7 +103,7 @@ textarea{flex:1;min-height:46px;resize:none;background:rgba(126,242,255,.06);bor
     <div class="d" id="solD">—</div></div>
 
   <div class="ask" id="askRow"><textarea id="q" placeholder="Talk to me, sir"></textarea><button class="go" id="go" type="button">Send</button></div>
-  <div class="answer" id="ans" aria-live="polite"></div>
+  <div class="holo answer" id="ans" aria-live="polite"></div>
   <div class="log" id="log" aria-live="polite"></div>
 </div></div>
 <div class="lens" aria-hidden="true"></div>
@@ -139,6 +143,8 @@ $ErrorActionPreference="SilentlyContinue"
 `;
 const PRICE_PS = TLS + String.raw`
 foreach($s in "SOLUSDT","BTCUSDT","ETHUSDT"){ $t=Invoke-RestMethod "https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=$s"; "P|$s|$($t.lastPrice)|$($t.priceChangePercent)" }
+$m=Invoke-RestMethod "https://fapi.binance.com/fapi/v1/klines?symbol=SOLUSDT&interval=1m&limit=500"
+"M|" + (($m | %{ "$($_[0]);$($_[1]);$($_[4])" }) -join ",")
 "OK|"
 `;
 const FULL_PS = PRICE_PS + String.raw`
@@ -154,7 +160,7 @@ Start-Sleep 75
 "RUN|" + [bool](Get-CimInstance Win32_Process -Filter "Name='terminal64.exe'" | ?{ $_.CommandLine -like '*\FTMO\terminal64.exe*ftmo-trading.ini*' })
 `;
 let mcp = null, sample = null; const st = {prices:{}, sol:null, bot:null};
-function log(t){ const d = document.createElement("div"); d.textContent = new Date().toLocaleTimeString("en-GB",{timeZone:"Asia/Jerusalem"}) + " · " + t; $("log").prepend(d); }
+function log(t){ const d = document.createElement("div"); d.textContent = new Date().toLocaleTimeString("en-GB",{timeZone:"Asia/Jerusalem"}) + " · " + t; $("log").prepend(d); while ($("log").children.length > 3) $("log").lastChild.remove(); }
 function dig(o, test){ if (o == null) return null;
   if (typeof o === "string"){ try { return dig(JSON.parse(o), test); } catch(e){ return test(o) ? o : null; } }
   if (test(o)) return o; if (typeof o === "object") for (const k of Object.keys(o)){ const r = dig(o[k], test); if (r != null) return r; } return null; }
@@ -163,6 +169,7 @@ async function runPS(ps, comment){ const r = await mcp.callTool("AWS MCP", "aws_
 function orb(state){ const c = state === "bad" ? "rgba(255,122,140,.7)" : state === "warn" ? "rgba(255,207,122,.65)" : "rgba(126,242,255,.55)"; document.querySelectorAll(".ring").forEach((r,i) => { if (i !== 1) r.style.borderColor = c; }); }
 
 function applyPrices(out){
+  applyCandles(out);
   for (const l of out.split(/\r?\n/)){ const m = l.match(/^P\|(\w+)USDT\|([\d.]+)\|(-?[\d.]+)/); if (!m) continue;
     const sym = m[1], p = +m[2], ch = +m[3], el = $("p"+sym), prev = st.prices[sym];
     if (!el) continue;
@@ -170,6 +177,19 @@ function applyPrices(out){
     if (prev != null && p !== prev){ el.classList.remove("flash-up","flash-dn"); void el.offsetWidth; el.classList.add(p > prev ? "flash-up" : "flash-dn"); setTimeout(() => el.classList.remove("flash-up","flash-dn"), 1200); }
     const c = $("c"+sym); c.textContent = (ch>0?"+":"") + ch.toFixed(2) + "% 24h"; c.className = (sym === "SOL" ? "c " : "d ") + (ch < 0 ? "dn" : "up");
     st.prices[sym] = p; }
+}
+function applyCandles(out){
+  const ml = out.split(/\r?\n/).find(l => l.startsWith("M|")); if (!ml) return;
+  const K = ml.slice(2).split(",").map(x => x.split(";").map(Number)).filter(x => x.length === 3 && x[2] > 0);
+  const done = K.slice(0, -1); if (done.length < 60) return;   // last candle is still forming
+  const o = done.map(x => x[1]), c = done.map(x => x[2]);
+  const bias = i => { if (i < 19) return 0; const avg = c.slice(i-19, i+1).reduce((a,b)=>a+b,0)/20; const dir = c[i] > o[i] ? 1 : c[i] < o[i] ? -1 : 0, tr = c[i] > avg ? 1 : -1; return dir && dir === tr ? dir : 0; };
+  let n = 0, hit = 0, sum = 0;
+  for (let i = 19; i < c.length - 1; i++){ const b = bias(i); if (!b) continue; const mv = c[i+1]/c[i]-1; n++; if (Math.sign(mv) === b) hit++; sum += b*mv; }
+  const L = c.length - 1, b = bias(L), t = new Date(done[L][0] + 60000).toLocaleTimeString("en-GB",{timeZone:"Asia/Jerusalem",hour:"2-digit",minute:"2-digit"});
+  $("bias").textContent = b > 0 ? "LONG" : b < 0 ? "SHORT" : "NEUTRAL"; $("bias").className = "bias " + (b > 0 ? "up" : b < 0 ? "dn" : "gold");
+  $("biasWhy").textContent = "Candle closed " + t + (c[L] >= o[L] ? " green" : " red") + ", price " + (b ? (b > 0 ? "above" : "below") : "vs") + " its 20-minute average";
+  if (n) $("biasStats").textContent = "Same rule, last " + n + " signals: right " + Math.round(hit/n*100) + "% · average next-minute move " + (sum/n*100 >= 0 ? "+" : "") + (sum/n*100).toFixed(3) + "% vs ~0.10% Binance round-trip fees. Rule output, not advice — tested candle rules showed no edge.";
 }
 function applyFull(out){
   applyPrices(out);
@@ -219,16 +239,18 @@ let pricing = false;
 async function tickPrices(){ if (pricing || document.hidden) return; pricing = true;
   try { applyPrices(await runPS(PRICE_PS, "read-only: jarvis live prices")); } catch(e){ if (/auth/i.test(String(e && (e.code||e.message)))) log("AWS needs re-login: Settings › Connectors."); }
   pricing = false; }
-async function scan(){ log("Full scan…");
+let scanning = false, lastScan = 0;
+async function scan(){ if (scanning || Date.now() - lastScan < 20000) return; scanning = true; lastScan = Date.now(); log("Full scan…");
   try { applyFull(await runPS(FULL_PS, "read-only: jarvis full scan")); log("Scan complete."); }
   catch(e){ log(/auth/i.test(String(e && (e.code||e.message))) ? "AWS needs re-login: Settings › Connectors." : "Scan failed: " + (e && (e.code||e.message) || "")); }
-}
+  scanning = false; }
 async function ask(text){
   if (!text.trim()) return; if (!sample){ log("Ask is unavailable in this view."); return; }
   $("ans").style.display = "block"; $("ans").textContent = "One moment, sir…";
-  const SYS = "You are JARVIS. English, calm, precise, dry British wit, call the user 'sir'. Maximum 2 sentences, under 25 words. Never recommend buying or selling; state, risk, invalidation only. Use the tools. Prices are Binance USDT-M futures. Solana: only the 10/50-day entry/exit state and price.";
+  const SYS = "You are JARVIS. English, calm, precise, dry British wit, call the user 'sir'. Maximum 2 sentences, under 25 words. Never recommend buying or selling; state, risk, invalidation only. Use the tools. Prices are Binance USDT-M futures. Solana: report the 10/50-day trend state and the 1-minute candle-rule reading with its measured hit rate; never phrase it as your recommendation.";
   const tools = [{name:"live_prices", description:"Latest Binance futures prices for SOL, BTC, ETH.", execute: async () => st.prices},
                  {name:"sol_signal", description:"Solana 10/50-day average entry/exit state and last cross.", execute: async () => st.sol ? {entryActive:st.sol.up, avg10:st.sol.a10, avg50:st.sol.a50, lastCross:st.sol.cross && {type:st.sol.cross.up?"entry":"exit", daysAgo:st.sol.cross.ago, price:st.sol.cross.price}} : {error:"not loaded"}},
+                 {name:"candle_read", description:"Latest SOL 1-minute candle-rule reading (LONG/SHORT/NEUTRAL) and its measured hit rate.", execute: async () => ({reading:$("bias").textContent, why:$("biasWhy").textContent, stats:$("biasStats").textContent})},
                  {name:"bot_status", description:"FTMO trading bot: running, open positions, last check (Israel time).", execute: async () => st.bot || {error:"not loaded"}}];
   try { const r = await sample([{role:"user", content: SYS + "\n\nUser: " + text}], {tools, cache:false, onText: ({text}) => { $("ans").textContent = text; }}); $("ans").textContent = r.text; }
   catch(e){ $("ans").textContent = e && e.code === "rate_limited" ? "A moment, sir — rate limited." : "That failed, sir."; }
@@ -267,7 +289,7 @@ function frame(t){
   // parallax: pointer target + gentle sway
   const sw = calm ? 0 : Math.sin(t/4200)*.35;
   cxp += ((tx || sw) - cxp)*.06; cyp += ((ty || Math.cos(t/5300)*.25*(calm?0:1)) - cyp)*.06;
-  $("world").style.transform = "rotateY(" + (cxp*7).toFixed(2) + "deg) rotateX(" + (-cyp*6).toFixed(2) + "deg)";
+  $("world").style.transform = "rotateY(" + (cxp*3).toFixed(2) + "deg) rotateX(" + (-cyp*2.5).toFixed(2) + "deg)";
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
