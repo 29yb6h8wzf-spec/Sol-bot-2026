@@ -1,0 +1,11 @@
+InpSymbol=US500.cash
+InpInitialCapital=0
+InpNotionalMultiple=3.0
+InpEntryHour=22
+InpEntryMinute=50
+InpExitTradingDay=3
+InpDailyStopPct=3.5
+InpTotalStopPct=8.0
+InpPriceStopPct=5.0
+InpMaxHoldDays=9
+InpMagic=20261123

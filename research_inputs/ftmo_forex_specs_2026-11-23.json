@@ -1,0 +1,407 @@
+{
+ "EURUSD": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.09,
+  "commission_rt": 5,
+  "swap_long": -9.25,
+  "swap_short": 0.3,
+  "status": "Verified FTMO"
+ },
+ "USDJPY": {
+  "pip": 0.01,
+  "point": 0.001,
+  "spread_pips": 0.14,
+  "commission_rt": 5,
+  "swap_long": 2.73,
+  "swap_short": -21.35,
+  "status": "Verified FTMO"
+ },
+ "GBPUSD": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.17,
+  "commission_rt": 5,
+  "swap_long": -4.38,
+  "swap_short": -5.56,
+  "status": "Verified FTMO"
+ },
+ "USDCHF": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.12,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified Pair (Check MT5 for Swap)"
+ },
+ "AUDUSD": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.11,
+  "commission_rt": 5,
+  "swap_long": -1.76,
+  "swap_short": -7.66,
+  "status": "Verified FTMO"
+ },
+ "USDCAD": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.17,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified Pair (Check MT5 for Swap)"
+ },
+ "NZDUSD": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.15,
+  "commission_rt": 5,
+  "swap_long": -4.18,
+  "swap_short": -0.33,
+  "status": "Verified FTMO"
+ },
+ "EURGBP": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.12,
+  "commission_rt": 5,
+  "swap_long": -7.58,
+  "swap_short": 0.24,
+  "status": "Verified FTMO"
+ },
+ "EURJPY": {
+  "pip": 0.01,
+  "point": 0.001,
+  "spread_pips": 0.29,
+  "commission_rt": 5,
+  "swap_long": 1.82,
+  "swap_short": -12.53,
+  "status": "Verified FTMO"
+ },
+ "EURCHF": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.18,
+  "commission_rt": 5,
+  "swap_long": 1.37,
+  "swap_short": -12.02,
+  "status": "Verified FTMO"
+ },
+ "EURAUD": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.28,
+  "commission_rt": 5,
+  "swap_long": -17.98,
+  "swap_short": 4.22,
+  "status": "Verified FTMO"
+ },
+ "EURCAD": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.3,
+  "commission_rt": 5,
+  "swap_long": -2.84,
+  "swap_short": -3.93,
+  "status": "Verified FTMO"
+ },
+ "EURNZD": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.41,
+  "commission_rt": 5,
+  "swap_long": -6.24,
+  "swap_short": -2.3,
+  "status": "Verified FTMO"
+ },
+ "GBPJPY": {
+  "pip": 0.01,
+  "point": 0.001,
+  "spread_pips": 0.42,
+  "commission_rt": 5,
+  "swap_long": 6.13,
+  "swap_short": -28.02,
+  "status": "Verified FTMO"
+ },
+ "GBPCHF": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.26,
+  "commission_rt": 5,
+  "swap_long": 3.28,
+  "swap_short": -22.16,
+  "status": "Verified FTMO"
+ },
+ "GBPAUD": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.41,
+  "commission_rt": 5,
+  "swap_long": -13.06,
+  "swap_short": 0.04,
+  "status": "Verified FTMO"
+ },
+ "GBPCAD": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.37,
+  "commission_rt": 5,
+  "swap_long": 1.16,
+  "swap_short": -15.09,
+  "status": "Verified FTMO"
+ },
+ "GBPNZD": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.54,
+  "commission_rt": 5,
+  "swap_long": 0.67,
+  "swap_short": -15.76,
+  "status": "Verified FTMO"
+ },
+ "AUDJPY": {
+  "pip": 0.01,
+  "point": 0.001,
+  "spread_pips": 0.28,
+  "commission_rt": 5,
+  "swap_long": 4.88,
+  "swap_short": -16.89,
+  "status": "Verified FTMO"
+ },
+ "AUDCAD": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.21,
+  "commission_rt": 5,
+  "swap_long": 2.11,
+  "swap_short": -10.04,
+  "status": "Verified FTMO"
+ },
+ "AUDCHF": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.16,
+  "commission_rt": 5,
+  "swap_long": 3.19,
+  "swap_short": -11.86,
+  "status": "Verified FTMO"
+ },
+ "AUDNZD": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.31,
+  "commission_rt": 5,
+  "swap_long": 2.72,
+  "swap_short": -11.09,
+  "status": "Verified FTMO"
+ },
+ "CADJPY": {
+  "pip": 0.01,
+  "point": 0.001,
+  "spread_pips": 0.25,
+  "commission_rt": 5,
+  "swap_long": 1.2,
+  "swap_short": -7.58,
+  "status": "Verified FTMO"
+ },
+ "CADCHF": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.18,
+  "commission_rt": 5,
+  "swap_long": 1.11,
+  "swap_short": -7.08,
+  "status": "Verified FTMO"
+ },
+ "CHFJPY": {
+  "pip": 0.01,
+  "point": 0.001,
+  "spread_pips": 0.38,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified Pair (Check MT5 for Swap)"
+ },
+ "NZDJPY": {
+  "pip": 0.01,
+  "point": 0.001,
+  "spread_pips": 0.27,
+  "commission_rt": 5,
+  "swap_long": 1.28,
+  "swap_short": -7.31,
+  "status": "Verified FTMO"
+ },
+ "NZDCAD": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.26,
+  "commission_rt": 5,
+  "swap_long": -1.08,
+  "swap_short": -3.01,
+  "status": "Verified FTMO"
+ },
+ "NZDCHF": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 0.19,
+  "commission_rt": 5,
+  "swap_long": 1.05,
+  "swap_short": -6.43,
+  "status": "Verified FTMO"
+ },
+ "USDCZK": {
+  "pip": 0.001,
+  "point": 0.0001,
+  "spread_pips": 1.84,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified FTMO Exotic"
+ },
+ "EURCZK": {
+  "pip": 0.001,
+  "point": 0.0001,
+  "spread_pips": 2.07,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified FTMO Exotic"
+ },
+ "USDHUF": {
+  "pip": 0.01,
+  "point": 0.001,
+  "spread_pips": 5.5,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified FTMO Exotic"
+ },
+ "EURHUF": {
+  "pip": 0.01,
+  "point": 0.001,
+  "spread_pips": 6.28,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified FTMO Exotic"
+ },
+ "USDPLN": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 4.5,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified FTMO Exotic"
+ },
+ "EURPLN": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 5.05,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified FTMO Exotic"
+ },
+ "USDNOK": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 9.5,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified FTMO Exotic"
+ },
+ "EURNOK": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 10.48,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified FTMO Exotic"
+ },
+ "USDSEK": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 9.8,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified FTMO Exotic"
+ },
+ "EURSEK": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 10.2,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified FTMO Exotic"
+ },
+ "USDZAR": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 12,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified FTMO Exotic"
+ },
+ "USDMXN": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 11.5,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified FTMO Exotic"
+ },
+ "USDSGD": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 1.2,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified FTMO Exotic"
+ },
+ "USDHKD": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 1.5,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified FTMO Exotic"
+ },
+ "USDCNH": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 2.5,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified FTMO Exotic"
+ },
+ "USDILS": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 15,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Verified FTMO Exotic"
+ },
+ "USDTRY": {
+  "pip": 0.0001,
+  "point": 1e-05,
+  "spread_pips": 45,
+  "commission_rt": 5,
+  "swap_long": null,
+  "swap_short": null,
+  "status": "Not Recommended (High Spread)"
+ }
+}
