@@ -114,7 +114,7 @@ textarea::placeholder{color:var(--am2)}
     <div class="fig" id="fig"><svg id="chart" aria-label="Solana daily closes with 10 and 50 day averages"></svg></div>
     <div class="legend mono"><span><i style="background:#ffe7cc"></i>CLOSE</span><span><i style="background:#ffd88a"></i>10D</span><span><i style="background:#ff9d3c"></i>50D</span></div></section>
 
-  <div class="ask" id="askRow"><textarea id="q" placeholder="Talk to me, sir"></textarea><button class="go" id="go" type="button">SEND</button></div>
+  <div class="ask" id="askRow"><textarea id="q" placeholder="Tap 🎤 on the keyboard and speak, sir"></textarea><button class="go" id="go" type="button">SEND</button></div>
   <div class="answer" id="ans" aria-live="polite"></div>
   <div class="log mono" id="log" aria-live="polite"></div>
   <p class="note mono">BINANCE USDT-M VIA YOUR SERVER · ~15 S · RULE OUTPUTS WITH MEASURED RECORD · NOT ADVICE</p>
@@ -123,7 +123,7 @@ textarea::placeholder{color:var(--am2)}
 <nav class="cmd" aria-label="Commands">
   <button class="cb" id="kScan" type="button">SCAN</button>
   <button class="cb" id="kBrief" type="button">BRIEF</button>
-  <button class="cb" id="kAsk" type="button">ASK</button>
+  <button class="cb" id="kAsk" type="button">TALK</button>
   <a class="cb" href="https://claude.ai/artifact/7JrRcsxjKEmWkccgXJuVcn">FEED</a>
   <button class="cb warn" id="kReboot" type="button">REBOOT</button>
 </nav>
@@ -281,12 +281,28 @@ async function ask(text){
                  {name:"sol_signal", description:"Solana 10/50-day average entry/exit state and last cross.", execute: async () => st.sol ? {entryActive:st.sol.up, avg10:st.sol.a10, avg50:st.sol.a50, lastCross:st.sol.cross && {type:st.sol.cross.up?"entry":"exit", daysAgo:st.sol.cross.ago, price:st.sol.cross.price}} : {error:"not loaded"}},
                  {name:"candle_read", description:"Latest SOL 1-minute candle-rule reading (LONG/SHORT/NEUTRAL) and its measured hit rate.", execute: async () => ({reading:$("bias").textContent, why:$("biasWhy").textContent, stats:$("biasStats").textContent})},
                  {name:"bot_status", description:"FTMO trading bot: running, open positions, last check (Israel time).", execute: async () => st.bot || {error:"not loaded"}}];
-  try { const r = await sample([{role:"user", content: SYS + "\n\nUser: " + text}], {tools, cache:false, onText: ({text}) => { $("ans").textContent = text; }}); $("ans").textContent = r.text; }
-  catch(e){ $("ans").textContent = e && e.code === "rate_limited" ? "A moment, sir — rate limited." : "That failed, sir."; }
+  let reply;
+  try { const r = await sample([{role:"user", content: SYS + "\n\nUser: " + text}], {tools, cache:false, onText: ({text}) => { $("ans").textContent = text; }}); reply = r.text; }
+  catch(e){ reply = e && e.code === "rate_limited" ? "A moment, sir — rate limited." : "That failed, sir."; }
+  $("ans").textContent = reply; $("q").value = ""; speak(reply);
 }
 $("kScan").addEventListener("click", scan);
 $("kBrief").addEventListener("click", () => ask("One-line situation report: Solana price and signal, bot status."));
-$("kAsk").addEventListener("click", () => { $("askRow").scrollIntoView({behavior:"smooth", block:"center"}); $("q").focus(); });
+// --- voice: free, on-device. Output = iOS British voice; input = native speech API if the view allows it, else keyboard dictation ---
+let tts = null, voice = null;
+function pickVoice(){ try { const vs = speechSynthesis.getVoices(); voice = vs.find(v => /Daniel|Arthur|Oliver/.test(v.name) && /en-GB/.test(v.lang)) || vs.find(v => v.lang === "en-GB") || null; } catch(e){} }
+try { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; } catch(e){}
+async function speak(t){ if (!t) return;
+  try { if (tts){ await tts.speak(t); return; } } catch(e){}
+  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t); if (voice) u.voice = voice; u.lang = "en-GB"; u.rate = 1.02; u.pitch = .9; speechSynthesis.speak(u); } catch(e){ log("Voice output unavailable here."); } }
+function listen(){
+  try { speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch(e){}   // unlock audio on this tap
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SR){ try { const r = new SR(); r.lang = "en-US"; r.interimResults = true;
+      r.onresult = e => { const t = Array.from(e.results).map(x => x[0].transcript).join(""); $("q").value = t; if (e.results[e.results.length-1].isFinal) ask(t); };
+      r.onerror = () => { $("q").focus(); }; r.start(); $("kAsk").textContent = "LISTENING"; r.onend = () => { $("kAsk").textContent = "TALK"; }; return; } catch(e){} }
+  $("askRow").scrollIntoView({behavior:"smooth", block:"center"}); $("q").focus(); log("Tap the 🎤 on your keyboard, sir."); }
+$("kAsk").addEventListener("click", listen);
 $("go").addEventListener("click", () => ask($("q").value));
 $("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); ask($("q").value); } });
 $("kReboot").addEventListener("click", async () => {
@@ -321,7 +337,7 @@ const revealer = new IntersectionObserver(es => es.forEach(e => { if (e.isInters
 document.querySelectorAll(".reveal").forEach((el,i) => { el.style.transitionDelay = (i*70) + "ms"; revealer.observe(el); });
 setInterval(() => { $("clock").textContent = new Date().toLocaleString("en-GB",{timeZone:"Asia/Jerusalem",weekday:"short",hour:"2-digit",minute:"2-digit",second:"2-digit"}) ; }, 1000);
 (async () => {
-  [mcp, sample] = await Promise.all([claude.use("mcp"), claude.use("sample")]);
+  [mcp, sample, tts] = await Promise.all([claude.use("mcp"), claude.use("sample"), claude.use("tts").catch(() => null)]);
   if (!mcp){ $("headline").textContent = "Sensors offline in this view, sir."; return; }
   log("Online."); await scan();
   setInterval(tickPrices, 15000);
